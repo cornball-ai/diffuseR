@@ -29,6 +29,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
                            devices = list(unet = "cpu",
                                           decoder = "cpu",
                                           text_encoder = "cpu"),
+                           unet_dtype = NULL,
                            overwrite = FALSE,
                            show_progress = TRUE) {
   # Use "data" instead of "cache" for persistent storage
@@ -41,6 +42,19 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   # Define all required model files
   model_names <- c("unet", "decoder", "text_encoder")
   model_files <- paste0(model_names, "-", devices, ".pt")
+  
+  # Overwrite unet name for cuda
+  if(devices$unet != device_cpu){
+    if(is.null(unet_dtype) | unet_dtype == "torch_float16"){
+      model_files[1] <- "unet-cuda-float16.pt"
+    } else {
+      if(unet_dtype == "torch_float32"){
+        model_files[1] <- "unet-cuda-float32.pt"
+      } else {
+        stop("Invalid unet_dtype")
+      }
+    }
+  }
   
   # Define the remote source
   repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")

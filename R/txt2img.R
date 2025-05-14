@@ -5,7 +5,7 @@
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
 #' @param model_name Name of the model to use (e.g., `"stable-diffusion-2-1"`).
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
-#' @param dtype Optional A character for dtype of the unet component (typically torch_float16() for cuda and torch_float32() for cpu).
+#' @param unet_dtype Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
 #' @param scheduler_params A named list of parameters for the scheduler.
 #' @param num_inference_steps Number of inference steps to run.
@@ -27,7 +27,7 @@ txt2img <- function(prompt,
                     img_dim = 512,
                     model_name = "stable-diffusion-2-1",
                     devices = "cpu",
-                    dtype = NULL,
+                    unet_dtype = NULL,
                     scheduler = "ddim",
                     scheduler_params = list(),
                     num_inference_steps = 50,
@@ -45,17 +45,28 @@ txt2img <- function(prompt,
                 "list with 'unet', 'decoder', and 'text_encoder' elements"))
   }
 
-  if (is.null(dtype)) {
-    if(devicesunet == "cuda") {
-      dtype <- torch::torch_float16()
+  if(devices$unet == device_cpu){
+    unet_dtype <- torch_float32() # aka torch_half() -> torch_Half 
+  } else {
+    if(device == device_cuda){
+      if(is.null(unet_dtype)){
+        unet_dtype <- torch_float16() # aka torch_half() -> torch_Half
+      } else {
+        if(unet_dtype == "torch_float16"){
+          unet_dtype <- torch_float16() # aka torch_half() -> torch_Half
+        } else if(unet_dtype == "torch_float32"){
+          unet_dtype <- torch_float32() # aka torch_float() -> torch_Float
+        } else {
+          stop("Invalid dtype")
+        }
+      }
     } else {
-      dtype <- torch::torch_float32()
+      stop("Invalid device")
     }
-  } else if (!(as.character(dtype) %in% c("Half", "Float"))){
-    stop(paste0("'dtype' must be either be torch_float16() or torch_float32()"))
   }
+  
   # Check if the model is downloaded
-  models <- download_model(model_name, devices)
+  models <- download_model(model_name, devices, unet_dtype)
   model_dir <- models$model_dir
   model_files <- models$model_files
   # Start timing
@@ -96,7 +107,9 @@ txt2img <- function(prompt,
 
   # Load Unet
   message("Loading unet...")
-  unet <- load_model_component("unet", model_name, devices$unet)
+  unet <- load_model_component("unet", model_name,
+                               device = devices$unet,
+                               unet_dtype = unet_dtype)
   
   # Run diffusion process
   message("Generating image...")
@@ -131,7 +144,7 @@ txt2img <- function(prompt,
                                    sample = latents,
                                    scheduler_cfg = scheduler_cfg,
                                    prediction_type = "v_prediction")
-    latents <- latents$to(dtype = dtype, device = devices$unet)
+    latents <- latents$to(dtype = unet_dtype, device = devices$unet)
     utils::setTxtProgressBar(pb, i)
   }
   close(pb)
@@ -140,6 +153,7 @@ txt2img <- function(prompt,
   message("Loading decoder...")
   decoder <- load_model_component("decoder", model_name, devices$decoder)
   scaled_latent <- latents / 0.18215
+  scaled_latent <- scaled_latent$to(dtype = torch_float32(), device = device)
   message("Decoding image...")
   decoded_output <- decoder(scaled_latent)
   # Ensure tensor is on CPU

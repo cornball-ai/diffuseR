@@ -6,6 +6,7 @@
 #' @param component Character string, the component to load: "unet", "decoder", or "text_encoder".
 #' @param model_name Character string, the name of the model to use.
 #' @param device Character string, the torch device to load the model onto ("cpu" or "cuda").
+#' @param unet_dtype Optional; the data type for the UNet model. If `NULL`, defaults to `torch_float32` for CPU and `torch_float16` for CUDA.
 #' @param download Logical; if `TRUE` (default), downloads the model if it doesn't exist locally.
 #'
 #' @return A torch model object.
@@ -18,6 +19,7 @@
 load_model_component <- function(component, 
                                  model_name = "stable-diffusion-2-1", 
                                  device = "cpu",
+                                 unet_dtype = NULL,
                                  download = TRUE) {
   
   # Set of valid components
@@ -43,7 +45,23 @@ load_model_component <- function(component,
   }
   
   # File path for the specific component
-  file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
+  if(component != "unet"){
+    file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
+  } else {
+    if(component == "unet" & device == "cpu"){
+      file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
+    } else {
+      if(is.null(unet_dtype) | unet_dtype == "torch_float16"){
+        file_path <- file.path(model_dir, "unet-cuda-float16.pt")
+      } else {
+        if(unet_dtype == "torch_float32"){
+          file_path <- file.path(model_dir, "unet-cuda-float32.pt")
+        } else {
+          stop("Invalid unet_dtype or component")
+        }
+      }
+    }
+  }
   
   # Check if component file exists
   if (!file.exists(file_path)) {
