@@ -27,7 +27,7 @@ txt2img <- function(prompt,
                     img_dim = 512,
                     model_name = "stable-diffusion-2-1",
                     devices = "cpu",
-                    unet_dtype = NULL,
+                    unet_dtype_str = NULL,
                     scheduler = "ddim",
                     scheduler_params = list(),
                     num_inference_steps = 50,
@@ -45,16 +45,19 @@ txt2img <- function(prompt,
                 "list with 'unet', 'decoder', and 'text_encoder' elements"))
   }
 
-  if(devices$unet == device_cpu){
+  device_cpu <- torch::torch_device("cpu")
+  device_cuda <- torch::torch_device("cuda")
+  
+  if(devices$unet == "cpu"){
     unet_dtype <- torch_float32() # aka torch_half() -> torch_Half 
   } else {
-    if(device == device_cuda){
-      if(is.null(unet_dtype)){
+    if(devices$unet == "cuda"){
+      if(is.null(unet_dtype_str)){
         unet_dtype <- torch_float16() # aka torch_half() -> torch_Half
       } else {
-        if(unet_dtype == "torch_float16"){
+        if(unet_dtype_str == "float16"){
           unet_dtype <- torch_float16() # aka torch_half() -> torch_Half
-        } else if(unet_dtype == "torch_float32"){
+        } else if(unet_dtype_str == "float32"){
           unet_dtype <- torch_float32() # aka torch_float() -> torch_Float
         } else {
           stop("Invalid dtype")
@@ -66,7 +69,7 @@ txt2img <- function(prompt,
   }
   
   # Check if the model is downloaded
-  models <- download_model(model_name, devices, unet_dtype)
+  models <- download_model(model_name, devices, unet_dtype_str)
   model_dir <- models$model_dir
   model_files <- models$model_files
   # Start timing
@@ -96,20 +99,21 @@ txt2img <- function(prompt,
   }
   empty_prompt_embed <- text_encoder(empty_tokens)
   
-  empty_prompt_embed <- empty_prompt_embed$to(device = devices$text_encoder)
-  prompt_embed       <- prompt_embed$to(device = devices$text_encoder)
+  empty_prompt_embed <- empty_prompt_embed$to(device = torch::torch_device(devices$unet))
+  prompt_embed       <- prompt_embed$to(device = torch::torch_device(devices$unet))
 
   message("Loading scheduler...")
   # Load scheduler  
   scheduler_cfg <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
-                                         beta_schedule = "scaled_linear")
+                                         beta_schedule = "scaled_linear",
+                                         device = torch::torch_device(devices$unet))
   timesteps <- scheduler_cfg$timesteps
 
   # Load Unet
   message("Loading unet...")
   unet <- load_model_component("unet", model_name,
                                device = devices$unet,
-                               unet_dtype = unet_dtype)
+                               unet_dtype_str = unet_dtype_str)
   
   # Run diffusion process
   message("Generating image...")
@@ -120,7 +124,7 @@ txt2img <- function(prompt,
   
   latent_dim <- img_dim / 8
   latents <- torch::torch_randn(c(1, 4, latent_dim, latent_dim),
-                                device = devices$unet)
+                                device = torch::torch_device(devices$unet))
   
   # Denoising loop
   pb <- utils::txtProgressBar(min = 0, max = length(scheduler_cfg$timesteps),
@@ -128,7 +132,7 @@ txt2img <- function(prompt,
   for (i in seq_along(scheduler_cfg$timesteps)){
     timestep <- torch::torch_tensor(scheduler_cfg$timesteps[i],
                                     dtype = torch::torch_long(),
-                                    device = devices$unet)
+                                    device = torch::torch_device(devices$unet))
     
     # Get both conditional and unconditional predictions
     noise_pred_uncond <- unet(latents, timestep, empty_prompt_embed)
@@ -143,17 +147,18 @@ txt2img <- function(prompt,
                                    timestep = timestep,
                                    sample = latents,
                                    scheduler_cfg = scheduler_cfg,
-                                   prediction_type = "v_prediction")
-    latents <- latents$to(dtype = unet_dtype, device = devices$unet)
+                                   prediction_type = "v_prediction",
+                                   device = devices$unet)
+    latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
     utils::setTxtProgressBar(pb, i)
   }
   close(pb)
   
   # Decode latents to image
   message("Loading decoder...")
-  decoder <- load_model_component("decoder", model_name, devices$decoder)
+  decoder <- load_model_component("decoder", model_name, torch::torch_device(devices$decoder))
   scaled_latent <- latents / 0.18215
-  scaled_latent <- scaled_latent$to(dtype = torch_float32(), device = device)
+  scaled_latent <- scaled_latent$to(dtype = torch_float32(), device = torch::torch_device(devices$decoder))
   message("Decoding image...")
   decoded_output <- decoder(scaled_latent)
   # Ensure tensor is on CPU

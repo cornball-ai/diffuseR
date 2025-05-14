@@ -15,6 +15,7 @@
 #'
 #' @param model_name Character string, the name of the model to download (e.g., `"stable-diffusion-2-1"`).
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")`).
+#' #' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If `NULL`, defaults to `float32` for CPU and `float16` for CUDA.
 #' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
 #' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.
 #'
@@ -29,7 +30,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
                            devices = list(unet = "cpu",
                                           decoder = "cpu",
                                           text_encoder = "cpu"),
-                           unet_dtype = NULL,
+                           unet_dtype_str = NULL,
                            overwrite = FALSE,
                            show_progress = TRUE) {
   # Use "data" instead of "cache" for persistent storage
@@ -44,14 +45,14 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   model_files <- paste0(model_names, "-", devices, ".pt")
   
   # Overwrite unet name for cuda
-  if(devices$unet != device_cpu){
-    if(is.null(unet_dtype) | unet_dtype == "torch_float16"){
+  if(devices$unet != "cpu"){
+    if(is.null(unet_dtype_str) | unet_dtype_str == "float16"){
       model_files[1] <- "unet-cuda-float16.pt"
     } else {
-      if(unet_dtype == "torch_float32"){
+      if(unet_dtype_str == "float32"){
         model_files[1] <- "unet-cuda-float32.pt"
       } else {
-        stop("Invalid unet_dtype")
+        stop("Invalid unet_dtype_str")
       }
     }
   }

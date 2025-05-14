@@ -16,7 +16,9 @@ ddim_scheduler_step(
   variance_noise = NULL,
   clip_sample = FALSE,
   set_alpha_to_one = FALSE,
-  prediction_type = c("epsilon", "sample", "v_prediction")
+  prediction_type = c("epsilon", "sample", "v_prediction"),
+  dtype = torch_float32(),
+  device = "cpu"
 )
 }
 \arguments{
@@ -58,6 +60,10 @@ Options are:
 \item{"v_prediction"}{The model predicts the velocity vector (v)}
 }
 Default: "epsilon"}
+
+\item{dtype}{The data type to use for computations. Default is torch_float32().}
+
+\item{device}{The device to use for computations. Options are "cpu" and "cuda".}
 }
 \value{
 A list containing:

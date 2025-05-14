@@ -8,6 +8,7 @@ load_model_component(
   component,
   model_name = "stable-diffusion-2-1",
   device = "cpu",
+  unet_dtype_str = NULL,
   download = TRUE
 )
 }
@@ -17,6 +18,8 @@ load_model_component(
 \item{model_name}{Character string, the name of the model to use.}
 
 \item{device}{Character string, the torch device to load the model onto ("cpu" or "cuda").}
+
+\item{unet_dtype_str}{Optional; the data type for the UNet model. If \code{NULL}, defaults to \code{float32} for CPU and \code{float16} for CUDA.}
 
 \item{download}{Logical; if \code{TRUE} (default), downloads the model if it doesn't exist locally.}
 }

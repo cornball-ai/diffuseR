@@ -6,7 +6,7 @@
 #' @param component Character string, the component to load: "unet", "decoder", or "text_encoder".
 #' @param model_name Character string, the name of the model to use.
 #' @param device Character string, the torch device to load the model onto ("cpu" or "cuda").
-#' @param unet_dtype Optional; the data type for the UNet model. If `NULL`, defaults to `torch_float32` for CPU and `torch_float16` for CUDA.
+#' @param unet_dtype_str Optional; the data type for the UNet model. If `NULL`, defaults to `float32` for CPU and `float16` for CUDA.
 #' @param download Logical; if `TRUE` (default), downloads the model if it doesn't exist locally.
 #'
 #' @return A torch model object.
@@ -19,7 +19,7 @@
 load_model_component <- function(component, 
                                  model_name = "stable-diffusion-2-1", 
                                  device = "cpu",
-                                 unet_dtype = NULL,
+                                 unet_dtype_str = NULL,
                                  download = TRUE) {
   
   # Set of valid components
@@ -51,13 +51,13 @@ load_model_component <- function(component,
     if(component == "unet" & device == "cpu"){
       file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
     } else {
-      if(is.null(unet_dtype) | unet_dtype == "torch_float16"){
+      if(is.null(unet_dtype_str) | unet_dtype_str == "float16"){
         file_path <- file.path(model_dir, "unet-cuda-float16.pt")
       } else {
-        if(unet_dtype == "torch_float32"){
+        if(unet_dtype_str == "float32"){
           file_path <- file.path(model_dir, "unet-cuda-float32.pt")
         } else {
-          stop("Invalid unet_dtype or component")
+          stop("Invalid unet_dtype_str or component")
         }
       }
     }
@@ -77,7 +77,7 @@ load_model_component <- function(component,
   }
   
   # Load the model with torch
-  model <- torch::jit_load(file_path, map_location = device)
+  model <- torch::jit_load(file_path, map_location = torch::torch_device(device))
   
   return(model)
 }

@@ -7,6 +7,7 @@
 download_model(
   model_name = "stable-diffusion-2-1",
   devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
+  unet_dtype_str = NULL,
   overwrite = FALSE,
   show_progress = TRUE
 )
@@ -14,7 +15,8 @@ download_model(
 \arguments{
 \item{model_name}{Character string, the name of the model to download (e.g., \code{"stable-diffusion-2-1"}).}
 
-\item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")}).}
+\item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")}).
+#' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If \code{NULL}, defaults to \code{float32} for CPU and \code{float16} for CUDA.}
 
 \item{overwrite}{Logical; if \code{TRUE}, re-downloads the model files even if they already exist.}
 

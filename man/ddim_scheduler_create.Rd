@@ -10,7 +10,9 @@ ddim_scheduler_create(
   eta = 0,
   beta_schedule = c("linear", "scaled_linear", "cosine"),
   beta_start = 0.00085,
-  beta_end = 0.012
+  beta_end = 0.012,
+  dtype = torch_float32(),
+  device = c(torch_device("cpu"), torch_device("cuda"))
 )
 }
 \arguments{
@@ -36,6 +38,10 @@ Default: "linear"}
 \item{beta_start}{Numeric. The starting value for the beta schedule. Default: 0.00085}
 
 \item{beta_end}{Numeric. The final value for the beta schedule. Default: 0.012}
+
+\item{dtype}{The data type to use for computations. Default is torch_float32(). Options are torch_float16() and torch_float32().}
+
+\item{device}{The device to use for computations. Options are torch_device("cpu"), torch_device("cuda").}
 }
 \value{
 A DDIM scheduler object that can be used with diffusion models to
@@ -57,6 +63,7 @@ The scheduler contains the noise schedule and methods for computing
 alpha, beta, and other parameters used in the diffusion process.
 }
 \examples{
+#' \dontrun{
 # Create a DDIM scheduler with custom parameters
 scheduler <- ddim_scheduler_create(
   num_train_timesteps = 1000,
@@ -64,7 +71,7 @@ scheduler <- ddim_scheduler_create(
   eta = 0.5,
   beta_schedule = "scaled_linear"
 )
-
+}
 }
 \references{
 Song, J., Meng, C., & Ermon, S. (2020).

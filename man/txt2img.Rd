@@ -10,6 +10,7 @@ txt2img(
   img_dim = 512,
   model_name = "stable-diffusion-2-1",
   devices = "cpu",
+  unet_dtype_str = NULL,
   scheduler = "ddim",
   scheduler_params = list(),
   num_inference_steps = 50,
@@ -46,6 +47,8 @@ txt2img(
 \item{metadata_path}{Optional file path to save metadata.}
 
 \item{...}{Additional parameters passed to the diffusion process.}
+
+\item{unet_dtype}{Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).}
 }
 \value{
 A tensor or image object, depending on implementation.
