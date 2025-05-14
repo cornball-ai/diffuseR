@@ -5,6 +5,7 @@
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
 #' @param model_name Name of the model to use (e.g., `"stable-diffusion-2-1"`).
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
+#' @param dtype Optional A character for dtype of the unet component (typically torch_float16() for cuda and torch_float32() for cpu).
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
 #' @param scheduler_params A named list of parameters for the scheduler.
 #' @param num_inference_steps Number of inference steps to run.
@@ -26,6 +27,7 @@ txt2img <- function(prompt,
                     img_dim = 512,
                     model_name = "stable-diffusion-2-1",
                     devices = "cpu",
+                    dtype = NULL,
                     scheduler = "ddim",
                     scheduler_params = list(),
                     num_inference_steps = 50,
@@ -43,6 +45,15 @@ txt2img <- function(prompt,
                 "list with 'unet', 'decoder', and 'text_encoder' elements"))
   }
 
+  if (is.null(dtype)) {
+    if(devicesunet == "cuda") {
+      dtype <- torch::torch_float16()
+    } else {
+      dtype <- torch::torch_float32()
+    }
+  } else if (!(as.character(dtype) %in% c("Half", "Float"))){
+    stop(paste0("'dtype' must be either be torch_float16() or torch_float32()"))
+  }
   # Check if the model is downloaded
   models <- download_model(model_name, devices)
   model_dir <- models$model_dir
@@ -120,6 +131,7 @@ txt2img <- function(prompt,
                                    sample = latents,
                                    scheduler_cfg = scheduler_cfg,
                                    prediction_type = "v_prediction")
+    latents <- latents$to(dtype = dtype, device = devices$unet)
     utils::setTxtProgressBar(pb, i)
   }
   close(pb)
