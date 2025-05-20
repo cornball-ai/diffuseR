@@ -183,7 +183,7 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
                                 set_alpha_to_one = FALSE,
                                 prediction_type = c("epsilon", "sample",
                                                     "v_prediction"),
-                                dtype = torch_float32(),
+                                dtype = torch::torch_float32(),
                                 device = "cpu"){
   
   # 1. get previous step value (= timestep + 1); i.e. python-indexing

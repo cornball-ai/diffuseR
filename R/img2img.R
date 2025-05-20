@@ -93,8 +93,11 @@ img2img <- function(input_image,
                                         noise = torch::torch_randn_like(init_latents),
                                         timestep = timestep_start,
                                         scheduler_obj = scheduler_cfg)
+  # Use only the first 4 channels as UNet input
+  noised_latents <- noised_latents[, 1:4, , ]
   noised_latents <- noised_latents$to(dtype = unet_dtype,
                                       device = torch::torch_device(devices$unet))
+  
   txt2img(
     prompt = prompt,
     negative_prompt = negative_prompt,
@@ -109,6 +112,6 @@ img2img <- function(input_image,
     guidance_scale = guidance_scale,
     seed = seed,
     save_to = save_to,
-    metadata_path = NULL
+    metadata_path = metadata_path
   )
 }

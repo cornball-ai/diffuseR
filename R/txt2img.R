@@ -99,6 +99,7 @@ txt2img <- function(prompt,
   } else {
     # Create random latents
     latents <- torch::torch_randn(c(1, 4, latent_dim, latent_dim),
+                                  dtype = unet_dtype,
                                   device = torch::torch_device(devices$unet))
   }
   # Denoising loop
@@ -133,7 +134,8 @@ txt2img <- function(prompt,
   message("Loading decoder...")
   decoder <- load_model_component("decoder", model_name, torch::torch_device(devices$decoder))
   scaled_latent <- latents / 0.18215
-  scaled_latent <- scaled_latent$to(dtype = torch_float32(), device = torch::torch_device(devices$decoder))
+  scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
+                                    device = torch::torch_device(devices$decoder))
   message("Decoding image...")
   decoded_output <- decoder(scaled_latent)
   # Ensure tensor is on CPU
