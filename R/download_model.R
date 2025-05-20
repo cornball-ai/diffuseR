@@ -26,75 +26,99 @@
 #' \dontrun{
 #' model_dir <- download_model("stable-diffusion-2-1")
 #' }
+#' Download model components for a given Stable Diffusion variant
+#'
+#' @param model_name Name of the model (e.g., "stable-diffusion-2-1")
+#' @param devices Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'
+#' @param unet_dtype_str Optional: "float16" or "float32" (only applies if unet uses CUDA)
+#' @param overwrite If TRUE, overwrite existing model files
+#' @param show_progress Show download progress messages
+#'
+#' @return A list with `model_dir` and `model_files`
+#' @export
 download_model <- function(model_name = "stable-diffusion-2-1",
-                           devices = list(unet = "cpu",
-                                          decoder = "cpu",
-                                          text_encoder = "cpu"),
+                           devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
                            unet_dtype_str = NULL,
                            overwrite = FALSE,
                            show_progress = TRUE) {
-  # Use "data" instead of "cache" for persistent storage
+  # Normalize 'devices'
+  if (is.character(devices) && length(devices) == 1) {
+    devices <- list(
+      unet = devices,
+      decoder = devices,
+      text_encoder = devices,
+      encoder = devices
+    )
+  } else if (is.list(devices)) {
+    required_keys <- c("unet", "decoder", "text_encoder")
+    missing_keys <- setdiff(required_keys, names(devices))
+    if (length(missing_keys) > 0) {
+      stop(paste0("Missing required devices: ", paste(missing_keys, collapse = ", ")))
+    }
+    if (!"encoder" %in% names(devices)) {
+      devices$encoder <- devices$decoder
+    }
+  } else {
+    stop("'devices' must be a device string or a named list with at least 'unet', 'decoder', and 'text_encoder'")
+  }
+  
+  # Set up model storage path
   base_dir <- tools::R_user_dir("diffuseR", "data")
-  
-  # Create model-specific subdirectory
   model_dir <- file.path(base_dir, model_name)
-  dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
+  dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Define all required model files
-  model_names <- c("unet", "decoder", "text_encoder")
-  model_files <- paste0(model_names, "-", devices, ".pt")
+  # Assemble model files
+  model_names <- c("unet", "decoder", "text_encoder", "encoder")
+  model_files <- character(length(model_names))
   
-  # Overwrite unet name for cuda
-  if(devices$unet != "cpu"){
-    if(is.null(unet_dtype_str) | unet_dtype_str == "float16"){
-      model_files[1] <- "unet-cuda-float16.pt"
-    } else {
-      if(unet_dtype_str == "float32"){
-        model_files[1] <- "unet-cuda-float32.pt"
+  for (i in seq_along(model_names)) {
+    name <- model_names[i]
+    device <- devices[[name]]
+    
+    if (name == "unet" && device != "cpu") {
+      if (is.null(unet_dtype_str)) {
+        dtype <- "float16"
       } else {
-        stop("Invalid unet_dtype_str")
+        dtype <- unet_dtype_str
       }
+      if (!dtype %in% c("float16", "float32")) {
+        stop("Invalid unet_dtype_str: must be 'float16' or 'float32'")
+      }
+      model_files[i] <- paste0("unet-cuda-", dtype, ".pt")
+    } else {
+      model_files[i] <- paste0(name, "-", device, ".pt")
     }
   }
   
-  # Define the remote source
+  # Download files
   repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")
-  
-  # Download each file if needed
   for (file in model_files) {
     dest_path <- file.path(model_dir, file)
-    
-    # Check if file exists and should be overwritten
     if (!file.exists(dest_path) || overwrite) {
       url <- paste0(repo_url, file)
-      
-      message("Downloading ", file, " for ", model_name, "...")
-      
-      # Handle possible download errors
+      message("Downloading ", file, "...")
       tryCatch({
         utils::download.file(
-          url = url, 
-          destfile = dest_path, 
+          url = url,
+          destfile = dest_path,
           mode = "wb",
           quiet = !show_progress
         )
       }, error = function(e) {
-        warning("Failed to download ", file, ": ", e$message)
-        # If file was partially downloaded, remove it
-        if (file.exists(dest_path)) {
-          unlink(dest_path)
-        }
+        warning("Download failed: ", file, " — ", e$message)
+        if (file.exists(dest_path)) unlink(dest_path)
       })
     }
   }
   
-  # Check if all required files were downloaded successfully
+  # Check for missing
   missing_files <- model_files[!file.exists(file.path(model_dir, model_files))]
   if (length(missing_files) > 0) {
-    warning("Some model files could not be downloaded: ", 
-            paste(missing_files, collapse = ", "))
+    warning("Missing model files: ", paste(missing_files, collapse = ", "))
   }
   
-  return(list(model_dir = model_dir, 
-              model_files = model_files))
+  return(list(
+    model_dir = model_dir,
+    model_files = model_files
+  ))
 }

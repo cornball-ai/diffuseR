@@ -13,17 +13,20 @@ download_model(
 )
 }
 \arguments{
-\item{model_name}{Character string, the name of the model to download (e.g., \code{"stable-diffusion-2-1"}).}
+\item{model_name}{Name of the model (e.g., "stable-diffusion-2-1")}
 
-\item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")}).
-#' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If \code{NULL}, defaults to \code{float32} for CPU and \code{float16} for CUDA.}
+\item{devices}{Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'}
 
-\item{overwrite}{Logical; if \code{TRUE}, re-downloads the model files even if they already exist.}
+\item{unet_dtype_str}{Optional: "float16" or "float32" (only applies if unet uses CUDA)}
 
-\item{show_progress}{Logical; if \code{TRUE} (default), displays a progress bar during download.}
+\item{overwrite}{If TRUE, overwrite existing model files}
+
+\item{show_progress}{Show download progress messages}
 }
 \value{
 The local file path to the specific model directory (as a string).
+
+A list with \code{model_dir} and \code{model_files}
 }
 \description{
 Downloads the required model files (e.g., UNet, decoder, text encoder, and tokenizer)
@@ -44,4 +47,6 @@ If the files already exist, they will not be downloaded again unless \code{overw
 \dontrun{
 model_dir <- download_model("stable-diffusion-2-1")
 }
+Download model components for a given Stable Diffusion variant
+
 }

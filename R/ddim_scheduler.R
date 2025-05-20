@@ -57,7 +57,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
                                   num_inference_steps = 50, eta = 0,
                                   beta_schedule = c("linear", "scaled_linear", "cosine"),
                                   beta_start =  0.00085, beta_end = 0.012,
-                                  dtype = torch_float32(),
+                                  dtype = torch::torch_float32(),
                                   device = c(torch_device("cpu"),
                                              torch_device("cuda"))) {
   betas <- switch(beta_schedule,
@@ -297,4 +297,67 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
   }
   
   prev_sample
+}
+
+#' Add noise to latents using DDIM scheduler
+#' 
+#' This function adds noise to the original latents according to the DDIM
+#' scheduler's diffusion process. It computes the noisy latents based on the
+#' original latents, noise, and the current timestep.
+#' 
+#' @param original_latents A torch tensor representing the original latents.
+#' 
+#' @param noise A torch tensor representing the noise to be added.
+#' 
+#' @param timestep An integer representing the current timestep in the diffusion
+#' process.
+#' 
+#' @param scheduler_obj A list containing the DDIM scheduler parameters, including
+#' alphas_cumprod and timesteps. The alphas_cumprod represents how much of the
+#' original signal remains at each timestep of the diffusion process.
+#' 
+#' @return A torch tensor containing the noised latents, which represents the 
+#' original latents with the appropriate amount of noise added for the given
+#' timestep.
+#' 
+#' @details 
+#' The noise is added according to the standard diffusion forward process formula:
+#' noised_latents = sqrt(alpha_cumprod) * original_latents + sqrt(1-alpha_cumprod) * noise
+#' 
+#' Where alpha_cumprod is the cumulative product of (1-beta) values up to the 
+#' specified timestep, with beta being the noise schedule.
+#' 
+#' @examples
+#' \dontrun{
+#' # Assuming we have latents, noise, and a scheduler
+#' noised_latents <- scheduler_add_noise(
+#'   original_latents = latents,
+#'   noise = torch::torch_randn_like(latents),
+#'   timestep = scheduler$timesteps[1],
+#'   scheduler_obj = scheduler
+#' )
+#' }
+#' 
+#' @export
+scheduler_add_noise <- function(original_latents, noise, timestep, scheduler_obj) {
+  # Get the alpha_cumprod value for this timestep
+  # In DDIM/DDPM schedulers, alphas_cumprod represents 
+  # how much of the original signal remains at each timestep
+  
+  # Get alpha_cumprod for this timestep
+  alpha_cumprod <- scheduler_obj$alphas_cumprod[timestep]
+  
+  # Calculate the noise scaling factors
+  sqrt_alpha_prod <- torch::torch_sqrt(torch::torch_tensor(alpha_cumprod,
+                                                           device = original_latents$device))
+  sqrt_one_minus_alpha_prod <- torch::torch_sqrt(
+    torch::torch_tensor(1 - alpha_cumprod, device = original_latents$device)
+  )
+  
+  # Add noise to the original latents according to the diffusion formula:
+  # noisy = sqrt(alpha) * original + sqrt(1-alpha) * noise
+  noised_latents <- sqrt_alpha_prod * original_latents +
+                      sqrt_one_minus_alpha_prod * noise
+  
+  return(noised_latents)
 }

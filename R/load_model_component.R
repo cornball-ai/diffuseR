@@ -23,7 +23,7 @@ load_model_component <- function(component,
                                  download = TRUE) {
   
   # Set of valid components
-  valid_components <- c("unet", "decoder", "text_encoder")
+  valid_components <- c("unet", "decoder", "text_encoder", "encoder")
   
   # Check if component is valid
   if (!component %in% valid_components) {

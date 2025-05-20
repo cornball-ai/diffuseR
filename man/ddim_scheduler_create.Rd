@@ -11,7 +11,7 @@ ddim_scheduler_create(
   beta_schedule = c("linear", "scaled_linear", "cosine"),
   beta_start = 0.00085,
   beta_end = 0.012,
-  dtype = torch_float32(),
+  dtype = torch::torch_float32(),
   device = c(torch_device("cpu"), torch_device("cuda"))
 )
 }

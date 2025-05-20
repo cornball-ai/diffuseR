@@ -12,7 +12,8 @@ txt2img(
   devices = "cpu",
   unet_dtype_str = NULL,
   scheduler = "ddim",
-  scheduler_params = list(),
+  timesteps = NULL,
+  initial_latents = NULL,
   num_inference_steps = 50,
   guidance_scale = 7.5,
   seed = NULL,
@@ -34,7 +35,7 @@ txt2img(
 
 \item{scheduler}{Scheduler to use (e.g., \code{"ddim"}, \code{"euler"}).}
 
-\item{scheduler_params}{A named list of parameters for the scheduler.}
+\item{timesteps}{Optional A vector of timesteps to use.}
 
 \item{num_inference_steps}{Number of inference steps to run.}
 

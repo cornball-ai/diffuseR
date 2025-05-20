@@ -19,7 +19,9 @@ RoxygenNote: 7.3.1
 Imports:
     torch,
     jsonlite,
-    grid
+    grid,
+    png,
+    jpeg
 Suggests:
     knitr,
     rmarkdown,
