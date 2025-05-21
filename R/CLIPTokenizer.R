@@ -33,7 +33,8 @@ token_merge_pair_once <- function(symbols, bigram) {
 #' @param merges Path to the merges file (BPE merges).
 #' @param vocab_file Path to the vocabulary file (token->id mapping).
 #' @param pad_token The token ID used for padding (default is 0).
-#' @return A 2D torch tensor of shape (1, 77) containing the token IDs.
+#``
+#' @return A 2D torch tensor of shape c(1, 77) containing the token IDs.
 #' @export
 CLIPTokenizer <- function(prompt,
                           merges = system.file("tokenizer/merges.txt",

@@ -12,7 +12,7 @@ ddim_scheduler_create(
   beta_start = 0.00085,
   beta_end = 0.012,
   dtype = torch::torch_float32(),
-  device = c(torch_device("cpu"), torch_device("cuda"))
+  device = c(torch::torch_device("cpu"), torch::torch_device("cuda"))
 )
 }
 \arguments{
@@ -23,7 +23,7 @@ train the model. Default: 1000}
 inference. Fewer steps typically means faster inference at the cost of
 sample quality. Default: 50}
 
-\item{eta}{Numeric. Corresponds to η in DDIM paper, controls the amount of
+\item{eta}{Numeric. Controls the amount of
 stochasticity. When eta=0, the sampling process is deterministic.
 When eta=1, the sampling process is equivalent to DDPM. Default: 0}
 
@@ -63,7 +63,7 @@ The scheduler contains the noise schedule and methods for computing
 alpha, beta, and other parameters used in the diffusion process.
 }
 \examples{
-#' \dontrun{
+\dontrun{
 # Create a DDIM scheduler with custom parameters
 scheduler <- ddim_scheduler_create(
   num_train_timesteps = 1000,

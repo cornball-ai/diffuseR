@@ -10,9 +10,13 @@ preprocess_image(input, device = "cpu", width = 512, height = 512)
 \item{input}{File path to .jpg or .png, or a 3D array}
 
 \item{device}{Target device for torch ("cpu" or "cuda")}
+
+\item{width}{Desired width of the output image}
+
+\item{height}{Desired height of the output image}
 }
 \value{
-Torch tensor of shape \link{1, 3, 512, 512}, scaled to \link{-1, 1}
+Torch tensor of shape c(1, 3, 512, 512), scaled to c(-1, 1)
 }
 \description{
 Preprocess image for Stable Diffusion

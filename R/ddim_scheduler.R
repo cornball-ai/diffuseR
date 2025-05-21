@@ -10,7 +10,7 @@
 #' @param num_inference_steps Integer. The number of diffusion steps used for
 #'   inference. Fewer steps typically means faster inference at the cost of
 #'   sample quality. Default: 50
-#' @param eta Numeric. Corresponds to η in DDIM paper, controls the amount of
+#' @param eta Numeric. Controls the amount of
 #'   stochasticity. When eta=0, the sampling process is deterministic.
 #'   When eta=1, the sampling process is equivalent to DDPM. Default: 0
 #' @param beta_schedule Character. The beta schedule to use. Options are:
@@ -43,7 +43,7 @@
 #' \url{https://arxiv.org/abs/2010.02502}
 #'
 #' @examples
-#' #' \dontrun{
+#' \dontrun{
 #' # Create a DDIM scheduler with custom parameters
 #' scheduler <- ddim_scheduler_create(
 #'   num_train_timesteps = 1000,
@@ -58,8 +58,8 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
                                   beta_schedule = c("linear", "scaled_linear", "cosine"),
                                   beta_start =  0.00085, beta_end = 0.012,
                                   dtype = torch::torch_float32(),
-                                  device = c(torch_device("cpu"),
-                                             torch_device("cuda"))) {
+                                  device = c(torch::torch_device("cpu"),
+                                             torch::torch_device("cuda"))) {
   betas <- switch(beta_schedule,
                   "linear" = seq(beta_start, beta_end,
                                  length.out = num_train_timesteps),
@@ -116,7 +116,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #' @param prediction_type Character. The type of prediction the model outputs.
 #'   Options are:
 #'   \describe{
-#'     \item{"epsilon"}{The model predicts the noise (ε)}
+#'     \item{"epsilon"}{The model predicts the noise}
 #'     \item{"sample"}{The model predicts the denoised sample directly}
 #'     \item{"v_prediction"}{The model predicts the velocity vector (v)}
 #'   }
@@ -154,24 +154,15 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #' \url{https://arxiv.org/abs/2202.00512}
 #'
 #' @examples
-#' # Create a DDIM scheduler
-#' scheduler <- ddim_scheduler_create()
-#' 
-#' # Assume we have a model output and current sample
-#' # model_output <- predict_noise(model, sample, timestep)
-#' 
+#' \dontrun{
 #' # Perform a denoising step
 #' result <- ddim_scheduler_step(
 #'   model_output = model_output,
 #'   timestep = timestep,
 #'   sample = sample,
 #'   eta = 0,  # Deterministic sampling
-#'   prediction_type = "epsilon"
-#' )
-#' 
-#' # Get the denoised sample for the next iteration
-#' prev_sample <- result$prev_sample
-#'
+#'   prediction_type = "epsilon")
+#' }
 #' @export
 ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
                                 eta = 0,
@@ -259,8 +250,7 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
     }
   }
   
-  # 5. compute variance: "sigma_t(η)" -> see formula (16)
-  # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
+  # 5. compute variance
   variance <- (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
   std_dev_t = eta * sqrt(variance)
   

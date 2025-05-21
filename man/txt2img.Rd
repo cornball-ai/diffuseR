@@ -33,9 +33,13 @@ txt2img(
 
 \item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")}).}
 
+\item{unet_dtype_str}{Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).}
+
 \item{scheduler}{Scheduler to use (e.g., \code{"ddim"}, \code{"euler"}).}
 
 \item{timesteps}{Optional A vector of timesteps to use.}
+
+\item{initial_latents}{Optional initial latents for the diffusion process.}
 
 \item{num_inference_steps}{Number of inference steps to run.}
 
@@ -48,8 +52,6 @@ txt2img(
 \item{metadata_path}{Optional file path to save metadata.}
 
 \item{...}{Additional parameters passed to the diffusion process.}
-
-\item{unet_dtype}{Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).}
 }
 \value{
 A tensor or image object, depending on implementation.

@@ -52,8 +52,6 @@ img2img(
 \item{metadata_path}{Path to save metadata (default: NULL).}
 
 \item{...}{Additional arguments for future use.}
-
-\item{scheduler_params}{Additional parameters for the scheduler (default: empty list).}
 }
 \value{
 Generated image tensor.
@@ -61,18 +59,4 @@ Generated image tensor.
 \description{
 This function generates an image based on an input image and a text prompt using the Stable Diffusion model.
 It allows for various configurations such as model name, device, scheduler, and more.
-}
-\examples{
-# Example usage
-img <- img2img(
-         input_image = "path/to/input.jpg",
-         prompt = "A fantasy landscape",
-         model_name = "stable-diffusion-2-1",
-         device = "cuda",
-         scheduler = "ddim",
-         num_inference_steps = 50,
-         strength = 0.8,
-         guidance_scale = 7.5,
-         seed = 42,
-         save_to = "output.jpg")
 }

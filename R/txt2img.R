@@ -5,9 +5,10 @@
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
 #' @param model_name Name of the model to use (e.g., `"stable-diffusion-2-1"`).
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
-#' @param unet_dtype Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).
+#' @param unet_dtype_str Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
 #' @param timesteps Optional A vector of timesteps to use.
+#' @param initial_latents Optional initial latents for the diffusion process.
 #' @param num_inference_steps Number of inference steps to run.
 #' @param guidance_scale Scale for classifier-free guidance (typically 7.5).
 #' @param seed Optional seed for reproducibility.

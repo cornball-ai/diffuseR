@@ -10,7 +10,6 @@
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu", encoder = "cpu")`).
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).
 #' @param scheduler Scheduler to use for the diffusion process (default: "ddim").
-#' @param scheduler_params Additional parameters for the scheduler (default: empty list).
 #' @param num_inference_steps Number of diffusion steps (default: 50).
 #' @param strength Strength of the image-to-image transformation (default: 0.8).
 #' @param guidance_scale Scale for classifier-free guidance (default: 7.5).
@@ -19,20 +18,6 @@
 #' @param metadata_path Path to save metadata (default: NULL).
 #' @param ... Additional arguments for future use.
 #' @return Generated image tensor.
-#' @examples
-#' # Example usage
-#' img <- img2img(
-#'          input_image = "path/to/input.jpg",
-#'          prompt = "A fantasy landscape",
-#'          model_name = "stable-diffusion-2-1",
-#'          device = "cuda",
-#'          scheduler = "ddim",
-#'          num_inference_steps = 50,
-#'          strength = 0.8,
-#'          guidance_scale = 7.5,
-#'          seed = 42,
-#'          save_to = "output.jpg")
-#`
 #' @export
 
 img2img <- function(input_image,
@@ -74,6 +59,8 @@ img2img <- function(input_image,
   message("Encoding image...")
   init_latents <- encoder(image_tensor)
   
+  init_latents <- init_latents * 0.18215
+  
   # 3. Compute noise timestep from strength
   t_strength <- as.integer(strength * num_train_timesteps)
   scheduler_cfg <- ddim_scheduler_create(num_train_timesteps = 1000,
@@ -94,7 +81,7 @@ img2img <- function(input_image,
                                         timestep = timestep_start,
                                         scheduler_obj = scheduler_cfg)
   # Use only the first 4 channels as UNet input
-  noised_latents <- noised_latents[, 1:4, , ]
+  noised_latents <- noised_latents[, 1:4, , ] * 0.18215
   noised_latents <- noised_latents$to(dtype = unet_dtype,
                                       device = torch::torch_device(devices$unet))
   

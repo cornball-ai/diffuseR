@@ -17,7 +17,7 @@ ddim_scheduler_step(
   clip_sample = FALSE,
   set_alpha_to_one = FALSE,
   prediction_type = c("epsilon", "sample", "v_prediction"),
-  dtype = torch_float32(),
+  dtype = torch::torch_float32(),
   device = "cpu"
 )
 }
@@ -55,7 +55,7 @@ Used for numerical stability in the final step. Default: FALSE}
 \item{prediction_type}{Character. The type of prediction the model outputs.
 Options are:
 \describe{
-\item{"epsilon"}{The model predicts the noise (ε)}
+\item{"epsilon"}{The model predicts the noise}
 \item{"sample"}{The model predicts the denoised sample directly}
 \item{"v_prediction"}{The model predicts the velocity vector (v)}
 }
@@ -92,24 +92,15 @@ the model predicts the clean sample directly. The \code{v_prediction} option imp
 the v-parameterization from Salimans & Ho (2022).
 }
 \examples{
-# Create a DDIM scheduler
-scheduler <- ddim_scheduler_create()
-
-# Assume we have a model output and current sample
-# model_output <- predict_noise(model, sample, timestep)
-
+\dontrun{
 # Perform a denoising step
 result <- ddim_scheduler_step(
   model_output = model_output,
   timestep = timestep,
   sample = sample,
   eta = 0,  # Deterministic sampling
-  prediction_type = "epsilon"
-)
-
-# Get the denoised sample for the next iteration
-prev_sample <- result$prev_sample
-
+  prediction_type = "epsilon")
+}
 }
 \references{
 Song, J., Meng, C., & Ermon, S. (2020).

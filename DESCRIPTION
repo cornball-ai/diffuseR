@@ -9,7 +9,7 @@ Description: A native R implementation of diffusion models providing a functiona
     using text prompts through models like Stable Diffusion without Python dependencies. 
     The package provides a streamlined, idiomatic R experience with support for multiple 
     diffusion schedulers and device acceleration.
-License: Apache License (>= 2.0)
+License: Apache License 2.0
 URL: https://github.com/cornball-ai/diffuseR
 BugReports: https://github.com/cornball-ai/diffuseR/issues
 Encoding: UTF-8

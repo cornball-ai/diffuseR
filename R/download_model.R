@@ -15,18 +15,12 @@
 #'
 #' @param model_name Character string, the name of the model to download (e.g., `"stable-diffusion-2-1"`).
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")`).
-#' #' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If `NULL`, defaults to `float32` for CPU and `float16` for CUDA.
+#' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If `NULL`, defaults to `float32` for CPU and `float16` for CUDA.
 #' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
 #' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.
 #'
 #' @return The local file path to the specific model directory (as a string).
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' model_dir <- download_model("stable-diffusion-2-1")
-#' }
-#' Download model components for a given Stable Diffusion variant
 #'
 #' @param model_name Name of the model (e.g., "stable-diffusion-2-1")
 #' @param devices Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'
@@ -36,6 +30,13 @@
 #'
 #' @return A list with `model_dir` and `model_files`
 #' @export
+#``
+#' @examples
+#' \dontrun{
+#' model_dir <- download_model("stable-diffusion-2-1")
+#' }
+#'
+
 download_model <- function(model_name = "stable-diffusion-2-1",
                            devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
                            unet_dtype_str = NULL,
@@ -105,7 +106,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
           quiet = !show_progress
         )
       }, error = function(e) {
-        warning("Download failed: ", file, " — ", e$message)
+        warning("Download failed: ", file, " - ", e$message)
         if (file.exists(dest_path)) unlink(dest_path)
       })
     }

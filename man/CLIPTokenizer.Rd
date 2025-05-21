@@ -21,7 +21,7 @@ CLIPTokenizer(
 \item{pad_token}{The token ID used for padding (default is 0).}
 }
 \value{
-A 2D torch tensor of shape (1, 77) containing the token IDs.
+A 2D torch tensor of shape c(1, 77) containing the token IDs.
 }
 \description{
 Tokenize a prompt

@@ -1,36 +1,13 @@
 
 
-# For existing image arrays
-resize_for_torch <- function(img_array, width, height) {
-  # Convert to torch tensor
-  img_tensor <- torch::torch_tensor(img_array)
-  
-  # Add batch dimension if needed and rearrange to [batch, channel, height, width]
-  if(length(dim(img_tensor)) == 3) {
-    # [H, W, C] -> [1, C, H, W]
-    img_tensor <- img_tensor$permute(c(3, 1, 2))$unsqueeze(1)
-  }
-  
-  # Use torch's built-in interpolation
-  resized <- torch::nnf_interpolate(img_tensor, 
-                             size = c(height, width),
-                             mode = "bilinear",
-                             align_corners = TRUE)
-  
-  # Convert back to R array in [H, W, C] format
-  result <- resized$squeeze(1)$permute(c(2, 3, 1))
-  # plot
-  
-  return(result)
-}
-
-
 #' Preprocess image for Stable Diffusion
 #'
 #' @param input File path to .jpg or .png, or a 3D array
 #' @param device Target device for torch ("cpu" or "cuda")
+#' @param width Desired width of the output image
+#' @param height Desired height of the output image
 #'
-#' @return Torch tensor of shape [1, 3, 512, 512], scaled to [-1, 1]
+#' @return Torch tensor of shape c(1, 3, 512, 512), scaled to c(-1, 1)
 #' @export
 preprocess_image <- function(input, device = "cpu", width = 512, height = 512) {
   # Load JPEG/PNG if path
@@ -48,17 +25,39 @@ preprocess_image <- function(input, device = "cpu", width = 512, height = 512) {
     stop("Input must be a file path or 3D array")
   }
   
-  # Resize to 512x512 (nearest neighbor, base R)
-  img_resized <- resize_for_torch(img_array = img,
-                                  width = width,
-                                  height = height) # resize_image_array(img, width = 512, height = 512)
+  # Handle alpha channel if present (RGBA -> RGB)
+  if (length(dim(img)) == 3 && dim(img)[3] == 4) {
+    img <- img[, , 1:3]  # Drop alpha channel
+  }
   
-  # Reorder [H, W, C] → [C, H, W], scale [0,1] → [-1,1]
-  # permute using torch
-  img_tensor <- torch::torch_tensor(img_resized$permute(c(3, 1, 2)))
+  # Handle grayscale images (add channels dimension)
+  if (length(dim(img)) == 2) {
+    img <- array(img, dim = c(dim(img), 1))
+    # Optionally repeat to make it RGB:
+    img <- array(rep(img, 3), dim = c(dim(img)[1], dim(img)[2], 3))
+  }
+  
+  # Convert to torch tensor
+  img_tensor <- torch::torch_tensor(img)
+  
+  # Add batch dimension and rearrange to [batch, channel, height, width]
+  if (length(dim(img_tensor)) == 3) {
+    # [H, W, C] -> [1, C, H, W]
+    img_tensor <- img_tensor$permute(c(3, 1, 2))$unsqueeze(1)
+  } else if (length(dim(img_tensor)) == 4) {
+    # Assume [B, H, W, C] -> [B, C, H, W]
+    img_tensor <- img_tensor$permute(c(1, 4, 2, 3))
+  }
+  
+  # Use torch's interpolation for resizing
+  img_tensor <- torch::nnf_interpolate(img_tensor, 
+                                       size = c(height, width),
+                                       mode = "bilinear",
+                                       align_corners = FALSE)  # Usually FALSE for stable diffusion
+  
+  # Convert to float and normalize to [-1, 1]
   img_tensor <- img_tensor$to(dtype = torch::torch_float())$to(device = device)
   img_tensor <- (img_tensor * 2) - 1
-  img_tensor <- img_tensor$unsqueeze(1)  # [1, 3, 512, 512]
   
   return(img_tensor)
 }

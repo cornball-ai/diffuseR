@@ -47,6 +47,5 @@ If the files already exist, they will not be downloaded again unless \code{overw
 \dontrun{
 model_dir <- download_model("stable-diffusion-2-1")
 }
-Download model components for a given Stable Diffusion variant
 
 }
