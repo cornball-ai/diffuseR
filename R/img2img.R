@@ -57,9 +57,22 @@ img2img <- function(input_image,
   encoder <- load_model_component("encoder", model_name,
                                   torch::torch_device(devices$encoder))
   message("Encoding image...")
-  init_latents <- encoder(image_tensor)
-  
-  init_latents <- init_latents * 0.18215
+  encoded <- encoder(image_tensor)
+  message("Loading quant_conv...")
+  conv_latents <- quant_conv(encoded, unet_dtype = unet_dtype,
+                             device = devices$unet)
+
+  latents_mean <- conv_latents[, 1:4, , ]           # First 4 channels
+  latents_log_var <- conv_latents[, 5:8, , ]        # Last 4 channels
+  init_latents <- latents_mean$to(dtype = unet_dtype,
+                                   device = torch::torch_device(devices$unet))
+  # Need to FIX
+  # Sample from the distribution (reparameterization trick)
+  # if(eps > 0){
+  #   std <- torch_exp(0.5 * latents_log_var)
+  #   eps <- torch_randn_like(std)
+  #   sampled_latents <- mean + eps * std
+  # }
   
   # 3. Compute noise timestep from strength
   t_strength <- as.integer(strength * num_train_timesteps)
@@ -81,7 +94,6 @@ img2img <- function(input_image,
                                         timestep = timestep_start,
                                         scheduler_obj = scheduler_cfg)
   # Use only the first 4 channels as UNet input
-  noised_latents <- noised_latents[, 1:4, , ] * 0.18215
   noised_latents <- noised_latents$to(dtype = unet_dtype,
                                       device = torch::torch_device(devices$unet))
   

@@ -1,5 +1,17 @@
 # model_device_utils.R
 
+
+#' models2devices
+#' @description This function sets up the model directory, device configuration, and data types for the Stable Diffusion model.
+#' It checks the validity of the model name and devices, and downloads the model if necessary.
+#' It also sets the data type for the UNet model based on the device configuration.
+#' 
+#' @param model_name A character string representing the name of the model to be used.
+#' @param devices A character string or a named list specifying the devices for different components of the model.
+#' @param unet_dtype_str A character string specifying the data type for the UNet model.
+#' 
+#' @return A list containing the model directory, model files, device configuration, UNet data type, and CPU/CUDA devices.
+#' @export
 models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL) {
   # Check if the model name is valid
   if (is.null(model_name) || !is.character(model_name)) {
