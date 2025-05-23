@@ -36,7 +36,7 @@ img2img <- function(input_image,
                     metadata_path = NULL,
                     ...) {
   # 1. Get models
-  m2d <- models2devices(model_name, devices = "cpu", unet_dtype_str = NULL)
+  m2d <- models2devices(model_name, devices = devices, unet_dtype_str = NULL)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
   devices <- m2d$devices
@@ -51,7 +51,7 @@ img2img <- function(input_image,
   }
   
   # 2. Encode input image to latents
-  image_tensor <- preprocess_image(input_image,
+  image_tensor <- preprocess_image(input_image, width = img_dim, height = img_dim,
                                    device = torch::torch_device(devices$encoder))  # Resize & normalize
   message("Loading encoder...")
   encoder <- load_model_component("encoder", model_name,
@@ -104,7 +104,7 @@ img2img <- function(input_image,
     model_name = model_name,
     devices = devices,
     unet_dtype_str = unet_dtype_str,
-    scheduler = scheduler,
+    scheduler = "ddim",
     timesteps = timesteps,
     initial_latents = noised_latents,
     num_inference_steps = num_inference_steps,

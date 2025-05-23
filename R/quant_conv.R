@@ -15,8 +15,8 @@
 #' @export
 quant_conv <- function(x, unet_dtype, device) {
   params_path <- system.file("quant_conv/", package = "diffuseR")
-  qc_weights <- as.matrix(read.csv(paste0(params_path, "quant_conv_weights.csv"), header=FALSE))
-  qc_bias <- as.numeric(read.csv(paste0(params_path, "quant_conv_bias.csv"), header=FALSE)[[1]])
+  qc_weights <- as.matrix(read.csv(paste0(params_path, "/quant_conv_weights.csv"), header=FALSE))
+  qc_bias <- as.numeric(read.csv(paste0(params_path, "/quant_conv_bias.csv"), header=FALSE)[[1]])
   
   # Convert to torch tensors and reshape weights for conv2d
   qc_weights_tensor <- torch::torch_tensor(qc_weights)$view(c(8, 8, 1, 1))

@@ -38,7 +38,7 @@ txt2img <- function(prompt,
                     save_to = "output.png",
                     metadata_path = NULL,
                     ...) {
-  m2d <- models2devices(model_name, devices = "cpu",
+  m2d <- models2devices(model_name, devices = devices,
                         unet_dtype_str = unet_dtype_str)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
@@ -68,8 +68,10 @@ txt2img <- function(prompt,
   }
   empty_prompt_embed <- text_encoder(empty_tokens)
   
-  empty_prompt_embed <- empty_prompt_embed$to(device = torch::torch_device(devices$unet))
-  prompt_embed       <- prompt_embed$to(device = torch::torch_device(devices$unet))
+  empty_prompt_embed <- empty_prompt_embed$to(dtype = unet_dtype,
+                                              device = torch::torch_device(devices$unet))
+  prompt_embed       <- prompt_embed$to(dtype = unet_dtype,
+                                        device = torch::torch_device(devices$unet))
 
   message("Loading scheduler...")
   # Load scheduler
