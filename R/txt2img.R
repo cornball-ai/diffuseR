@@ -106,10 +106,9 @@ txt2img <- function(prompt,
                                   device = torch::torch_device(devices$unet))
   }
   # Denoising loop
-  pb <- utils::txtProgressBar(min = 0, max = length(scheduler_cfg$timesteps),
-                              style = 3)
-  for (i in seq_along(scheduler_cfg$timesteps)){
-    timestep <- torch::torch_tensor(scheduler_cfg$timesteps[i],
+  pb <- utils::txtProgressBar(min = 0, max = length(timesteps), style = 3)
+  for (i in seq_along(timesteps)){
+    timestep <- torch::torch_tensor(timesteps[i],
                                     dtype = torch::torch_long(),
                                     device = torch::torch_device(devices$unet))
     

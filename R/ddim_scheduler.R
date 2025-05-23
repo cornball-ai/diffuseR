@@ -178,7 +178,6 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
                                 device = "cpu"){
   
   # 1. get previous step value (= timestep + 1); i.e. python-indexing
-  # Need to cast timestep_index to long
   timestep_index <- torch::torch_tensor(timestep + 1,
                                         dtype = torch::torch_long(),
                                         device = torch::torch_device(device))
@@ -334,8 +333,9 @@ scheduler_add_noise <- function(original_latents, noise, timestep, scheduler_obj
   # In DDIM/DDPM schedulers, alphas_cumprod represents 
   # how much of the original signal remains at each timestep
   
+  timestep_index <- timestep + 1
   # Get alpha_cumprod for this timestep
-  alpha_cumprod <- scheduler_obj$alphas_cumprod[timestep]
+  alpha_cumprod <- scheduler_obj$alphas_cumprod[timestep_index]
   
   # Calculate the noise scaling factors
   sqrt_alpha_prod <- torch::torch_sqrt(torch::torch_tensor(alpha_cumprod,

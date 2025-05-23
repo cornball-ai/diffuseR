@@ -65,7 +65,7 @@ img2img <- function(input_image,
   latents_mean <- conv_latents[, 1:4, , ]           # First 4 channels
   latents_log_var <- conv_latents[, 5:8, , ]        # Last 4 channels
   init_latents <- latents_mean$to(dtype = unet_dtype,
-                                   device = torch::torch_device(devices$unet))
+                                   device = torch::torch_device(devices$unet)) * 0.18215
   # Need to FIX
   # Sample from the distribution (reparameterization trick)
   # if(eps > 0){
@@ -82,9 +82,9 @@ img2img <- function(input_image,
                                          device = torch::torch_device(devices$unet))
   
   all_inference_timesteps <- scheduler_cfg$timesteps
-  timestep_idx <- which.min(abs(scheduler_cfg$timesteps - t_strength))
-  timestep_start <- scheduler_cfg$timesteps[timestep_idx]
-  timesteps <- scheduler_cfg$timesteps[timestep_idx:length(all_inference_timesteps)]
+  timestep_idx <- which.min(abs(all_inference_timesteps - t_strength))
+  timestep_start <- all_inference_timesteps[timestep_idx]
+  timesteps <- all_inference_timesteps[timestep_idx:length(all_inference_timesteps)]
   
   # 4. Add noise to latents
   message("Adding noise to latent image...")
@@ -93,7 +93,6 @@ img2img <- function(input_image,
                                         noise = torch::torch_randn_like(init_latents),
                                         timestep = timestep_start,
                                         scheduler_obj = scheduler_cfg)
-  # Use only the first 4 channels as UNet input
   noised_latents <- noised_latents$to(dtype = unet_dtype,
                                       device = torch::torch_device(devices$unet))
   
