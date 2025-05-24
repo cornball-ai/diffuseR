@@ -12,7 +12,8 @@
 #' @param num_inference_steps Number of inference steps to run.
 #' @param guidance_scale Scale for classifier-free guidance (typically 7.5).
 #' @param seed Optional seed for reproducibility.
-#' @param save_to Optional file path to save the final image.
+#' @param save_file Logical indicating whether to save the generated image.
+#' @param filename Optional filename for saving the image. If `NULL`, a default name is generated.
 #' @param metadata_path Optional file path to save metadata.
 #' @param ... Additional parameters passed to the diffusion process.
 #'
@@ -35,7 +36,8 @@ txt2img <- function(prompt,
                     num_inference_steps = 50,
                     guidance_scale = 7.5,
                     seed = NULL,
-                    save_to = "output.png",
+                    save_file = TRUE,
+                    filename = NULL,
                     metadata_path = NULL,
                     ...) {
   m2d <- models2devices(model_name, devices = devices,
@@ -158,7 +160,11 @@ txt2img <- function(prompt,
   # Convert to R array
   img_array <- as.array(img)
   # Save if requested
-  if (!is.null(save_to)) {
+  if (save_file) {
+    # Creating filename while we're here
+    if (is.null(filename)) {
+      save_to <- filename_from_prompt(prompt, tokens, datetime = TRUE)
+    }
     message("Saving image to ", save_to)
     save_image(img = img_array, save_to)
   } else {

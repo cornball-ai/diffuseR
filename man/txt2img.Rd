@@ -17,7 +17,8 @@ txt2img(
   num_inference_steps = 50,
   guidance_scale = 7.5,
   seed = NULL,
-  save_to = "output.png",
+  save_file = TRUE,
+  filename = NULL,
   metadata_path = NULL,
   ...
 )
@@ -47,7 +48,9 @@ txt2img(
 
 \item{seed}{Optional seed for reproducibility.}
 
-\item{save_to}{Optional file path to save the final image.}
+\item{save_file}{Logical indicating whether to save the generated image.}
+
+\item{filename}{Optional filename for saving the image. If \code{NULL}, a default name is generated.}
 
 \item{metadata_path}{Optional file path to save metadata.}
 
