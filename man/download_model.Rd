@@ -24,8 +24,6 @@ download_model(
 \item{show_progress}{Show download progress messages}
 }
 \value{
-The local file path to the specific model directory (as a string).
-
 A list with \code{model_dir} and \code{model_files}
 }
 \description{

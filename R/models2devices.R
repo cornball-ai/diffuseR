@@ -1,6 +1,3 @@
-# model_device_utils.R
-
-
 #' models2devices
 #' @description This function sets up the model directory, device configuration, and data types for the Stable Diffusion model.
 #' It checks the validity of the model name and devices, and downloads the model if necessary.
@@ -48,9 +45,14 @@ models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL) {
     
     # Fill in encoder if not present, using decoder's device
     if (!"encoder" %in% names(devices)) {
-      devices$encoder <- NULL
+      if(devices$decoder == "cpu"){
+        devices$encoder <- "cpu"
+      } else if(devices$decoder == "cuda"){
+        devices$encoder <- "cuda"
+      } else {
+        stop("Invalid device for encoder")
+      }
     }
-    
   } else {
     stop(paste0("'devices' must be either a single device string or a named ",
                 "list with 'unet', 'decoder', and 'text_encoder'. Optionally: 'encoder'."))

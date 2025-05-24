@@ -12,16 +12,6 @@
 #'
 #' Each model is stored in its own subdirectory for better organization.
 #' If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
-#'
-#' @param model_name Character string, the name of the model to download (e.g., `"stable-diffusion-2-1"`).
-#' @param devices A named list of devices for each model component (e.g., `list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")`).
-#' @param unet_dtype_str Optional; Character string, the data type for the UNet model. If `NULL`, defaults to `float32` for CPU and `float16` for CUDA.
-#' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
-#' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.
-#'
-#' @return The local file path to the specific model directory (as a string).
-#' @export
-#'
 #' @param model_name Name of the model (e.g., "stable-diffusion-2-1")
 #' @param devices Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'
 #' @param unet_dtype_str Optional: "float16" or "float32" (only applies if unet uses CUDA)
@@ -36,7 +26,6 @@
 #' model_dir <- download_model("stable-diffusion-2-1")
 #' }
 #'
-
 download_model <- function(model_name = "stable-diffusion-2-1",
                            devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
                            unet_dtype_str = NULL,
@@ -44,23 +33,49 @@ download_model <- function(model_name = "stable-diffusion-2-1",
                            show_progress = TRUE) {
   # Normalize 'devices'
   if (is.character(devices) && length(devices) == 1) {
-    devices <- list(
-      unet = devices,
-      decoder = devices,
-      text_encoder = devices,
-      encoder = devices
-    )
+    # For SDXL, we need to handle both text encoders
+    if (model_name == "sdxl") {
+      devices <- list(
+        unet = devices,
+        decoder = devices,
+        text_encoder1 = devices,
+        text_encoder2 = devices,
+        encoder = devices
+      )
+    } else {
+      devices <- list(
+        unet = devices,
+        decoder = devices,
+        text_encoder = devices,
+        encoder = devices
+      )
+    }
   } else if (is.list(devices)) {
-    required_keys <- c("unet", "decoder", "text_encoder")
+    # Define required keys based on model
+    if (model_name == "sdxl") {
+      required_keys <- c("unet", "decoder", "text_encoder1", "text_encoder2")
+      # Handle backward compatibility - if only 'text_encoder' is provided, use it for both
+      if ("text_encoder" %in% names(devices) && 
+          !("text_encoder1" %in% names(devices)) && 
+          !("text_encoder2" %in% names(devices))) {
+        devices$text_encoder1 <- devices$text_encoder
+        devices$text_encoder2 <- devices$text_encoder
+        devices$text_encoder <- NULL  # Remove the old key
+      }
+    } else {
+      required_keys <- c("unet", "decoder", "text_encoder")
+    }
+    
     missing_keys <- setdiff(required_keys, names(devices))
     if (length(missing_keys) > 0) {
       stop(paste0("Missing required devices: ", paste(missing_keys, collapse = ", ")))
     }
+    
     if (!"encoder" %in% names(devices)) {
       devices$encoder <- devices$decoder
     }
   } else {
-    stop("'devices' must be a device string or a named list with at least 'unet', 'decoder', and 'text_encoder'")
+    stop("'devices' must be a device string or a named list with required components")
   }
   
   # Set up model storage path
@@ -69,12 +84,23 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
   
   # Assemble model files
-  model_names <- c("unet", "decoder", "text_encoder", "encoder")
+  if(model_name == "sdxl"){
+    model_names <- c("unet", "decoder", "text_encoder1", "text_encoder2", "encoder")
+  } else if(model_name == "stable-diffusion-2-1"){
+    model_names <- c("unet", "decoder", "text_encoder", "encoder")
+  } else {
+    stop("Unsupported model name: ", model_name)
+  }
+  
   model_files <- character(length(model_names))
   
   for (i in seq_along(model_names)) {
     name <- model_names[i]
     device <- devices[[name]]
+    
+    if (is.null(device)) {
+      stop(paste0("Device not specified for component: ", name))
+    }
     
     if (name == "unet" && device != "cpu") {
       if (is.null(unet_dtype_str)) {
@@ -120,6 +146,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   
   return(list(
     model_dir = model_dir,
-    model_files = model_files
+    model_files = model_files,
+    model_names = model_names  # Return this for easier access
   ))
 }

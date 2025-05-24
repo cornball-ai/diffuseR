@@ -26,8 +26,8 @@
 #' }
 txt2img <- function(prompt,
                     negative_prompt = NULL,
-                    img_dim = 512,
-                    model_name = "stable-diffusion-2-1",
+                    img_dim = 1024,
+                    model_name = "sdxl",
                     devices = "cpu",
                     unet_dtype_str = NULL,
                     scheduler = "ddim",
