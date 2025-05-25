@@ -22,12 +22,16 @@ load_model_component <- function(component,
                                  unet_dtype_str = NULL,
                                  download = TRUE) {
   
-  # Set of valid components
-  valid_components <- c("unet", "decoder", "text_encoder", "encoder")
+  # Set valid components based on model
+  if (model_name == "sdxl") {
+    valid_components <- c("unet", "decoder", "text_encoder1", "text_encoder2", "encoder")
+  } else {
+    valid_components <- c("unet", "decoder", "text_encoder", "encoder")
+  }
   
   # Check if component is valid
   if (!component %in% valid_components) {
-    stop("Invalid component name. Must be one of: ", 
+    stop("Invalid component name for model '", model_name, "'. Must be one of: ", 
          paste(valid_components, collapse = ", "))
   }
   
@@ -37,42 +41,33 @@ load_model_component <- function(component,
   # Check if model directory exists
   if (!dir.exists(model_dir)) {
     if (download) {
-      model_dir <- download_model(model_name)
+      download_result <- download_model(model_name)
+      model_dir <- download_result$model_dir
     } else {
       stop("Model '", model_name,
            "' not found locally. Set download=TRUE to download.")
     }
   }
   
-  # File path for the specific component
-  if(component != "unet"){
-    file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
-  } else {
-    if(component == "unet" & device == "cpu"){
-      file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
-    } else {
-      if(is.null(unet_dtype_str) | unet_dtype_str == "float16"){
-        file_path <- file.path(model_dir, "unet-cuda-float16.pt")
-      } else {
-        if(unet_dtype_str == "float32"){
-          file_path <- file.path(model_dir, "unet-cuda-float32.pt")
-        } else {
-          stop("Invalid unet_dtype_str or component")
-        }
-      }
-    }
-  }
+  # Determine file path for the specific component
+  file_path <- get_component_file_path(component, model_dir, device, unet_dtype_str)
   
   # Check if component file exists
   if (!file.exists(file_path)) {
     if (download) {
-      download_component(model_name, component, device, overwrite = FALSE)
+      # Try to download the specific component
+      tryCatch({
+        download_component(model_name, component, device, overwrite = FALSE)
+      }, error = function(e) {
+        warning("Failed to download component: ", e$message)
+      })
+      
       # Check again after download attempt
       if (!file.exists(file_path)) {
-        stop("Component '", component, "' could not be downloaded.")
+        stop("Component '", component, "' could not be downloaded for model '", model_name, "'.")
       }
     } else {
-      stop("Component '", component, "' not found for model '", model_name, "'.")
+      stop("Component '", component, "' not found for model '", model_name, "'. File expected at: ", file_path)
     }
   }
   
@@ -80,4 +75,49 @@ load_model_component <- function(component,
   model <- torch::jit_load(file_path, map_location = torch::torch_device(device))
   
   return(model)
+}
+
+# Helper function to determine file path
+get_component_file_path <- function(component, model_dir, device, unet_dtype_str) {
+  if (component == "unet") {
+    if (device == "cpu") {
+      file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
+    } else {
+      # Handle GPU unet with dtype
+      if (is.null(unet_dtype_str) || unet_dtype_str == "float16") {
+        dtype <- "float16"
+      } else if (unet_dtype_str == "float32") {
+        dtype <- "float32"
+      } else {
+        stop("Invalid unet_dtype_str: must be 'float16' or 'float32'")
+      }
+      file_path <- file.path(model_dir, paste0("unet-cuda-", dtype, ".pt"))
+    }
+  } else {
+    # All other components (decoder, text_encoder, text_encoder1, text_encoder2, encoder)
+    file_path <- file.path(model_dir, paste0(component, "-", device, ".pt"))
+  }
+  
+  return(file_path)
+}
+
+# Convenience function to load both text encoders for SDXL
+load_text_encoders <- function(model_name = "sdxl", 
+                               device = "cpu", 
+                               download = TRUE) {
+  if (model_name != "sdxl") {
+    # For non-SDXL models, return single text encoder
+    return(list(
+      text_encoder = load_model_component("text_encoder", model_name, device, download = download)
+    ))
+  }
+  
+  # For SDXL, load both text encoders
+  text_encoder1 <- load_model_component("text_encoder1", model_name, device, download = download)
+  text_encoder2 <- load_model_component("text_encoder2", model_name, device, download = download)
+  
+  return(list(
+    text_encoder1 = text_encoder1,
+    text_encoder2 = text_encoder2
+  ))
 }
