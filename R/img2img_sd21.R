@@ -24,7 +24,7 @@
 img2img <- function(input_image,
                     prompt,
                     negative_prompt = NULL,
-                    img_dim = 512,
+                    img_dim = 768,
                     model_name = "stable-diffusion-2-1",
                     devices = "cpu",
                     unet_dtype_str = "float16",

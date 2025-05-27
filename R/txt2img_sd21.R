@@ -1,5 +1,7 @@
 #' Generate an image from a text prompt using a diffusion pipeline
 #'
+#' This function generates an image based on a text prompt using the Stable Diffusion model.
+#' It allows for various configurations such as model name, device, scheduler, and more.
 #' @param prompt A character string prompt describing the image to generate.
 #' @param negative_prompt Optional negative prompt to guide the generation.
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
@@ -16,7 +18,7 @@
 #' @param metadata_path Optional file path to save metadata.
 #' @param ... Additional parameters passed to the diffusion process.
 #'
-#' @return A tensor or image object, depending on implementation.
+#' @return An image array and metadata
 #' @export
 #'
 #' @examples
@@ -59,6 +61,7 @@ txt2img_sd21 <- function(prompt,
   message("Processing prompt...")
   ## Tokenizer
   tokens <- CLIPTokenizer(prompt)
+  # clip-vit-large-patch14
   prompt_embed <- text_encoder(tokens)
 
   if (is.null(negative_prompt)) {
@@ -75,11 +78,11 @@ txt2img_sd21 <- function(prompt,
 
   message("Loading scheduler...")
   # Load scheduler
-  scheduler_cfg <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
+  schedule <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
                                          beta_schedule = "scaled_linear",
                                          device = torch::torch_device(devices$unet))
   if(is.null(timesteps)){
-    timesteps <- scheduler_cfg$timesteps
+    timesteps <- schedule$timesteps
   }
 
   # Load Unet
@@ -124,7 +127,7 @@ txt2img_sd21 <- function(prompt,
     latents <- ddim_scheduler_step(model_output = noise_pred,
                                    timestep = timestep,
                                    sample = latents,
-                                   scheduler_cfg = scheduler_cfg,
+                                   schedule = schedule,
                                    prediction_type = "v_prediction",
                                    device = devices$unet)
     latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
@@ -163,8 +166,8 @@ txt2img_sd21 <- function(prompt,
     if (is.null(filename)) {
       save_to <- filename_from_prompt(prompt, tokens, datetime = TRUE)
     }
-    message("Saving image to ", save_to)
-    save_image(img = img_array, save_to)
+    message("Saving image to ", filename)
+    save_image(img = img_array, filename)
   } else {
     # Display in RStudio Viewer if interactive
     if (interactive()) {

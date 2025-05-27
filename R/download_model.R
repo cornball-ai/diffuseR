@@ -53,14 +53,11 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   } else if (is.list(devices)) {
     # Define required keys based on model
     if (model_name == "sdxl") {
-      required_keys <- c("unet", "decoder", "text_encoder1", "text_encoder2")
+      required_keys <- c("unet", "decoder", "text_encoder", "text_encoder2")
       # Handle backward compatibility - if only 'text_encoder' is provided, use it for both
       if ("text_encoder" %in% names(devices) && 
-          !("text_encoder1" %in% names(devices)) && 
           !("text_encoder2" %in% names(devices))) {
-        devices$text_encoder1 <- devices$text_encoder
         devices$text_encoder2 <- devices$text_encoder
-        devices$text_encoder <- NULL  # Remove the old key
       }
     } else {
       required_keys <- c("unet", "decoder", "text_encoder")
@@ -85,7 +82,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   
   # Assemble model files
   if(model_name == "sdxl"){
-    model_names <- c("unet", "decoder", "text_encoder1", "text_encoder2", "encoder")
+    model_names <- c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
   } else if(model_name == "stable-diffusion-2-1"){
     model_names <- c("unet", "decoder", "text_encoder", "encoder")
   } else {

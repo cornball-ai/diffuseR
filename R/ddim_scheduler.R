@@ -102,8 +102,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #'   deterministic. When eta=1, it's equivalent to DDPM. Default: 0
 #' @param use_clipped_model_output Logical. Whether to clip the model output before
 #'   computing the sample update. Can improve stability. Default: FALSE
-#' @param scheduler_cfg Logical. Whether to use classifier-free guidance with the
-#'   scheduler. Default: TRUE
+#' @param schedule List. The DDIM scheduler object containing the necessary parameters created from ddim_scheduler_create()
 #' @param thresholding Logical. Whether to apply thresholding to the output.
 #'   Default: FALSE
 #' @param generator An optional random number generator for reproducibility.
@@ -164,7 +163,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #'   prediction_type = "epsilon")
 #' }
 #' @export
-ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
+ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
                                 eta = 0,
                                 use_clipped_model_output = FALSE,
                                 thresholding = FALSE,
@@ -181,21 +180,21 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
   timestep_index <- torch::torch_tensor(timestep + 1,
                                         dtype = torch::torch_long(),
                                         device = torch::torch_device(device))
-  if(as.numeric(timestep_index) <= 2){ #scheduler_cfg$timesteps[1]) {
-    prev_timestep <- 1 #length(scheduler_cfg$alphas)
+  if(as.numeric(timestep_index) <= 2){ #schedule$timesteps[1]) {
+    prev_timestep <- 1 #length(schedule$alphas)
     prev_timestep_index <- torch::torch_tensor(prev_timestep,
                                                dtype = torch::torch_long(),
                                                device = torch::torch_device(device))
   } else {
-    prev_timestep <- scheduler_cfg$timesteps[which(as.logical(scheduler_cfg$timesteps == (timestep))) + 1]
+    prev_timestep <- schedule$timesteps[which(as.logical(schedule$timesteps == (timestep))) + 1]
     prev_timestep_index <- torch::torch_tensor(prev_timestep + 1,
                                                dtype = torch::torch_long(),
                                                device = torch::torch_device(device))
   }
   
   # 2. compute alphas, betas
-  alpha_prod_t <- scheduler_cfg$alphas_cumprod[timestep_index]
-  alpha_prod_t_prev <- scheduler_cfg$alphas_cumprod[prev_timestep_index]
+  alpha_prod_t <- schedule$alphas_cumprod[timestep_index]
+  alpha_prod_t_prev <- schedule$alphas_cumprod[prev_timestep_index]
   # alpha_prod_t <- alpha_prod_t + 1e-7  # Prevent division by zero
   # alpha_prod_t_prev <- alpha_prod_t_prev + 1e-7
   if (set_alpha_to_one & prev_timestep == 1){
@@ -203,7 +202,7 @@ ddim_scheduler_step <- function(model_output, timestep, sample, scheduler_cfg,
                                              dtype = dtype,
                                              device = torch::torch_device(device))
   } else {
-    alpha_prod_t_prev <- scheduler_cfg$alphas_cumprod[prev_timestep_index]
+    alpha_prod_t_prev <- schedule$alphas_cumprod[prev_timestep_index]
     alpha_prod_t_prev <- alpha_prod_t_prev$to(dtype = dtype, device = torch::torch_device(device))
   }
   

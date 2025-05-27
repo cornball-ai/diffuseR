@@ -9,7 +9,7 @@
 #' @examples
 #' filename_from_prompt("A beautiful sunset over the mountains")
 #' filename_from_prompt("A beautiful sunset over the mountains", datetime = FALSE)
-#' #' @export
+#' @export
 filename_from_prompt <- function(prompt, datetime = TRUE) {
   # Remove all non-alphanumeric characters from the prompt
   prompt_strs <- gsub("[^a-zA-Z0-9]", "_", prompt)

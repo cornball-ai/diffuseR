@@ -79,6 +79,15 @@ CLIPTokenizer <- function(prompt,
     tokens <- c(tokens, symbols)
   }
   
+  # Truncate tokens to max length
+  max_tokens <- 77L - 2L  # 2 for start and end tokens
+  if (length(tokens) > max_tokens) {
+    truncated_tokens <- tokens[(max_tokens + 1):length(tokens)]
+    tokens <- tokens[1:max_tokens]
+    warning("Prompt was truncated. Consider shortening it.")
+    warning("Dropped prompt: ", paste(truncated_tokens, collapse = " "))
+  }
+  
   # 5. Map token strings to vocabulary IDs
   ids <- vapply(tokens, function(tok) {
     if (!tok %in% names(vocab)) stop(paste("Unknown token:", tok))

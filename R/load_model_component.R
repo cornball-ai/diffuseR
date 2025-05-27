@@ -24,7 +24,7 @@ load_model_component <- function(component,
   
   # Set valid components based on model
   if (model_name == "sdxl") {
-    valid_components <- c("unet", "decoder", "text_encoder1", "text_encoder2", "encoder")
+    valid_components <- c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
   } else {
     valid_components <- c("unet", "decoder", "text_encoder", "encoder")
   }
@@ -113,11 +113,11 @@ load_text_encoders <- function(model_name = "sdxl",
   }
   
   # For SDXL, load both text encoders
-  text_encoder1 <- load_model_component("text_encoder1", model_name, device, download = download)
+  text_encoder <- load_model_component("text_encoder", model_name, device, download = download)
   text_encoder2 <- load_model_component("text_encoder2", model_name, device, download = download)
   
   return(list(
-    text_encoder1 = text_encoder1,
+    text_encoder = text_encoder,
     text_encoder2 = text_encoder2
   ))
 }

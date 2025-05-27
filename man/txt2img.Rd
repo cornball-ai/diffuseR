@@ -4,55 +4,12 @@
 \alias{txt2img}
 \title{Generate an image from a text prompt using a diffusion pipeline}
 \usage{
-txt2img(
-  prompt,
-  negative_prompt = NULL,
-  img_dim = 1024,
-  model_name = "sdxl",
-  devices = "cpu",
-  unet_dtype_str = NULL,
-  scheduler = "ddim",
-  timesteps = NULL,
-  initial_latents = NULL,
-  num_inference_steps = 50,
-  guidance_scale = 7.5,
-  seed = NULL,
-  save_file = TRUE,
-  filename = NULL,
-  metadata_path = NULL,
-  ...
-)
+txt2img(prompt, model_name = "sdxl", ...)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}
 
-\item{negative_prompt}{Optional negative prompt to guide the generation.}
-
-\item{img_dim}{Dimension of the output image (e.g., 512 for 512x512).}
-
-\item{model_name}{Name of the model to use (e.g., \code{"stable-diffusion-2-1"}).}
-
-\item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")}).}
-
-\item{unet_dtype_str}{Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).}
-
-\item{scheduler}{Scheduler to use (e.g., \code{"ddim"}, \code{"euler"}).}
-
-\item{timesteps}{Optional A vector of timesteps to use.}
-
-\item{initial_latents}{Optional initial latents for the diffusion process.}
-
-\item{num_inference_steps}{Number of inference steps to run.}
-
-\item{guidance_scale}{Scale for classifier-free guidance (typically 7.5).}
-
-\item{seed}{Optional seed for reproducibility.}
-
-\item{save_file}{Logical indicating whether to save the generated image.}
-
-\item{filename}{Optional filename for saving the image. If \code{NULL}, a default name is generated.}
-
-\item{metadata_path}{Optional file path to save metadata.}
+\item{model_name}{Name of the model to use (e.g., \code{"sd21"}).}
 
 \item{...}{Additional parameters passed to the diffusion process.}
 }

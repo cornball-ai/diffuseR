@@ -17,7 +17,6 @@ models2devices(model_name, devices = "cpu", unet_dtype_str = NULL)
 A list containing the model directory, model files, device configuration, UNet data type, and CPU/CUDA devices.
 }
 \description{
-This function sets up the model directory, device configuration, and data types for the Stable Diffusion model.
-It checks the validity of the model name and devices, and downloads the model if necessary.
-It also sets the data type for the UNet model based on the device configuration.
+This function sets up the model directory, device configuration, and data types for diffusion models.
+It checks the validity of the model name and devices, detects model type, and downloads the model if necessary.
 }

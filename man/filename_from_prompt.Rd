@@ -20,5 +20,4 @@ This function generates a filename from a prompt by removing all non-alphanumeri
 \examples{
 filename_from_prompt("A beautiful sunset over the mountains")
 filename_from_prompt("A beautiful sunset over the mountains", datetime = FALSE)
-#' @export
 }

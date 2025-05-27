@@ -8,7 +8,7 @@ ddim_scheduler_step(
   model_output,
   timestep,
   sample,
-  scheduler_cfg,
+  schedule,
   eta = 0,
   use_clipped_model_output = FALSE,
   thresholding = FALSE,
@@ -29,8 +29,7 @@ representing predicted noise or the denoised sample depending on \code{predictio
 
 \item{sample}{Numeric array. The current noisy sample at timestep \code{t}.}
 
-\item{scheduler_cfg}{Logical. Whether to use classifier-free guidance with the
-scheduler. Default: TRUE}
+\item{schedule}{List. The DDIM scheduler object containing the necessary parameters created from ddim_scheduler_create()}
 
 \item{eta}{Numeric. Controls the stochasticity of the process. When eta=0, DDIM is
 deterministic. When eta=1, it's equivalent to DDPM. Default: 0}
