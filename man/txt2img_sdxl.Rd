@@ -13,7 +13,7 @@ txt2img_sdxl(
   scheduler = "ddim",
   timesteps = NULL,
   initial_latents = NULL,
-  num_inference_steps = 50,
+  num_inference_steps = 30,
   guidance_scale = 7.5,
   seed = NULL,
   save_file = TRUE,

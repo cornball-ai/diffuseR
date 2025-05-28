@@ -11,6 +11,7 @@ ddim_scheduler_create(
   beta_schedule = c("linear", "scaled_linear", "cosine"),
   beta_start = 0.00085,
   beta_end = 0.012,
+  rescale_betas_zero_snr = FALSE,
   dtype = torch::torch_float32(),
   device = c(torch::torch_device("cpu"), torch::torch_device("cuda"))
 )
@@ -38,6 +39,8 @@ Default: "linear"}
 \item{beta_start}{Numeric. The starting value for the beta schedule. Default: 0.00085}
 
 \item{beta_end}{Numeric. The final value for the beta schedule. Default: 0.012}
+
+\item{rescale_betas_zero_snr}{Logical. If TRUE, rescales the beta values}
 
 \item{dtype}{The data type to use for computations. Default is torch_float32(). Options are torch_float16() and torch_float32().}
 

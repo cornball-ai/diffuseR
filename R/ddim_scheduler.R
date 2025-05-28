@@ -22,6 +22,7 @@
 #'   Default: "linear"
 #' @param beta_start Numeric. The starting value for the beta schedule. Default: 0.00085
 #' @param beta_end Numeric. The final value for the beta schedule. Default: 0.012
+#' @param rescale_betas_zero_snr Logical. If TRUE, rescales the beta values
 #' @param dtype The data type to use for computations. Default is torch_float32(). Options are torch_float16() and torch_float32().
 #' @param device The device to use for computations. Options are torch_device("cpu"), torch_device("cuda").
 #'
@@ -57,6 +58,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
                                   num_inference_steps = 50, eta = 0,
                                   beta_schedule = c("linear", "scaled_linear", "cosine"),
                                   beta_start =  0.00085, beta_end = 0.012,
+                                  rescale_betas_zero_snr = FALSE,
                                   dtype = torch::torch_float32(),
                                   device = c(torch::torch_device("cpu"),
                                              torch::torch_device("cuda"))) {
@@ -66,6 +68,9 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
                   "scaled_linear" = seq(sqrt(beta_start), sqrt(beta_end),
                                         length.out = num_train_timesteps) ^ 2,
                   "cosine" = NULL)
+  if(rescale_betas_zero_snr) {
+    betas <- rescale_zero_terminal_snr(betas)
+  }
   betas <- torch::torch_tensor(betas, dtype = dtype, device = device)
   alphas <- 1 - betas
   alphas <- torch::torch_tensor(alphas, dtype = dtype, device = device)
@@ -349,4 +354,28 @@ scheduler_add_noise <- function(original_latents, noise, timestep, scheduler_obj
                       sqrt_one_minus_alpha_prod * noise
   
   return(noised_latents)
+}
+
+rescale_zero_terminal_snr <- function(betas) {
+  alphas <- 1.0 - betas
+  alphas_cumprod <- cumprod(alphas)
+  alphas_bar_sqrt <- sqrt(alphas_cumprod)
+
+  # Store old values.
+  alphas_bar_sqrt_0 <- alphas_bar_sqrt[1]
+  alphas_bar_sqrt_T <- alphas_bar_sqrt[length(alphas_bar_sqrt)]
+  
+  # Shift so the last timestep is zero.
+  alphas_bar_sqrt <- alphas_bar_sqrt - alphas_bar_sqrt_T
+  
+  # Scale so the first timestep is back to the old value.
+  alphas_bar_sqrt <- alphas_bar_sqrt * alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+  
+  # Convert alphas_bar_sqrt to betas
+  alphas_bar <- alphas_bar_sqrt ^ 2  # Revert sqrt
+  alphas = alphas_bar[-1] / alphas_bar[-length(alphas_bar)]  # Revert cumprod
+  alphas = c(alphas_bar[1], alphas)
+  betas = 1 - alphas
+  
+  return(betas)
 }
