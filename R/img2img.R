@@ -7,8 +7,10 @@
 #' @param negative_prompt Optional negative prompt to guide the image generation.`
 #' @param img_dim Dimension of the output image (default: 512).
 #' @param model_name Name of the Stable Diffusion model to use (default: "sd21").
+#' @param pipeline Optional pre-loaded pipeline. If `NULL`, it will be loaded based on `model_name`.
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu", encoder = "cpu")`).
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).
+#' @param download_models Logical indicating whether to download models if not found (default: FALSE).
 #' @param scheduler Scheduler to use for the diffusion process (default: "ddim").
 #' @param num_inference_steps Number of diffusion steps (default: 50).
 #' @param strength Strength of the image-to-image transformation (default: 0.8).
@@ -26,8 +28,10 @@ img2img <- function(input_image,
                     negative_prompt = NULL,
                     img_dim = 512,
                     model_name = c("sd21", "sdxl"),
+                    pipeline = NULL,
                     devices = "cpu",
                     unet_dtype_str = "float16",
+                    download_models = FALSE,
                     scheduler = "ddim",
                     num_inference_steps = 50,
                     strength = 0.8,
@@ -37,14 +41,6 @@ img2img <- function(input_image,
                     filename = NULL,
                     metadata_path = NULL,
                     ...) {
-  # 1. Get models
-  m2d <- models2devices(model_name, devices = devices, unet_dtype_str = NULL)
-  model_dir <- m2d$model_dir
-  model_files <- m2d$model_files
-  devices <- m2d$devices
-  unet_dtype <- m2d$unet_dtype
-  device_cpu <- m2d$device_cpu
-  device_cuda <- m2d$device_cuda
   
   if(model_name %in% c("sd21", "sdxl")) {
     num_train_timesteps <- 1000
@@ -52,15 +48,27 @@ img2img <- function(input_image,
     stop("Model not supported")
   }
   
+  # 1. Get models
+  m2d <- models2devices(model_name, devices = devices, unet_dtype_str = NULL,
+                        download_models = download_models)
+  model_dir <- m2d$model_dir
+  model_files <- m2d$model_files
+  devices <- m2d$devices
+  unet_dtype <- m2d$unet_dtype
+  device_cpu <- m2d$device_cpu
+  device_cuda <- m2d$device_cuda
+
+  if(is.null(pipeline)){
+    pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+                              unet_dtype_str = unet_dtype_str)
+  }
+  
   # 2. Encode input image to latents
   image_tensor <- preprocess_image(input_image, width = img_dim, height = img_dim,
                                    device = torch::torch_device(devices$encoder))  # Resize & normalize
-  message("Loading encoder...")
-  encoder <- load_model_component("encoder", model_name,
-                                  torch::torch_device(devices$encoder))
   message("Encoding image...")
-  encoded <- encoder(image_tensor)
-  message("Loading quant_conv...")
+  encoded <- pipeline$encoder(image_tensor)
+  # message("Loading quant_conv...")
   conv_latents <- quant_conv(encoded, dtype = unet_dtype,
                              device = devices$unet)
 
@@ -103,6 +111,7 @@ img2img <- function(input_image,
     negative_prompt = negative_prompt,
     img_dim = img_dim,
     model_name = model_name,
+    pipeline = pipeline,
     devices = devices,
     unet_dtype_str = unet_dtype_str,
     scheduler = "ddim",

@@ -12,25 +12,27 @@
 #'
 #' Each model is stored in its own subdirectory for better organization.
 #' If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
-#' @param model_name Name of the model (e.g., "stable-diffusion-2-1")
+#' @param model_name Name of the model (e.g., "sd21" for stable-diffusion-2-1)
 #' @param devices Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'
 #' @param unet_dtype_str Optional: "float16" or "float32" (only applies if unet uses CUDA)
 #' @param overwrite If TRUE, overwrite existing model files
 #' @param show_progress Show download progress messages
+#' @param download_models If TRUE, download the model files from Hugging Face
 #'
 #' @return A list with `model_dir` and `model_files`
 #' @export
 #``
 #' @examples
 #' \dontrun{
-#' model_dir <- download_model("stable-diffusion-2-1")
+#' model_dir <- download_model("sd21")
 #' }
 #'
-download_model <- function(model_name = "stable-diffusion-2-1",
+download_model <- function(model_name = "sd21",
                            devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
                            unet_dtype_str = NULL,
                            overwrite = FALSE,
-                           show_progress = TRUE) {
+                           show_progress = TRUE,
+                           download_models = FALSE) {
   # Normalize 'devices'
   if (is.character(devices) && length(devices) == 1) {
     # For SDXL, we need to handle both text encoders
@@ -83,7 +85,7 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   # Assemble model files
   if(model_name == "sdxl"){
     model_names <- c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
-  } else if(model_name == "stable-diffusion-2-1"){
+  } else if(model_name == "sd21"){
     model_names <- c("unet", "decoder", "text_encoder", "encoder")
   } else {
     stop("Unsupported model name: ", model_name)
@@ -115,30 +117,35 @@ download_model <- function(model_name = "stable-diffusion-2-1",
   }
   
   # Download files
-  repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")
-  for (file in model_files) {
-    dest_path <- file.path(model_dir, file)
-    if (!file.exists(dest_path) || overwrite) {
-      url <- paste0(repo_url, file)
-      message("Downloading ", file, "...")
-      tryCatch({
-        utils::download.file(
-          url = url,
-          destfile = dest_path,
-          mode = "wb",
-          quiet = !show_progress
-        )
-      }, error = function(e) {
-        warning("Download failed: ", file, " - ", e$message)
-        if (file.exists(dest_path)) unlink(dest_path)
-      })
+  if (download_models) {
+    repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")
+    for (file in model_files) {
+      dest_path <- file.path(model_dir, file)
+      if (!file.exists(dest_path) || overwrite) {
+        url <- paste0(repo_url, file)
+        message("Downloading ", file, "...")
+        tryCatch({
+          utils::download.file(
+            url = url,
+            destfile = dest_path,
+            mode = "wb",
+            quiet = !show_progress
+          )
+        }, error = function(e) {
+          warning("Download failed: ", file, " - ", e$message)
+          if (file.exists(dest_path)) unlink(dest_path)
+        })
+      } else {
+        message("File already exists: ", file)
+      }
     }
+  } else {
+      message("Skipping model download (download_models == FALSE)")
   }
-  
   # Check for missing
   missing_files <- model_files[!file.exists(file.path(model_dir, model_files))]
   if (length(missing_files) > 0) {
-    warning("Missing model files: ", paste(missing_files, collapse = ", "))
+    stop("Missing model files: ", paste(missing_files, collapse = ", "))
   }
   
   return(list(

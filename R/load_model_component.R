@@ -14,10 +14,10 @@
 #'
 #' @examples
 #' \dontrun{
-#' unet <- load_model_component("unet", "stable-diffusion-2-1", "cpu")
+#' unet <- load_model_component("unet", "sd21", "cpu")
 #' }
 load_model_component <- function(component, 
-                                 model_name = "stable-diffusion-2-1", 
+                                 model_name = "sd21", 
                                  device = "cpu",
                                  unet_dtype_str = NULL,
                                  download = TRUE) {

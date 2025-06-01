@@ -5,14 +5,14 @@
 \title{Download TorchScript model component for Stable Diffusion}
 \usage{
 download_component(
-  model_name = "stable-diffusion-2-1",
+  model_name = "sd21",
   device = "cpu",
   overwrite = FALSE,
   show_progress = TRUE
 )
 }
 \arguments{
-\item{model_name}{Character string, the name of the model to download (e.g., \code{"stable-diffusion-2-1"}).}
+\item{model_name}{Character string, the name of the model to download (e.g., \code{"sd21"}).}
 
 \item{device}{Character string, the device type for which the model is intended (e.g., \code{"cpu"} or \code{"cuda"}).}
 
@@ -40,6 +40,6 @@ If the files already exist, they will not be downloaded again unless \code{overw
 }
 \examples{
 \dontrun{
-model_dir <- download_model("stable-diffusion-2-1")
+model_dir <- download_model("sd21")
 }
 }

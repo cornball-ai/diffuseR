@@ -5,8 +5,10 @@
 #' @param prompt A character string prompt describing the image to generate.
 #' @param negative_prompt Optional negative prompt to guide the generation.
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
+#' @param pipeline Optional A pre-loaded diffusion pipeline. If `NULL`, it will be loaded based on the model name and devices.
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).
+#' @param download_models Logical indicating whether to download the model files if they are not found.
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
 #' @param timesteps Optional A vector of timesteps to use.
 #' @param initial_latents Optional initial latents for the diffusion process.
@@ -28,8 +30,10 @@
 txt2img_sd21 <- function(prompt,
                          negative_prompt = NULL,
                          img_dim = 768,
+                         pipeline = NULL,
                          devices = "cpu",
                          unet_dtype_str = NULL,
+                         download_models = FALSE,
                          scheduler = "ddim",
                          timesteps = NULL,
                          initial_latents = NULL,
@@ -41,7 +45,7 @@ txt2img_sd21 <- function(prompt,
                          metadata_path = NULL,
                          ...) {
   model_name = "sd21"
-  m2d <- models2devices(model_name = "sd21", devices = devices,
+  m2d <- models2devices(model_name = model_name, devices = devices,
                         unet_dtype_str = unet_dtype_str)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
@@ -49,35 +53,35 @@ txt2img_sd21 <- function(prompt,
   unet_dtype <- m2d$unet_dtype
   device_cpu <- m2d$device_cpu
   device_cuda <- m2d$device_cuda
+
+  if(is.null(pipeline)){
+    pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+                              unet_dtype_str = unet_dtype_str)
+  }
   
   # Start timing
   start_time <- proc.time()
-  
-  # Load models with specified devices
-  message("Loading text_encoder...")
-  text_encoder <- load_model_component("text_encoder", model_name,
-                                       devices$text_encoder)
   
   # Process text prompt
   message("Processing prompt...")
   ## Tokenizer
   tokens <- CLIPTokenizer(prompt)
   # clip-vit-large-patch14
-  prompt_embed <- text_encoder(tokens)
+  prompt_embed <- pipeline$text_encoder(tokens)
 
   if (is.null(negative_prompt)) {
     empty_tokens <- CLIPTokenizer("")
   } else {
     empty_tokens <- CLIPTokenizer(negative_prompt)
   }
-  empty_prompt_embed <- text_encoder(empty_tokens)
+  empty_prompt_embed <- pipeline$text_encoder(empty_tokens)
   
   empty_prompt_embed <- empty_prompt_embed$to(dtype = unet_dtype,
                                               device = torch::torch_device(devices$unet))
   prompt_embed       <- prompt_embed$to(dtype = unet_dtype,
                                         device = torch::torch_device(devices$unet))
 
-  message("Loading scheduler...")
+  message("Creating schedule...")
   # Load scheduler
   schedule <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
                                          beta_schedule = "scaled_linear",
@@ -86,12 +90,6 @@ txt2img_sd21 <- function(prompt,
     timesteps <- schedule$timesteps
   }
 
-  # Load Unet
-  message("Loading unet...")
-  unet <- load_model_component("unet", model_name,
-                               device = devices$unet,
-                               unet_dtype_str = unet_dtype_str)
-  
   # Run diffusion process
   message("Generating image...")
   if(!is.null(seed)){
@@ -117,8 +115,8 @@ txt2img_sd21 <- function(prompt,
                                     device = torch::torch_device(devices$unet))
     
     # Get both conditional and unconditional predictions
-    noise_pred_uncond <- unet(latents, timestep, empty_prompt_embed)
-    noise_pred_cond   <- unet(latents, timestep, prompt_embed)
+    noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed)
+    noise_pred_cond   <- pipeline$unet(latents, timestep, prompt_embed)
     
     # CFG step
     noise_pred <- noise_pred_uncond + guidance_scale *
@@ -137,13 +135,11 @@ txt2img_sd21 <- function(prompt,
   close(pb)
   
   # Decode latents to image
-  message("Loading decoder...")
-  decoder <- load_model_component("decoder", model_name, torch::torch_device(devices$decoder))
   scaled_latent <- latents / 0.18215
   scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
                                     device = torch::torch_device(devices$decoder))
   message("Decoding image...")
-  decoded_output <- decoder(scaled_latent)
+  decoded_output <- pipeline$decoder(scaled_latent)
   # Ensure tensor is on CPU
   img <- decoded_output$cpu()
   
@@ -165,7 +161,7 @@ txt2img_sd21 <- function(prompt,
   if (save_file) {
     # Creating filename while we're here
     if (is.null(filename)) {
-      save_to <- filename_from_prompt(prompt, datetime = TRUE)
+      filename <- filename_from_prompt(prompt, datetime = TRUE)
     }
     message("Saving image to ", filename)
     save_image(img = img_array, filename)

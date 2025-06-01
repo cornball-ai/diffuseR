@@ -5,15 +5,16 @@
 \title{Download TorchScript model files for Stable Diffusion}
 \usage{
 download_model(
-  model_name = "stable-diffusion-2-1",
+  model_name = "sd21",
   devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
   unet_dtype_str = NULL,
   overwrite = FALSE,
-  show_progress = TRUE
+  show_progress = TRUE,
+  download_models = FALSE
 )
 }
 \arguments{
-\item{model_name}{Name of the model (e.g., "stable-diffusion-2-1")}
+\item{model_name}{Name of the model (e.g., "sd21" for stable-diffusion-2-1)}
 
 \item{devices}{Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'}
 
@@ -22,6 +23,8 @@ download_model(
 \item{overwrite}{If TRUE, overwrite existing model files}
 
 \item{show_progress}{Show download progress messages}
+
+\item{download_models}{If TRUE, download the model files from Hugging Face}
 }
 \value{
 A list with \code{model_dir} and \code{model_files}
@@ -43,7 +46,7 @@ If the files already exist, they will not be downloaded again unless \code{overw
 }
 \examples{
 \dontrun{
-model_dir <- download_model("stable-diffusion-2-1")
+model_dir <- download_model("sd21")
 }
 
 }

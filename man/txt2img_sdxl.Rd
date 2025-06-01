@@ -8,8 +8,10 @@ txt2img_sdxl(
   prompt,
   negative_prompt = NULL,
   img_dim = 1024,
+  pipeline = NULL,
   devices = "cpu",
   unet_dtype_str = NULL,
+  download_models = FALSE,
   scheduler = "ddim",
   timesteps = NULL,
   initial_latents = NULL,
@@ -29,9 +31,13 @@ txt2img_sdxl(
 
 \item{img_dim}{Dimension of the output image (e.g., 512 for 512x512).}
 
+\item{pipeline}{Optional A pre-loaded diffusion pipeline. If \code{NULL}, it will be loaded based on the model name and devices.}
+
 \item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")}).}
 
 \item{unet_dtype_str}{Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).}
+
+\item{download_models}{Logical indicating whether to download the model files if they are not found.}
 
 \item{scheduler}{Scheduler to use (e.g., \code{"ddim"}, \code{"euler"}).}
 

@@ -10,8 +10,10 @@ img2img(
   negative_prompt = NULL,
   img_dim = 512,
   model_name = c("sd21", "sdxl"),
+  pipeline = NULL,
   devices = "cpu",
   unet_dtype_str = "float16",
+  download_models = FALSE,
   scheduler = "ddim",
   num_inference_steps = 50,
   strength = 0.8,
@@ -34,9 +36,13 @@ img2img(
 
 \item{model_name}{Name of the Stable Diffusion model to use (default: "sd21").}
 
+\item{pipeline}{Optional pre-loaded pipeline. If \code{NULL}, it will be loaded based on \code{model_name}.}
+
 \item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cuda", decoder = "cpu", text_encoder = "cpu", encoder = "cpu")}).}
 
 \item{unet_dtype_str}{Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).}
+
+\item{download_models}{Logical indicating whether to download models if not found (default: FALSE).}
 
 \item{scheduler}{Scheduler to use for the diffusion process (default: "ddim").}
 

@@ -13,7 +13,7 @@
 #' Each model is stored in its own subdirectory for better organization.
 #' If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
 #'
-#' @param model_name Character string, the name of the model to download (e.g., `"stable-diffusion-2-1"`).
+#' @param model_name Character string, the name of the model to download (e.g., `"sd21"`).
 #' @param device Character string, the device type for which the model is intended (e.g., `"cpu"` or `"cuda"`).
 #' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
 #' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.
@@ -23,9 +23,9 @@
 #'
 #' @examples
 #' \dontrun{
-#' model_dir <- download_model("stable-diffusion-2-1")
+#' model_dir <- download_model("sd21")
 #' }
-download_component <- function(model_name = "stable-diffusion-2-1",
+download_component <- function(model_name = "sd21",
                            device = "cpu",
                            overwrite = FALSE,
                            show_progress = TRUE) {

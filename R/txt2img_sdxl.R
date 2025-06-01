@@ -3,8 +3,10 @@
 #' @param prompt A character string prompt describing the image to generate.
 #' @param negative_prompt Optional negative prompt to guide the generation.
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
+#' @param pipeline Optional A pre-loaded diffusion pipeline. If `NULL`, it will be loaded based on the model name and devices.
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).
+#' @param download_models Logical indicating whether to download the model files if they are not found.
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
 #' @param timesteps Optional A vector of timesteps to use.
 #' @param initial_latents Optional initial latents for the diffusion process.
@@ -26,8 +28,10 @@
 txt2img_sdxl <- function(prompt,
                          negative_prompt = NULL,
                          img_dim = 1024,
+                         pipeline = NULL,
                          devices = "cpu",
                          unet_dtype_str = NULL,
+                         download_models = FALSE,
                          scheduler = "ddim",
                          timesteps = NULL,
                          initial_latents = NULL,
@@ -48,22 +52,20 @@ txt2img_sdxl <- function(prompt,
   device_cpu <- m2d$device_cpu
   device_cuda <- m2d$device_cuda
   
+  if(is.null(pipeline)){
+    pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+                              unet_dtype_str = unet_dtype_str)
+  }
+  
+  
   # Start timing
   start_time <- proc.time()
-  
-  # Load models with specified devices
-  message("Loading text_encoders...")
-  text_encoder <- load_model_component(component = "text_encoder", model_name,
-                                       devices$text_encoder)
-  text_encoder2 <- load_model_component(component = "text_encoder2", model_name,
-                                       devices$text_encoder2)
-  
   # Process text prompt
   message("Processing prompt...")
   ## Tokenizer
   tokens <- CLIPTokenizer(prompt)
-  prompt_embed1 <- text_encoder(tokens)
-  te2_output <- text_encoder2(tokens)
+  prompt_embed1 <- pipeline$text_encoder(tokens)
+  te2_output <- pipeline$text_encoder2(tokens)
   prompt_embed2 <- te2_output[[1]]
   prompt_embed <- torch::torch_cat(list(prompt_embed1, prompt_embed2), dim = 3)
   
@@ -80,8 +82,8 @@ txt2img_sdxl <- function(prompt,
     empty_text_embeds <- torch::torch_zeros_like(text_embeds)
   } else {
     empty_tokens <- CLIPTokenizer(negative_prompt)
-    empty_prompt_embed1 <- text_encoder(empty_tokens)
-    empty_te2_output <- text_encoder2(empty_tokens)
+    empty_prompt_embed1 <- pipeline$text_encoder(empty_tokens)
+    empty_te2_output <- pipeline$text_encoder2(empty_tokens)
     empty_prompt_embed2 <- empty_te2_output[[1]]
     empty_prompt_embed <- torch::torch_cat(list(empty_prompt_embed1,
                                                 empty_prompt_embed2), dim = 3)
@@ -94,7 +96,7 @@ txt2img_sdxl <- function(prompt,
   empty_text_embeds <- empty_text_embeds$to(dtype = unet_dtype,
                                             device = torch::torch_device(devices$unet))
 
-  message("Loading schedule...")
+  message("Creating schedule...")
   # Load scheduler
   schedule <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
                                     beta_schedule = "scaled_linear",
@@ -106,12 +108,6 @@ txt2img_sdxl <- function(prompt,
     timesteps <- schedule$timesteps
   }
 
-  # Load Unet
-  message("Loading unet...")
-  unet <- load_model_component("unet", model_name,
-                               device = devices$unet,
-                               unet_dtype_str = unet_dtype_str)
-  
   # Run diffusion process
   message("Generating image...")
   if(!is.null(seed)){
@@ -128,7 +124,6 @@ txt2img_sdxl <- function(prompt,
     latents <- torch::torch_randn(c(1, 4, latent_dim, latent_dim),
                                   dtype = unet_dtype,
                                   device = torch::torch_device(devices$unet))
-    # latents <- latents * 11.520334243774414 # pipe.scheduler.init_noise_sigma.double().item() for SDXL and Euler
   }
   # Denoising loop
   pb <- utils::txtProgressBar(min = 0, max = length(timesteps), style = 3)
@@ -138,14 +133,14 @@ txt2img_sdxl <- function(prompt,
                                     device = torch::torch_device(devices$unet))
     
     # Get both conditional and unconditional predictions
-    noise_pred_cond   <- unet(latents, timestep, prompt_embed,
-                              text_embeds, time_ids)
+    noise_pred_cond   <- pipeline$unet(latents, timestep, prompt_embed,
+                                       text_embeds, time_ids)
     
     if(guidance_scale != 1){
       # If guidance scale is not 1, we need to calculate the unconditional prediction
       # with an empty prompt
-      noise_pred_uncond <- unet(latents, timestep, empty_prompt_embed,
-                                empty_text_embeds, time_ids)
+      noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed,
+                                         empty_text_embeds, time_ids)
       # CFG step
       noise_pred <- noise_pred_uncond + guidance_scale *
                       (noise_pred_cond - noise_pred_uncond)
@@ -171,15 +166,12 @@ txt2img_sdxl <- function(prompt,
   scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
                                     device = torch::torch_device(devices$decoder))
 
-  message("Loading post_quant_conv...")
+  # message("Loading post_quant_conv...")
   post_conv_latent <- post_quant_conv(x = scaled_latent,
                                       dtype = torch::torch_float32(),
                                       device = devices$decoder)
-  message("Loading decoder...")
-  decoder <- load_model_component("decoder", model_name,
-                                  torch::torch_device(devices$decoder))
   message("Decoding image...")
-  decoded_output <- decoder(post_conv_latent)
+  decoded_output <- pipeline$decoder(post_conv_latent)
   # Ensure tensor is on CPU
   img <- decoded_output$cpu()
   
@@ -191,9 +183,7 @@ txt2img_sdxl <- function(prompt,
   # Reorder channels: [3, H, W] → [H, W, 3]
   img <- img$permute(c(2, 3, 1))
   
-  # img <- img[,, c(3,2,1)]  # or [,, c(3,2,1)] if it looks wrong
-  
-  # Normalize if needed
+  # Normalize
   img <- (img + 1) / 2  # scale from [-1, 1] → [0, 1]
   img <- torch::torch_clamp(img, min = 0, max = 1)
   

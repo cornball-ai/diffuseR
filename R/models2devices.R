@@ -5,10 +5,12 @@
 #' @param model_name A character string representing the name of the model to be used.
 #' @param devices A character string or a named list specifying the devices for different components of the model.
 #' @param unet_dtype_str A character string specifying the data type for the UNet model.
+#' @param download_models Logical indicating whether to download models if they are not found.
 #' 
 #' @return A list containing the model directory, model files, device configuration, UNet data type, and CPU/CUDA devices.
 #' @export
-models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL) {
+models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL,
+                           download_models = FALSE) {
   # Validation (same as before)
   if (is.null(model_name) || !is.character(model_name)) {
     stop("Invalid model name")
@@ -35,7 +37,8 @@ models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL) {
   device_cuda <- torch::torch_device("cuda")
   
   # Check if the model is downloaded
-  models <- download_model(model_name, devices, unet_dtype_str)
+  models <- download_model(model_name, devices, unet_dtype_str, 
+                           download_models = download_models)
   model_dir <- models$model_dir
   model_files <- models$model_files
   

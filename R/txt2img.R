@@ -12,7 +12,7 @@
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
 txt2img <- function(prompt,
-                    model_name = "sdxl",
+                    model_name = c("sd21", "sdxl"),
                     ...) {
   switch(model_name,
          # "sd15" = txt2img_sd15(prompt, ...),
