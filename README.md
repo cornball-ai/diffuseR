@@ -5,7 +5,7 @@
 
 ## Overview
 
-`diffuseR` is a functional R implementation of diffusion models, inspired by Hugging Face's Python `diffusers` library. The package provides a simple, idiomatic R interface to state-of-the-art generative AI models for image generation and manipulation using base R and the `torch` package. No Python dependencies.
+`diffuseR` is a functional R implementation of diffusion models, inspired by Hugging Face's Python `diffusers` library. The package provides a simple, idiomatic R interface to state-of-the-art generative AI models for image generation and manipulation using base R and the `torch` package. No Python dependencies. Currently supports Windows and Linux cpu and cuda devices.
 
 ```r
 # Simple text-to-image generation
@@ -15,12 +15,12 @@ image <- txt2img("A serene landscape with mountains and a lake at sunset", save_
 
 ## Installation
 
-First install torch. As per [this comment](https://github.com/mlverse/torch/issues/1198#issuecomment-2419363312), using the pre-built binaries from [https://torch.mlverse.org/docs/articles/installation#pre-built](https://torch.mlverse.org/docs/articles/installation#pre-built) are heavily recommend. The pre-built binaries bundle the necessary CUDA and cudnn versions, so you don't need a global compatible system version of CUDA:
+First install torch. As per [this comment](https://github.com/mlverse/torch/issues/1198#issuecomment-2419363312), using the pre-built binaries from [https://torch.mlverse.org/docs/articles/installation#pre-built](https://torch.mlverse.org/docs/articles/installation#pre-built) are heavily recommend. "The pre-built binaries bundle the necessary CUDA and cudnn versions, so you don't need a global compatible system version of CUDA":
 
 ```r
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 2GB file.
 # For Windows and Linux: "cpu", "cu124" are the only currently supported
-# For MacOS the supported are: "cpu-intel" or "cpu-m1"
+# For MacOS the supported torch versions are: "cpu-intel" or "cpu-m1"
 kind <- "cu124"
 version <- available.packages()["torch","Version"]
 options(repos = c(
@@ -44,7 +44,7 @@ targets::install_github("yourusername/diffuseR")
 
 - **Text-to-Image Generation**: Create images from textual descriptions
 - **Image-to-Image Generation**: Modify existing images based on text prompts
-- **Multiple Models**: Support for Stable Diffusion 2.1 and SDXL (more coming soon)
+- **Two Models**: Support for Stable Diffusion 2.1 and SDXL (more coming soon)
 - **Scheduler Options**: DDIM (more coming soon)
 - **Device Support**: Works on both CPU and GPU
 - **R-native Interface**: Functional programming approach that feels natural in R
@@ -53,37 +53,65 @@ targets::install_github("yourusername/diffuseR")
 
 ### Basic Usage
 
+**Warning**: The first time you run the code below, it will download 7GB of model files [from here](https://huggingface.co/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only. 
+
 ```r
 library(diffuseR)
 torch::local_no_grad()
 
-# Download the Stable Diffusion 2.1 models
-sd <- load_pipeline("sd21")
-
 # Generate an image from text
 cat_img <- txt2img(
   prompt = "a photorealistic cat wearing sunglasses",
+  model = "sd21", # Specify the model to use, e.g., "sd21" for Stable Diffusion 2.1
+  download_model = TRUE # Automatically download the model if not already present
   steps = 30,
-  save_to = "cat.png"
+  save_to = "cat.png",
 )
 ```
 
 ### Advanced Usage with GPU
 
 ```r
-# Load and configure a pipeline once
-sd <- load_pipeline("stable-diffusion-2-1", device = "cuda")
+# Downlaod a test image
+png::url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
+utils::download.file(url, "test.png", mode = "wb")
 
-# Change the scheduler
-sd$scheduler <- create_scheduler("dpm_solver_plus", num_inference_steps = 20)
+library(diffuseR)
+torch::local_no_grad()
 
-# Generate multiple images with the same configuration
-mountain_img <- generate(sd, prompt = "mountains at sunset")
-ocean_img <- generate(sd, prompt = "waves crashing on the shore")
+# Assign the various deep learning models to devices
+model_name = "sdxl"
+input_image = "test.png"
+devices = list(unet = "cuda", decoder = "cpu",
+               text_encoder = "cpu", encoder = "cpu")
 
-# Save images
-save_image(mountain_img, "mountain.png")
-save_image(ocean_img, "ocean.png")
+m2d <- models2devices(model_name = model_name, devices = devices,
+                      unet_dtype_str = unet_dtype_str, download_models = TRUE)
+
+pipeline <- load_pipeline(model_name = model_name, m2d = m2d, i2i = TRUE,
+                          unet_dtype_str = unet_dtype_str)
+
+# Generate an image from text
+cat_img <- txt2img(
+  prompt = "a photorealistic cat wearing sunglasses",
+  model_name = model_name,
+  steps = 30,
+  save_to = "cat2.png",
+)
+
+gambling_cat <- img2img(
+  input_image = "test.png",
+  prompt = "a photorealistic cat wearing sunglasses and gambling",
+  model_name = model_name,
+  devices = devices,
+  pipeline = pipeline,
+  unet_dtype_str = unet_dtype_str,
+  num_inference_steps = 30,
+  strength = 0.75,
+  guidance_scale = 7.5,
+  save_file = TRUE, # Save the generated image
+  filename = "gambling_cat.png"
+)
 ```
 
 ## Supported Models
@@ -98,14 +126,13 @@ Currently supported models:
 
 Future plans for diffuseR include:
 
-- [ ] Pipeline mode to load models once and reuse
 - [ ] Inpainting support
 - [ ] Additional schedulers (PNDM, DPMSolverMultistep, Euler ancestral)
 - [ ] text-to-video generation
 
 ## How It Works
 
-diffuseR uses TorchScript models exported from PyTorch implementations for the deep learning parts of the implementation. This approach was the quickest and easiest way to build the machinery that supports diffusion models in R. Full R torch implementations of the models are planned for the future, but this initial version allows users to quickly get started with diffusion models in R without needing to rely on Python.
+diffuseR uses TorchScript models exported from PyTorch implementations for the deep learning parts of the implementation. This approach was the quickest and easiest way to build the machinery that supports the deep learning models in stable diffusion. Full R torch implementations of the deep learning models are planned for the future, but this initial version allows users to quickly get started with diffusion models in R without needing to rely on any Python.
 
 ## Contributing
 
