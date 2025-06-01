@@ -6,6 +6,12 @@
 \usage{
 get_required_components(model_name)
 }
+\arguments{
+\item{model_name}{A character string representing the name of the model.}
+}
+\value{
+A character vector of required components for the specified model.
+}
 \description{
-Get required components for each model type
+This function returns a list of required components for each supported model type.
 }

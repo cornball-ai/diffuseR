@@ -6,7 +6,7 @@
 #' @param prompt Text prompt to guide the image generation.
 #' @param negative_prompt Optional negative prompt to guide the image generation.`
 #' @param img_dim Dimension of the output image (default: 512).
-#' @param model_name Name of the Stable Diffusion model to use (default: "stable-diffusion-2-1").
+#' @param model_name Name of the Stable Diffusion model to use (default: "sd21").
 #' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu", encoder = "cpu")`).
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "torch_float16" for cuda and "torch_float32" for cpu).
 #' @param scheduler Scheduler to use for the diffusion process (default: "ddim").
@@ -25,7 +25,7 @@ img2img <- function(input_image,
                     prompt,
                     negative_prompt = NULL,
                     img_dim = 512,
-                    model_name = c("stable-diffusion-2-1", "sdxl"),
+                    model_name = c("sd21", "sdxl"),
                     devices = "cpu",
                     unet_dtype_str = "float16",
                     scheduler = "ddim",
@@ -33,7 +33,8 @@ img2img <- function(input_image,
                     strength = 0.8,
                     guidance_scale = 7.5,
                     seed = NULL,
-                    save_to = NULL,
+                    save_file = TRUE,
+                    filename = NULL,
                     metadata_path = NULL,
                     ...) {
   # 1. Get models
@@ -45,7 +46,7 @@ img2img <- function(input_image,
   device_cpu <- m2d$device_cpu
   device_cuda <- m2d$device_cuda
   
-  if(model_name %in% c("stable-diffusion-2-1", "sdxl")) {
+  if(model_name %in% c("sd21", "sdxl")) {
     num_train_timesteps <- 1000
   } else {
     stop("Model not supported")
@@ -60,7 +61,7 @@ img2img <- function(input_image,
   message("Encoding image...")
   encoded <- encoder(image_tensor)
   message("Loading quant_conv...")
-  conv_latents <- quant_conv(encoded, unet_dtype = unet_dtype,
+  conv_latents <- quant_conv(encoded, dtype = unet_dtype,
                              device = devices$unet)
 
   latents_mean <- conv_latents[, 1:4, , ]           # First 4 channels

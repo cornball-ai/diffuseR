@@ -40,6 +40,7 @@ txt2img_sd21 <- function(prompt,
                          filename = NULL,
                          metadata_path = NULL,
                          ...) {
+  model_name = "sd21"
   m2d <- models2devices(model_name = "sd21", devices = devices,
                         unet_dtype_str = unet_dtype_str)
   model_dir <- m2d$model_dir
@@ -164,7 +165,7 @@ txt2img_sd21 <- function(prompt,
   if (save_file) {
     # Creating filename while we're here
     if (is.null(filename)) {
-      save_to <- filename_from_prompt(prompt, tokens, datetime = TRUE)
+      save_to <- filename_from_prompt(prompt, datetime = TRUE)
     }
     message("Saving image to ", filename)
     save_image(img = img_array, filename)

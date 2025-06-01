@@ -6,6 +6,14 @@
 \usage{
 setup_dtype(devices, unet_dtype_str)
 }
+\arguments{
+\item{devices}{A character string or a named list specifying the devices for model components.}
+
+\item{unet_dtype_str}{A character string specifying the data type for the UNet model.}
+}
+\value{
+A torch dtype object based on the main computation device.
+}
 \description{
 Set up dtype based on device configuration
 }

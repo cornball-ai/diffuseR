@@ -38,7 +38,8 @@ txt2img_sdxl <- function(prompt,
                          filename = NULL,
                          metadata_path = NULL,
                          ...) {
-  m2d <- models2devices(model_name = "sdxl", devices = devices,
+  model_name <- "sdxl"
+  m2d <- models2devices(model_name = model_name, devices = devices,
                         unet_dtype_str = unet_dtype_str)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
@@ -171,9 +172,12 @@ txt2img_sdxl <- function(prompt,
                                     device = torch::torch_device(devices$decoder))
 
   message("Loading post_quant_conv...")
-  post_conv_latent <- post_quant_conv(x = scaled_latent, device = devices$decoder)
+  post_conv_latent <- post_quant_conv(x = scaled_latent,
+                                      dtype = torch::torch_float32(),
+                                      device = devices$decoder)
   message("Loading decoder...")
-  decoder <- load_model_component("decoder", model_name, torch::torch_device(devices$decoder))
+  decoder <- load_model_component("decoder", model_name,
+                                  torch::torch_device(devices$decoder))
   message("Decoding image...")
   decoded_output <- decoder(post_conv_latent)
   # Ensure tensor is on CPU

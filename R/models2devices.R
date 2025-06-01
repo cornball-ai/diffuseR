@@ -50,6 +50,9 @@ models2devices <- function(model_name, devices = "cpu", unet_dtype_str = NULL) {
 }
 
 #' Get required components for each model type
+#' @description This function returns a list of required components for each supported model type.
+#' @param model_name A character string representing the name of the model.
+#' @return A character vector of required components for the specified model.
 get_required_components <- function(model_name) {
   components <- list(
     # "sd15" = c("unet", "decoder", "text_encoder", "encoder"),
@@ -67,6 +70,11 @@ get_required_components <- function(model_name) {
 }
 
 #' Standardize devices configuration
+#' @description This function standardizes the device configuration for model components.
+#' It checks if the devices parameter is a single string or a named list, and fills in missing components with reasonable defaults.
+#' @param devices A character string or a named list specifying the devices for model components.
+#' @param required_components A character vector of required components for the model.
+#' @return A named list of devices for each required component.
 standardize_devices <- function(devices, required_components) {
   if (is.character(devices) && length(devices) == 1) {
     # Single device string - apply to all components
@@ -103,6 +111,9 @@ standardize_devices <- function(devices, required_components) {
 }
 
 #' Set up dtype based on device configuration
+#' @param devices A character string or a named list specifying the devices for model components.
+#' @param unet_dtype_str A character string specifying the data type for the UNet model.
+#' @return A torch dtype object based on the main computation device.
 setup_dtype <- function(devices, unet_dtype_str) {
   # Find the main computation device (unet or transformer)
   main_device <- if ("unet" %in% names(devices)) {

@@ -9,7 +9,7 @@ img2img(
   prompt,
   negative_prompt = NULL,
   img_dim = 512,
-  model_name = c("stable-diffusion-2-1", "sdxl"),
+  model_name = c("sd21", "sdxl"),
   devices = "cpu",
   unet_dtype_str = "float16",
   scheduler = "ddim",
@@ -17,7 +17,8 @@ img2img(
   strength = 0.8,
   guidance_scale = 7.5,
   seed = NULL,
-  save_to = NULL,
+  save_file = TRUE,
+  filename = NULL,
   metadata_path = NULL,
   ...
 )
@@ -31,7 +32,7 @@ img2img(
 
 \item{img_dim}{Dimension of the output image (default: 512).}
 
-\item{model_name}{Name of the Stable Diffusion model to use (default: "stable-diffusion-2-1").}
+\item{model_name}{Name of the Stable Diffusion model to use (default: "sd21").}
 
 \item{devices}{A named list of devices for each model component (e.g., \code{list(unet = "cuda", decoder = "cpu", text_encoder = "cpu", encoder = "cpu")}).}
 
@@ -47,13 +48,13 @@ img2img(
 
 \item{seed}{Random seed for reproducibility (default: NULL).}
 
-\item{metadata_path}{Path to save metadata (default: NULL).}
-
-\item{...}{Additional arguments for future use.}
-
 \item{save_file}{Logical indicating whether to save the generated image.}
 
 \item{filename}{Optional filename for saving the image. If \code{NULL}, a default name is generated.}
+
+\item{metadata_path}{Path to save metadata (default: NULL).}
+
+\item{...}{Additional arguments for future use.}
 }
 \value{
 An image array and metadata

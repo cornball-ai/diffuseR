@@ -4,18 +4,14 @@
 \alias{quant_conv}
 \title{Quant Conv}
 \usage{
-quant_conv(x, unet_dtype, device)
+quant_conv(x, dtype, device)
 }
 \arguments{
 \item{x}{Input tensor to be processed.}
 
-\item{device}{Device on which the tensor is located (e.g., "cpu" or "cuda").}
-
-\item{weights}{Weights for the convolution operation.}
-
-\item{bias}{Bias for the convolution operation.}
-
 \item{dtype}{Data type for the tensor (e.g., "torch_float16" or "torch_float32").}
+
+\item{device}{Device on which the tensor is located (e.g., "cpu" or "cuda").}
 }
 \value{
 Processed tensor after applying the quantized convolution.

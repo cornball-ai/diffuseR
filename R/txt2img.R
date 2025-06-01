@@ -15,10 +15,10 @@ txt2img <- function(prompt,
                     model_name = "sdxl",
                     ...) {
   switch(model_name,
-         "sd15" = txt2img_sd15(prompt, ...),
+         # "sd15" = txt2img_sd15(prompt, ...),
          "sd21" = txt2img_sd21(prompt, ...),
          "sdxl" = txt2img_sdxl(prompt, ...),
-         "sd3" = txt2img_sd3(prompt, ...),
+         # "sd3" = txt2img_sd3(prompt, ...),
          stop("Unsupported model: ", model_name)
   )
 }
