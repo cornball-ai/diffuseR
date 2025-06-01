@@ -25,7 +25,7 @@ img2img <- function(input_image,
                     prompt,
                     negative_prompt = NULL,
                     img_dim = 512,
-                    model_name = "stable-diffusion-2-1",
+                    model_name = c("stable-diffusion-2-1", "sdxl"),
                     devices = "cpu",
                     unet_dtype_str = "float16",
                     scheduler = "ddim",
@@ -45,7 +45,7 @@ img2img <- function(input_image,
   device_cpu <- m2d$device_cpu
   device_cuda <- m2d$device_cuda
   
-  if(model_name == "stable-diffusion-2-1") {
+  if(model_name %in% c("stable-diffusion-2-1", "sdxl")) {
     num_train_timesteps <- 1000
   } else {
     stop("Model not supported")

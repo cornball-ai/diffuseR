@@ -199,7 +199,7 @@ txt2img_sdxl <- function(prompt,
   if (save_file) {
     # Creating filename while we're here
     if (is.null(filename)) {
-      save_to <- filename_from_prompt(prompt, datetime = TRUE)
+      filename <- filename_from_prompt(prompt, datetime = TRUE)
     }
     message("Saving image to ", filename)
     save_image(img = img_array, filename)
@@ -219,7 +219,8 @@ txt2img_sdxl <- function(prompt,
     guidance_scale = guidance_scale,
     seed = seed,
     scheduler = scheduler,
-    model = model_name
+    model = model_name,
+    filename = filename
   )
   if (!is.null(metadata_path)) {
     utils::write.csv(metadata, file = metadata_path, row.names = FALSE)
