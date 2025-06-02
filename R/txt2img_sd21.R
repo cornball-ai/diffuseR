@@ -46,7 +46,8 @@ txt2img_sd21 <- function(prompt,
                          ...) {
   model_name = "sd21"
   m2d <- models2devices(model_name = model_name, devices = devices,
-                        unet_dtype_str = unet_dtype_str)
+                        unet_dtype_str = unet_dtype_str,
+                        download_models = download_models)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
   devices <- m2d$devices

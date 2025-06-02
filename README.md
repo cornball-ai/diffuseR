@@ -45,10 +45,10 @@ You can install the development version of diffuseR from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("yourusername/diffuseR")
+devtools::install_github("cornball-ai/diffuseR")
 # Or
 # install.packages("targets")
-targets::install_github("yourusername/diffuseR")
+targets::install_github("cornball-ai/diffuseR")
 ```
 
 ## Features
@@ -74,7 +74,7 @@ torch::local_no_grad()
 cat_img <- txt2img(
   prompt = "a photorealistic cat wearing sunglasses",
   model = "sd21", # Specify the model to use, e.g., "sd21" for Stable Diffusion 2.1
-  download_model = TRUE # Automatically download the model if not already present
+  download_models = TRUE, # Automatically download the model if not already present
   steps = 30,
   save_to = "cat.png",
 )
