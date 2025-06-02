@@ -87,8 +87,11 @@ torch::cuda_empty_cache()
 The unet is the most computationally-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory, while Stable Diffusion 2.1 requires a minimum of 2GB.
 
 ```r
+# Increasing timeout is recommended since we will be downloading 5.1 and 2.8GB model files, among others.
+options(timeout = 900) 
+
 # Downlaod a test image
-png::url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
+url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
 utils::download.file(url, "test.png", mode = "wb")
 
 library(diffuseR)
@@ -128,6 +131,8 @@ gambling_cat <- img2img(
   filename = "gambling_cat.png"
 )
 
+# Clear out pipeline to free up GPU memory
+pipeline <- NULL
 torch::cuda_empty_cache()
 ```
 
