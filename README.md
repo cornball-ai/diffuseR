@@ -17,6 +17,13 @@ image <- txt2img(prompt = "A serene landscape with mountains and a lake at sunse
                  save_to = "landscape.png")
 ```
 
+## Example output
+
+![](man/figures/20250528_165522_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
+![](man/figures/20250528_200344_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
+![](man/figures/20250529_000111_A_majestic_red_fox_standing_on_a_moss_covered_log_.png)
+![](man/figures/20250529_002833_Hulk_Hogan_standing_on_a_moss_covered_log_in_an_an.png)
+
 ## Installation
 
 First install torch. As per [this comment](https://github.com/mlverse/torch/issues/1198#issuecomment-2419363312), using the pre-built binaries from [https://torch.mlverse.org/docs/articles/installation#pre-built](https://torch.mlverse.org/docs/articles/installation#pre-built) is heavily recommend. "The pre-built binaries bundle the necessary CUDA and cudnn versions, so you don't need a global compatible system version of CUDA":
