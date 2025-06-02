@@ -1,3 +1,5 @@
+![](man/figures/diffuseRlogo.png)
+
 # diffuseR
 
 [![CRAN status](https://www.r-pkg.org/badges/version/diffuseR)](https://CRAN.R-project.org/package=diffuseR)
@@ -75,7 +77,7 @@ torch::cuda_empty_cache()
 
 ### Advanced Usage with GPU
 
-The unet is the most memory-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory, while Stable Diffusion 2.1 requires a minimum of 2GB.
+The unet is the most computationally-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory, while Stable Diffusion 2.1 requires a minimum of 2GB.
 
 ```r
 # Downlaod a test image
@@ -83,7 +85,7 @@ png::url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparenc
 utils::download.file(url, "test.png", mode = "wb")
 
 library(diffuseR)
-torch::local_no_grad()
+torch::local_no_grad() # Prevents torch from tracking gradients, which is not needed for inference
 
 # Assign the various deep learning models to devices
 model_name = "sdxl"
