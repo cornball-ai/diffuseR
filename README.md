@@ -10,12 +10,14 @@
 ```r
 # Simple text-to-image generation
 library(diffuseR)
-image <- txt2img("A serene landscape with mountains and a lake at sunset", save_to = "landscape.png")
+image <- txt2img(prompt = "A serene landscape with mountains and a lake at sunset",
+                 model = "sd21", # Specify the model to use, e.g., "sd21" for Stable Diffusion 2.1
+                 save_to = "landscape.png")
 ```
 
 ## Installation
 
-First install torch. As per [this comment](https://github.com/mlverse/torch/issues/1198#issuecomment-2419363312), using the pre-built binaries from [https://torch.mlverse.org/docs/articles/installation#pre-built](https://torch.mlverse.org/docs/articles/installation#pre-built) are heavily recommend. "The pre-built binaries bundle the necessary CUDA and cudnn versions, so you don't need a global compatible system version of CUDA":
+First install torch. As per [this comment](https://github.com/mlverse/torch/issues/1198#issuecomment-2419363312), using the pre-built binaries from [https://torch.mlverse.org/docs/articles/installation#pre-built](https://torch.mlverse.org/docs/articles/installation#pre-built) is heavily recommend. "The pre-built binaries bundle the necessary CUDA and cudnn versions, so you don't need a global compatible system version of CUDA":
 
 ```r
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 2GB file.
@@ -53,7 +55,7 @@ targets::install_github("yourusername/diffuseR")
 
 ### Basic Usage
 
-**Warning**: The first time you run the code below, it will download 7GB of model files [from here](https://huggingface.co/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only. 
+**Warning**: The first time you run the code below, it will download ~7GB of model files [from here](https://huggingface.co/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only.
 
 ```r
 library(diffuseR)
@@ -67,9 +69,13 @@ cat_img <- txt2img(
   steps = 30,
   save_to = "cat.png",
 )
+
+torch::cuda_empty_cache()
 ```
 
 ### Advanced Usage with GPU
+
+The unet is the most memory-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory, while Stable Diffusion 2.1 requires a minimum of 2GB.
 
 ```r
 # Downlaod a test image
@@ -112,6 +118,8 @@ gambling_cat <- img2img(
   save_file = TRUE, # Save the generated image
   filename = "gambling_cat.png"
 )
+
+torch::cuda_empty_cache()
 ```
 
 ## Supported Models
