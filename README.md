@@ -114,7 +114,7 @@ cat_img <- txt2img(
 
 gambling_cat <- img2img(
   input_image = "cat2.png",
-  prompt = "a cat and throwing dice",
+  prompt = "a photorealistic cat throwing dice",
   img_dim = 1024,
   model_name = model_name,
   devices = devices,
