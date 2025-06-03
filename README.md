@@ -9,18 +9,10 @@
 
 `diffuseR` is a functional R implementation of diffusion models, inspired by Hugging Face's Python `diffusers` library. The package provides a simple, idiomatic R interface to state-of-the-art generative AI models for image generation and manipulation using base R and the `torch` package. No Python dependencies. Currently supports Windows and Linux cpu and cuda devices.
 
-```r
-# Simple text-to-image generation
-library(diffuseR)
-image <- txt2img(prompt = "A serene landscape with mountains and a lake at sunset",
-                 model = "sd21", # Specify the model to use, e.g., "sd21" for Stable Diffusion 2.1
-                 save_to = "landscape.png")
-```
-
 ## Example output
 
+![](man/figures/20250602_231518_retro_tin_toy_robot.png)
 ![](man/figures/20250528_200344_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
-![](man/figures/20250529_002833_Hulk_Hogan_standing_on_a_moss_covered_log_in_an_an.png)
 ![](man/figures/20250601_111817_Beach_at_night__glowing_waves__stars_in_the_sky__h.png)
 
 ## Installation
@@ -76,60 +68,61 @@ cat_img <- txt2img(
   model = "sd21", # Specify the model to use, e.g., "sd21" for Stable Diffusion 2.1
   download_models = TRUE, # Automatically download the model if not already present
   steps = 30,
-  save_to = "cat.png",
+  seed = 42,
+  filename = "cat.png",
 )
 
 # Clear out pipeline to free up GPU memory
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
+![](man/figures/cat.png)
 
 ### Advanced Usage with GPU
 
-The unet is the most computationally-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory, while Stable Diffusion 2.1 requires a minimum of 2GB.
+The unet is the most computationally-intensive part of the model, so it is recommended to run it on a GPU if possible. The decoder and text encoder can be run on CPU if you have limited GPU memory. SDXL's unet requires a minimum of 6GB of GPU memory (VRAM), while Stable Diffusion 2.1 requires a minimum of 2GB.
 
 ```r
 # Increasing timeout is recommended since we will be downloading 5.1 and 2.8GB model files, among others.
 options(timeout = 1200) 
-
-# Downlaod a test image
-url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
-utils::download.file(url, "test.png", mode = "wb")
 
 library(diffuseR)
 torch::local_no_grad() # Prevents torch from tracking gradients, which is not needed for inference
 
 # Assign the various deep learning models to devices
 model_name = "sdxl"
-input_image = "test.png"
 devices = list(unet = "cuda", decoder = "cpu",
                text_encoder = "cpu", encoder = "cpu")
 
 m2d <- models2devices(model_name = model_name, devices = devices,
-                      unet_dtype_str = unet_dtype_str, download_models = TRUE)
+                      unet_dtype_str = "float16", download_models = TRUE)
 
 pipeline <- load_pipeline(model_name = model_name, m2d = m2d, i2i = TRUE,
-                          unet_dtype_str = unet_dtype_str)
+                          unet_dtype_str = "float16")
 
 # Generate an image from text
 cat_img <- txt2img(
   prompt = "a photorealistic cat wearing sunglasses",
   model_name = model_name,
-  steps = 30,
-  save_to = "cat2.png",
+  devices = devices,
+  pipeline = pipeline,
+  num_inference_steps = 30,
+  guidance_scale = 7.5,
+  seed = 42,
+  filename = "cat2.png",
 )
 
 gambling_cat <- img2img(
-  input_image = "test.png",
-  prompt = "a photorealistic cat wearing sunglasses and gambling",
+  input_image = "cat2.png",
+  prompt = "a cat and throwing dice",
+  img_dim = 1024,
   model_name = model_name,
   devices = devices,
   pipeline = pipeline,
-  unet_dtype_str = unet_dtype_str,
   num_inference_steps = 30,
   strength = 0.75,
   guidance_scale = 7.5,
-  save_file = TRUE, # Save the generated image
+  seed = 42,
   filename = "gambling_cat.png"
 )
 
@@ -137,6 +130,8 @@ gambling_cat <- img2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
+![](man/figures/cat2.png)
+![](man/figures/gambling_cat.png)
 
 ## Supported Models
 
