@@ -19,10 +19,9 @@ image <- txt2img(prompt = "A serene landscape with mountains and a lake at sunse
 
 ## Example output
 
-![](man/figures/20250528_165522_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
 ![](man/figures/20250528_200344_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
-![](man/figures/20250529_000111_A_majestic_red_fox_standing_on_a_moss_covered_log_.png)
 ![](man/figures/20250529_002833_Hulk_Hogan_standing_on_a_moss_covered_log_in_an_an.png)
+![](man/figures/20250601_111817_Beach_at_night__glowing_waves__stars_in_the_sky__h.png)
 
 ## Installation
 
@@ -67,6 +66,7 @@ targets::install_github("cornball-ai/diffuseR")
 **Warning**: The first time you run the code below, it will download ~7GB of model files [from here](https://huggingface.co/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only.
 
 ```r
+options(timeout = 600) # increasing timeout is recommended since we will be downloading a 3.5GB file.
 library(diffuseR)
 torch::local_no_grad()
 
@@ -79,6 +79,8 @@ cat_img <- txt2img(
   save_to = "cat.png",
 )
 
+# Clear out pipeline to free up GPU memory
+pipeline <- NULL
 torch::cuda_empty_cache()
 ```
 
@@ -88,7 +90,7 @@ The unet is the most computationally-intensive part of the model, so it is recom
 
 ```r
 # Increasing timeout is recommended since we will be downloading 5.1 and 2.8GB model files, among others.
-options(timeout = 900) 
+options(timeout = 1200) 
 
 # Downlaod a test image
 url <- "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
