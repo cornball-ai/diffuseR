@@ -153,6 +153,8 @@ Future plans for diffuseR include:
 
 diffuseR uses TorchScript models exported from PyTorch implementations for the deep learning parts of the implementation. This approach was the quickest and easiest way to build the machinery that supports the deep learning models in stable diffusion. Full R torch implementations of the deep learning models are planned for the future, but this initial version allows users to quickly get started with diffusion models in R without needing to rely on any Python.
 
+If you would like to build the TorchScript (.pt) files yourself, those scripts are available at the [diffuseR-TS](https://github.com/cornball-ai/diffuseR-TS/) repository. The models are exported from the Hugging Face diffusers library.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
