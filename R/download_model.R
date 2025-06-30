@@ -118,7 +118,7 @@ download_model <- function(model_name = "sd21",
   
   # Download files
   if (download_models) {
-    repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")
+    repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
     for (file in model_files) {
       dest_path <- file.path(model_dir, file)
       if (!file.exists(dest_path) || overwrite) {
@@ -148,9 +148,7 @@ download_model <- function(model_name = "sd21",
     stop("Missing model files: ", paste(missing_files, collapse = ", "))
   }
   
-  return(list(
-    model_dir = model_dir,
-    model_files = model_files,
-    model_names = model_names  # Return this for easier access
-  ))
+  list(model_dir = model_dir,
+       model_files = model_files,
+       model_names = model_names)
 }

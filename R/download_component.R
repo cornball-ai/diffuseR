@@ -26,9 +26,10 @@
 #' model_dir <- download_model("sd21")
 #' }
 download_component <- function(model_name = "sd21",
-                           device = "cpu",
-                           overwrite = FALSE,
-                           show_progress = TRUE) {
+                               component,
+                               device = "cpu",
+                               overwrite = FALSE,
+                               show_progress = TRUE) {
   # Use "data" instead of "cache" for persistent storage
   base_dir <- tools::R_user_dir("diffuseR", "data")
   
@@ -40,12 +41,11 @@ download_component <- function(model_name = "sd21",
   model_file <- paste0(model_name, "-", device, ".pt")
   
   # Define the remote source
-  repo_url <- paste0("https://huggingface.co/cornball-ai/", model_name, "-R/resolve/main/")
+  repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
   
   # Download file
-  
-  dest_path <- file.path(model_dir, model_file)
-  
+  dest_path <- file.path(model_dir, component)
+
   # Check if file exists and should be overwritten
   if (!file.exists(dest_path) || overwrite) {
     url <- paste0(repo_url, model_file)
@@ -76,6 +76,5 @@ download_component <- function(model_name = "sd21",
             paste(missing_files, collapse = ", "))
   }
   
-  return(list(model_dir = model_dir, 
-              model_file = model_file))
+  list(model_dir = model_dir, model_file = model_file)
 }
