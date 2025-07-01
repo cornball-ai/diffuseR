@@ -6,7 +6,7 @@
 #' The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
 #' \itemize{
 #'   \item macOS: `~/Library/Application Support/diffuseR/`
-#'   \item Linux: `~/.local/share/diffuseR/`
+#'   \item Linux: `~/.local/share/R/diffuseR/`
 #'   \item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
 #' }
 #'

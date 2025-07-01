@@ -6,7 +6,7 @@
 #' The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
 #' \itemize{
 #'   \item macOS: `~/Library/Application Support/diffuseR/`
-#'   \item Linux: `~/.local/share/diffuseR/`
+#'   \item Linux: `~/.local/share/R/diffuseR/`
 #'   \item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
 #' }
 #'
@@ -14,6 +14,7 @@
 #' If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
 #'
 #' @param model_name Character string, the name of the model to download (e.g., `"sd21"`).
+#' @param component Character string, the specific model component to download (e.g., `"unet"`, `"decoder"`, `"text_encoder"`).
 #' @param device Character string, the device type for which the model is intended (e.g., `"cpu"` or `"cuda"`).
 #' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
 #' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.

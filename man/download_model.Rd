@@ -37,7 +37,7 @@ for a given Stable Diffusion model into a local user-specific data directory.
 The files will be stored in a persistent path returned by \code{\link[tools:userdir]{tools::R_user_dir()}}, typically:
 \itemize{
 \item macOS: \verb{~/Library/Application Support/diffuseR/}
-\item Linux: \verb{~/.local/share/diffuseR/}
+\item Linux: \verb{~/.local/share/R/diffuseR/}
 \item Windows: \verb{C:/Users/<username>/AppData/Local/diffuseR/}
 }
 

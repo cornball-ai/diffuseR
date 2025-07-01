@@ -6,6 +6,7 @@
 \usage{
 download_component(
   model_name = "sd21",
+  component,
   device = "cpu",
   overwrite = FALSE,
   show_progress = TRUE
@@ -13,6 +14,8 @@ download_component(
 }
 \arguments{
 \item{model_name}{Character string, the name of the model to download (e.g., \code{"sd21"}).}
+
+\item{component}{Character string, the specific model component to download (e.g., \code{"unet"}, \code{"decoder"}, \code{"text_encoder"}).}
 
 \item{device}{Character string, the device type for which the model is intended (e.g., \code{"cpu"} or \code{"cuda"}).}
 
@@ -31,7 +34,7 @@ for a given Stable Diffusion model into a local user-specific data directory.
 The files will be stored in a persistent path returned by \code{\link[tools:userdir]{tools::R_user_dir()}}, typically:
 \itemize{
 \item macOS: \verb{~/Library/Application Support/diffuseR/}
-\item Linux: \verb{~/.local/share/diffuseR/}
+\item Linux: \verb{~/.local/share/R/diffuseR/}
 \item Windows: \verb{C:/Users/<username>/AppData/Local/diffuseR/}
 }
 
