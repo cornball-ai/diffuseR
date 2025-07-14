@@ -55,7 +55,7 @@ targets::install_github("cornball-ai/diffuseR")
 
 ### Basic Usage
 
-**Warning**: The first time you run the code below, it will download ~7GB of model files [from here](https://huggingface.co/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only.
+**Warning**: The first time you run the code below, it will download ~5.3GB of Stable Diffusion 2.1 CPU-only model files [from Hugging Face](https://huggingface.co/datasets/cornball-ai/sd21-R/tree/main) and load them into memory. Ensure you have enough RAM, disk space, and a stable internet connection. Memory management with deep learning models is crucial, so consider using a machine with sufficient resources; ~8GB of free RAM is recommended for running Stable Diffusion 2.1 on CPU only.
 
 ```r
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 3.5GB file.
