@@ -23,7 +23,7 @@ First install torch. As per [this comment](https://github.com/mlverse/torch/issu
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 2GB file.
 # For Windows and Linux: "cpu", "cu128" are the only currently supported
 # For MacOS the supported are: "cpu-intel" or "cpu-m1"
-kind <- "cu128"
+kind <- "cu124"
 version <- available.packages()["torch","Version"]
 options(repos = c(
   torch = sprintf("https://torch-cdn.mlverse.org/packages/%s/%s/", kind, version),
