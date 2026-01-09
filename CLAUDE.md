@@ -48,3 +48,22 @@ Models stored in `~/.local/share/R/diffuseR/{model_name}/`:
 - `encoder-{device}.pt` (TorchScript)
 
 Downloaded from: `huggingface.co/datasets/cornball-ai/sdxl-R`
+
+## Roadmap
+
+### Native Torch Implementation (Priority: High)
+- [ ] **Replace TorchScript with native torch**: Load models directly from safetensors/HuggingFace
+  - Eliminates GPU architecture compatibility issues (Blackwell, future GPUs)
+  - More maintainable than pre-exported .pt files
+  - Reference: Python diffusers library implementation
+
+### gpuctl Integration
+- [ ] **Auto-device configuration**: Integrate with gpuctl for automatic device assignment
+  - Query available VRAM via `gpuctl::gpu_detect()`
+  - Auto-select optimal devices based on model requirements and available resources
+  - Handle Blackwell workaround automatically until TorchScript is replaced
+
+### Model Support
+- [ ] Add FLUX model support
+- [ ] Add SD3 model support
+- [ ] ControlNet integration
