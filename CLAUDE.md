@@ -37,10 +37,10 @@ diffuseR integrates with gpuctl for automatic "GPU poor" support:
 # Auto-detect VRAM and select optimal strategy
 devices <- auto_devices("sdxl")  # Uses gpuctl if available
 
-# Strategies:
-# - full_gpu: All on CUDA (16GB+ VRAM)
-# - unet_gpu: Unet on CUDA, rest CPU (8GB+ VRAM) - forced on Blackwell
-# - cpu_only: All on CPU
+# Strategies (SDXL thresholds):
+# - full_gpu: All on CUDA (10GB+ VRAM)
+# - unet_gpu: Unet on CUDA, rest CPU (6GB+ VRAM) - forced on Blackwell
+# - cpu_only: All on CPU (<6GB VRAM)
 devices <- auto_devices("sdxl", strategy = "unet_gpu")
 ```
 
