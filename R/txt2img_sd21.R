@@ -31,7 +31,7 @@ txt2img_sd21 <- function(prompt,
                          negative_prompt = NULL,
                          img_dim = 768,
                          pipeline = NULL,
-                         devices = "cpu",
+                         devices = "auto",
                          unet_dtype_str = NULL,
                          download_models = FALSE,
                          scheduler = "ddim",
@@ -45,6 +45,12 @@ txt2img_sd21 <- function(prompt,
                          metadata_path = NULL,
                          ...) {
   model_name = "sd21"
+
+  # Handle "auto" devices
+  if (identical(devices, "auto")) {
+    devices <- auto_devices(model_name)
+  }
+
   m2d <- models2devices(model_name = model_name, devices = devices,
                         unet_dtype_str = unet_dtype_str,
                         download_models = download_models)

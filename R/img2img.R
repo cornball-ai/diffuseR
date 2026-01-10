@@ -29,7 +29,7 @@ img2img <- function(input_image,
                     img_dim = 512,
                     model_name = c("sd21", "sdxl"),
                     pipeline = NULL,
-                    devices = "cpu",
+                    devices = "auto",
                     unet_dtype_str = "float16",
                     download_models = FALSE,
                     scheduler = "ddim",
@@ -41,13 +41,18 @@ img2img <- function(input_image,
                     filename = NULL,
                     metadata_path = NULL,
                     ...) {
-  
+
   if(model_name %in% c("sd21", "sdxl")) {
     num_train_timesteps <- 1000
   } else {
     stop("Model not supported")
   }
-  
+
+  # Handle "auto" devices
+  if (identical(devices, "auto")) {
+    devices <- auto_devices(model_name)
+  }
+
   # 1. Get models
   m2d <- models2devices(model_name, devices = devices, unet_dtype_str = NULL,
                         download_models = download_models)

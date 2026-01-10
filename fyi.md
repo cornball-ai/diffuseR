@@ -7,6 +7,7 @@
 
 | Function | Arguments |
 |----------|-----------|
+| `auto_devices` | model, strategy |
 | `CLIPTokenizer` | prompt, merges, vocab_file, pad_token |
 | `ddim_scheduler_create` | num_train_timesteps, num_inference_steps, eta, beta_schedule, beta_start, beta_end, rescale_betas_zero_snr, dtype, device |
 | `ddim_scheduler_step` | model_output, timestep, sample, schedule, eta, use_clipped_model_output, thresholding, generator, variance_noise, clip_sample, set_alpha_to_one, prediction_type, dtype, device |
@@ -30,6 +31,7 @@
 
 | Function | Arguments |
 |----------|-----------|
+| `.build_fallback_devices` | model, strategy |
 | `download_model` | model_name, devices, unet_dtype_str, overwrite, show_progress, download_models |
 | `get_component_file_path` | component, model_dir, device, unet_dtype_str |
 | `get_required_components` | model_name |
@@ -48,6 +50,66 @@ No options found in `diffuseR`.
 
 
 # Documentation: diffuseR
+
+## auto_devices
+
+*Auto-Configure Device Assignment*
+
+```
+_A_u_t_o-_C_o_n_f_i_g_u_r_e _D_e_v_i_c_e _A_s_s_i_g_n_m_e_n_t
+
+_D_e_s_c_r_i_p_t_i_o_n:
+
+     Automatically determines optimal device configuration for
+     diffusion model components based on available VRAM and GPU
+     architecture. Uses gpuctl for detection if available, otherwise
+     falls back to sensible defaults.
+
+_U_s_a_g_e:
+
+     auto_devices(model, strategy)
+     
+_A_r_g_u_m_e_n_t_s:
+
+   model: Character. Model type: "sd21" or "sdxl".
+
+strategy: Character. Memory strategy: "auto" (default), "full_gpu",
+          "unet_gpu", or "cpu_only". See Details.
+
+_D_e_t_a_i_l_s:
+
+     Strategies: \describe{ \item{"auto"}{Detect VRAM and choose best
+     strategy (requires gpuctl)} \item{"full_gpu"}{All components on
+     CUDA (16GB+ VRAM for SDXL)} \item{"unet_gpu"}{Only unet on CUDA,
+     rest on CPU (8GB+ VRAM)} \item{"cpu_only"}{All components on CPU}
+     }
+
+     If gpuctl is not installed, "auto" falls back to "unet_gpu" which
+     works on most modern GPUs (8GB+ VRAM).
+
+     On Blackwell GPUs (RTX 50xx), "unet_gpu" is forced due to
+     TorchScript compatibility issues, regardless of available VRAM.
+
+_V_a_l_u_e:
+
+     A named list of device assignments suitable for
+     `models2devices()`.
+
+_E_x_a_m_p_l_e_s:
+
+     ## Not run:
+     
+     # Auto-detect best configuration
+     devices <- auto_devices("sdxl")
+     
+     # Use with models2devices
+     m2d <- models2devices("sdxl", devices = auto_devices("sdxl"))
+     
+     # Force CPU-only
+     devices <- auto_devices("sdxl", strategy = "cpu_only")
+     ## End(Not run)
+     
+```
 
 ## CLIPTokenizer
 
@@ -269,6 +331,33 @@ _E_x_a_m_p_l_e_s:
        prediction_type = "epsilon")
      ## End(Not run)
      
+```
+
+## dot-build_fallback_devices
+
+*Build fallback device configuration*
+
+```
+_B_u_i_l_d _f_a_l_l_b_a_c_k _d_e_v_i_c_e _c_o_n_f_i_g_u_r_a_t_i_o_n
+
+_D_e_s_c_r_i_p_t_i_o_n:
+
+     Build fallback device configuration
+
+_U_s_a_g_e:
+
+     .build_fallback_devices(model, strategy)
+     
+_A_r_g_u_m_e_n_t_s:
+
+   model: Character. Model type.
+
+strategy: Character. Memory strategy.
+
+_V_a_l_u_e:
+
+     Named list of device assignments.
+
 ```
 
 ## download_component

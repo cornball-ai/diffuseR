@@ -29,7 +29,7 @@ txt2img_sdxl <- function(prompt,
                          negative_prompt = NULL,
                          img_dim = 1024,
                          pipeline = NULL,
-                         devices = "cpu",
+                         devices = "auto",
                          unet_dtype_str = NULL,
                          download_models = FALSE,
                          scheduler = "ddim",
@@ -43,6 +43,12 @@ txt2img_sdxl <- function(prompt,
                          metadata_path = NULL,
                          ...) {
   model_name <- "sdxl"
+
+  # Handle "auto" devices
+  if (identical(devices, "auto")) {
+    devices <- auto_devices(model_name)
+  }
+
   m2d <- models2devices(model_name = model_name, devices = devices,
                         unet_dtype_str = unet_dtype_str)
   model_dir <- m2d$model_dir
