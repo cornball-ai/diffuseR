@@ -3,7 +3,7 @@
 \title{Image-to-Image Generation with Stable Diffusion}
 \description{This function generates an image based on an input image and a text prompt using the Stable Diffusion model. It allows for various configurations such as model name, device, scheduler, and more.}
 \usage{
-img2img(input_image, prompt, negative_prompt, img_dim, model_name, pipeline, devices, unet_dtype_str, download_models, scheduler, num_inference_steps, strength, guidance_scale, seed, save_file, filename, metadata_path, ...)
+img2img(input_image, prompt, negative_prompt, img_dim, model_name, pipeline, devices, unet_dtype_str, download_models, scheduler, num_inference_steps, strength, guidance_scale, seed, save_file, filename, metadata_path, use_native_decoder, use_native_text_encoder, use_native_unet, ...)
 }
 \arguments{
   \item{input_image}{Path to the input image or a tensor representing the image.}
@@ -23,6 +23,9 @@ img2img(input_image, prompt, negative_prompt, img_dim, model_name, pipeline, dev
   \item{save_file}{Logical indicating whether to save the generated image.}
   \item{filename}{Optional filename for saving the image. If `NULL`, a default name is generated.}
   \item{metadata_path}{Path to save metadata (default: NULL).}
+  \item{use_native_decoder}{Logical; if TRUE, uses native R torch decoder instead of TorchScript. Native decoder has better GPU compatibility (especially Blackwell).}
+  \item{use_native_text_encoder}{Logical; if TRUE, uses native R torch text encoder instead of TorchScript. Native text encoder has better GPU compatibility (especially Blackwell).}
+  \item{use_native_unet}{Logical; if TRUE, uses native R torch UNet instead of TorchScript. Native UNet has better GPU compatibility (especially Blackwell).}
   \item{...}{Additional arguments for future use.}
 }
 \value{

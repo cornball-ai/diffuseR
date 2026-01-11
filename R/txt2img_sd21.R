@@ -18,6 +18,12 @@
 #' @param save_file Logical indicating whether to save the generated image.
 #' @param filename Optional filename for saving the image. If `NULL`, a default name is generated.
 #' @param metadata_path Optional file path to save metadata.
+#' @param use_native_decoder Logical; if TRUE, uses native R torch decoder instead of TorchScript.
+#'   Native decoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_text_encoder Logical; if TRUE, uses native R torch text encoder instead of TorchScript.
+#'   Native text encoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
+#'   Native UNet has better GPU compatibility (especially Blackwell).
 #' @param ... Additional parameters passed to the diffusion process.
 #'
 #' @return An image array and metadata
@@ -43,6 +49,9 @@ txt2img_sd21 <- function(prompt,
                          save_file = TRUE,
                          filename = NULL,
                          metadata_path = NULL,
+                         use_native_decoder = FALSE,
+                         use_native_text_encoder = FALSE,
+                         use_native_unet = FALSE,
                          ...) {
   model_name = "sd21"
 
@@ -63,7 +72,10 @@ txt2img_sd21 <- function(prompt,
 
   if(is.null(pipeline)){
     pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-                              unet_dtype_str = unet_dtype_str)
+                              unet_dtype_str = unet_dtype_str,
+                              use_native_decoder = use_native_decoder,
+                              use_native_text_encoder = use_native_text_encoder,
+                              use_native_unet = use_native_unet)
   }
   
   # Start timing
@@ -114,31 +126,33 @@ txt2img_sd21 <- function(prompt,
                                   dtype = unet_dtype,
                                   device = torch::torch_device(devices$unet))
   }
-  # Denoising loop
+  # Denoising loop (no gradients needed for inference)
   pb <- utils::txtProgressBar(min = 0, max = length(timesteps), style = 3)
-  for (i in seq_along(timesteps)){
-    timestep <- torch::torch_tensor(timesteps[i],
-                                    dtype = torch::torch_long(),
-                                    device = torch::torch_device(devices$unet))
-    
-    # Get both conditional and unconditional predictions
-    noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed)
-    noise_pred_cond   <- pipeline$unet(latents, timestep, prompt_embed)
-    
-    # CFG step
-    noise_pred <- noise_pred_uncond + guidance_scale *
-                    (noise_pred_cond - noise_pred_uncond)
-    
-    # Calculating latent
-    latents <- ddim_scheduler_step(model_output = noise_pred,
-                                   timestep = timestep,
-                                   sample = latents,
-                                   schedule = schedule,
-                                   prediction_type = "v_prediction",
+  torch::with_no_grad({
+    for (i in seq_along(timesteps)){
+      timestep <- torch::torch_tensor(timesteps[i],
+                                      dtype = torch::torch_long(),
+                                      device = torch::torch_device(devices$unet))
+
+      # Get both conditional and unconditional predictions
+      noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed)
+      noise_pred_cond   <- pipeline$unet(latents, timestep, prompt_embed)
+
+      # CFG step
+      noise_pred <- noise_pred_uncond + guidance_scale *
+                      (noise_pred_cond - noise_pred_uncond)
+
+      # Calculating latent
+      latents <- ddim_scheduler_step(model_output = noise_pred,
+                                     timestep = timestep,
+                                     sample = latents,
+                                     schedule = schedule,
+                                     prediction_type = "v_prediction",
                                    device = devices$unet)
-    latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
-    utils::setTxtProgressBar(pb, i)
-  }
+      latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
+      utils::setTxtProgressBar(pb, i)
+    }
+  })
   close(pb)
   
   # Decode latents to image

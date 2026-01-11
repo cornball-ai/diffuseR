@@ -1,0 +1,15 @@
+\name{unet_native}
+\alias{unet_native}
+\title{Native UNet for Stable Diffusion}
+\description{Native R torch implementation of UNet2DConditionModel. Replaces TorchScript for better GPU compatibility.}
+\arguments{
+  \item{in_channels}{Input channels (default 4 for latent space)}
+  \item{out_channels}{Output channels (default 4)}
+  \item{block_out_channels}{Channel multipliers per block}
+  \item{layers_per_block}{Number of ResBlocks per down/up block}
+  \item{cross_attention_dim}{Context dimension from text encoder}
+  \item{attention_head_dim}{Dimension per attention head}
+}
+\value{
+An nn_module representing the UNet
+}

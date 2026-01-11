@@ -8,6 +8,12 @@
 #' @param m2d A list containing model-to-device mappings and configurations.
 #' @param i2i Logical indicating whether to load the encoder for img2img().
 #' @param unet_dtype_str A string representing the data type for the UNet model (e.g., "float32", "float16").
+#' @param use_native_decoder Logical; if TRUE, uses native R torch decoder instead of TorchScript.
+#'   Native decoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_text_encoder Logical; if TRUE, uses native R torch text encoder instead of TorchScript.
+#'   Native text encoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
+#'   Native UNet has better GPU compatibility (especially Blackwell).
 #' @param ... Additional arguments passed to the model loading functions.
 #' 
 #' @return An environment containing the loaded models and configuration.
@@ -18,7 +24,10 @@
 #' pipeline <- load_pipeline("my_model", device = "cuda")
 #' }
 #' 
-load_pipeline <- function(model_name, m2d, i2i = FALSE, unet_dtype_str, ...) {
+load_pipeline <- function(model_name, m2d, i2i = FALSE, unet_dtype_str,
+                          use_native_decoder = FALSE,
+                          use_native_text_encoder = FALSE,
+                          use_native_unet = FALSE, ...) {
   # Create an environment to store the pipeline components
   # pipeline <- new.env(parent = emptyenv())
   devices <- m2d$devices
@@ -36,21 +45,25 @@ load_pipeline <- function(model_name, m2d, i2i = FALSE, unet_dtype_str, ...) {
   }
   message("Loading text_encoder...")
   pipeline$text_encoder <- load_model_component("text_encoder", model_name,
-                                                devices$text_encoder)
+                                                devices$text_encoder,
+                                                use_native = use_native_text_encoder)
   if(model_name == "sdxl"){
     message("Loading text_encoder2...")
     pipeline$text_encoder2 <- load_model_component(component = "text_encoder2",
                                                    model_name,
-                                                   devices$text_encoder2)
+                                                   devices$text_encoder2,
+                                                   use_native = use_native_text_encoder)
   }
   message("Loading unet...")
   pipeline$unet <- load_model_component("unet", model_name,
                                device = devices$unet,
-                               unet_dtype_str = unet_dtype_str)
+                               unet_dtype_str = unet_dtype_str,
+                               use_native = use_native_unet)
 
   message("Loading image decoder...")
   pipeline$decoder <- load_model_component("decoder", model_name,
-                                           torch::torch_device(devices$decoder))
+                                           devices$decoder,
+                                           use_native = use_native_decoder)
   
   # Store configuration
   pipeline$devices <- devices

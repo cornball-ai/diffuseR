@@ -19,6 +19,12 @@
 #' @param save_file Logical indicating whether to save the generated image.
 #' @param filename Optional filename for saving the image. If `NULL`, a default name is generated.
 #' @param metadata_path Path to save metadata (default: NULL).
+#' @param use_native_decoder Logical; if TRUE, uses native R torch decoder instead of TorchScript.
+#'   Native decoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_text_encoder Logical; if TRUE, uses native R torch text encoder instead of TorchScript.
+#'   Native text encoder has better GPU compatibility (especially Blackwell).
+#' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
+#'   Native UNet has better GPU compatibility (especially Blackwell).
 #' @param ... Additional arguments for future use.
 #' @return An image array and metadata
 #' @export
@@ -40,6 +46,9 @@ img2img <- function(input_image,
                     save_file = TRUE,
                     filename = NULL,
                     metadata_path = NULL,
+                    use_native_decoder = FALSE,
+                    use_native_text_encoder = FALSE,
+                    use_native_unet = FALSE,
                     ...) {
 
   if(model_name %in% c("sd21", "sdxl")) {
@@ -65,7 +74,10 @@ img2img <- function(input_image,
 
   if(is.null(pipeline)){
     pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-                              unet_dtype_str = unet_dtype_str)
+                              unet_dtype_str = unet_dtype_str,
+                              use_native_decoder = use_native_decoder,
+                              use_native_text_encoder = use_native_text_encoder,
+                              use_native_unet = use_native_unet)
   }
   
   # 2. Encode input image to latents
