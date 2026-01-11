@@ -225,13 +225,33 @@ Tests: 72 total (all passing)
 - Native modules load from CPU TorchScript files and move to target device
 - nn_sequential children use 0-based indexing (matching Python)
 
-### Phase 3b: SDXL UNet - COMPLETE
+### Phase 3b: SDXL UNet - BROKEN (needs debugging)
 - [x] Native `unet_sdxl_native()` module created with full SDXL architecture
 - [x] Architecture differs from SD21: 3 blocks, variable transformer depths [0, 2, 10]
 - [x] `add_embedding` module for text_embeds + time_ids conditioning
 - [x] `load_unet_sdxl_weights()` loads 1680/1680 parameters
-- [x] CUDA test passed on Blackwell (RTX 5060 Ti)
-- [x] Full pipeline test: 1024x1024 in 88 seconds (20 steps)
+- [x] All weights match TorchScript exactly (diff=0)
+- [x] All dimensions/architecture match TorchScript
+- [ ] **BROKEN**: Forward pass produces ~12% mean error vs TorchScript
+- [ ] **BROKEN**: Output correlation is 0.985 (structurally similar but not identical)
+- [ ] **BROKEN**: Error compounds over denoising steps, produces garbage images
+
+**What works for SDXL:**
+- Native decoder (verified)
+- Native text encoders (verified, produces different but valid images)
+- TorchScript UNet (must use `use_native_unet = FALSE`)
+
+**Debug attempts:**
+- Verified all 1680 weights load with diff=0
+- Verified all architecture dimensions match
+- Verified all parameters on correct device/dtype (CUDA, float16)
+- No buffers in model
+- No obvious bugs in timestep_embedding, add_embedding, or attention modules
+
+**Next steps:**
+- Compare layer-by-layer against Python diffusers implementation
+- Check for subtle differences in GEGLU, attention softmax, or normalization
+- May be float16 accumulation error in deep transformer stacks (10 layers in mid block)
 
 **SDXL Architecture details:**
 - block_out_channels: [320, 640, 1280] (3 blocks, not 4)
@@ -244,7 +264,9 @@ Tests: 72 total (all passing)
 ## Success Criteria
 
 - [x] Full SD21 pipeline runs on Blackwell with all components on CUDA
-- [x] Full SDXL pipeline runs on Blackwell with native components
+- [ ] Full SDXL pipeline runs on Blackwell with native components (UNet broken)
+- [x] Native decoder works on SDXL/SD21
+- [x] Native text encoders work on SDXL/SD21
 - [x] Native modules work with CPU TorchScript files (no CUDA TorchScript needed)
-- [x] Performance comparable to TorchScript
-- [x] gpuctl Blackwell workaround can be removed for native mode
+- [x] Performance comparable to TorchScript (for working components)
+- [ ] SDXL native UNet needs debugging - currently produces garbage

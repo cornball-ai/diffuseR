@@ -53,7 +53,7 @@ The `txt2img_*` and `img2img` functions default to `devices = "auto"`, which:
 
 Replaced TorchScript with native R torch modules for Blackwell GPU compatibility.
 
-### Completed Components
+### Component Status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -61,23 +61,39 @@ Replaced TorchScript with native R torch modules for Blackwell GPU compatibility
 | Text Encoder | ✅ Complete | `use_native_text_encoder = TRUE`, auto-detects architecture |
 | Text Encoder 2 | ✅ Complete | SDXL's OpenCLIP ViT-bigG |
 | UNet (SD21) | ✅ Complete | `use_native_unet = TRUE`, 686 parameters |
-| UNet (SDXL) | ✅ Complete | `use_native_unet = TRUE`, 1680 parameters, variable transformer depths |
+| UNet (SDXL) | ⚠️ Broken | Weights load correctly but forward pass has ~12% error, produces garbage |
 
 ### Usage with Native Components
 
 ```r
-# Full native pipeline (works on Blackwell)
+# Full native pipeline for SD21 (works on Blackwell)
 txt2img_sd21("A cat wearing a hat",
              use_native_decoder = TRUE,
              use_native_text_encoder = TRUE,
              use_native_unet = TRUE)
 
-# For SDXL
+# For SDXL - use native decoder/text_encoders, but TorchScript UNet
+# (native SDXL UNet is currently broken)
 txt2img_sdxl("A sunset over mountains",
              use_native_decoder = TRUE,
              use_native_text_encoder = TRUE,
-             use_native_unet = TRUE)
+             use_native_unet = FALSE)  # TorchScript UNet still required for SDXL
 ```
+
+### SDXL Native UNet Issue
+
+The native SDXL UNet has a known issue where the forward pass produces ~12% mean error
+compared to TorchScript. Over multiple denoising steps, this compounds to garbage output.
+
+**Verified working:**
+- All 1680 weights load correctly (diff=0)
+- Architecture dimensions match TorchScript exactly
+- Correlation between outputs is 0.985 (structurally similar)
+
+**Investigation needed:**
+- Compare layer-by-layer against Python diffusers
+- Check for subtle differences in attention/transformer implementation
+- Possible float16 accumulation differences
 
 ### Architecture Auto-Detection
 
