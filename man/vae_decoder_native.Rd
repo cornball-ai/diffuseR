@@ -1,0 +1,19 @@
+\name{vae_decoder_native}
+\alias{vae_decoder_native}
+\title{Native VAE Decoder}
+\description{Native R torch implementation of the SDXL VAE decoder. Replaces TorchScript decoder for better GPU compatibility.}
+\arguments{
+  \item{latent_channels}{Number of latent channels (default 4)}
+  \item{out_channels}{Number of output channels (default 3 for RGB)}
+}
+\value{
+An nn_module representing the VAE decoder
+}
+\examples{
+\dontrun{
+decoder <- vae_decoder_native()
+load_decoder_weights(decoder, "path/to/decoder.pt")
+latents <- torch::torch_randn(c(1, 4, 64, 64))
+image <- decoder(latents)
+}
+}

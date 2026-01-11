@@ -93,6 +93,18 @@ Strategy:
 - HuggingFace SDXL: `stabilityai/stable-diffusion-xl-base-1.0`
 - safetensors format: https://huggingface.co/docs/safetensors
 
+## Progress
+
+### Phase 1: VAE Decoder - COMPLETE
+- [x] Native `vae_decoder_native()` module created
+- [x] `load_decoder_weights()` loads from TorchScript .pt files
+- [x] Equivalency verified: max diff 2e-5 (float precision)
+- [x] 138/138 parameters match
+- [ ] CUDA test pending (need VRAM - ollama currently using GPU)
+
+Files added:
+- `R/vae_decoder.R` - Native decoder + weight loader
+
 ## Success Criteria
 
 - [ ] Full SDXL pipeline runs on Blackwell with all components on CUDA
