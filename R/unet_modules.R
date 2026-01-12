@@ -15,25 +15,38 @@ group_norm_32 <- function(channels) {
 #'
 #' @param timesteps Tensor of timesteps (batch_size,)
 #' @param dim Embedding dimension
+#' @param flip_sin_to_cos If TRUE, output [cos, sin] instead of [sin, cos].
+#'   SDXL uses TRUE (default), SD21 uses FALSE.
+#' @param downscale_freq_shift Frequency shift parameter. SDXL uses 0 (default),
+#'   SD21 uses 1. With 0: exponent = log(10000) / half_dim. With 1: exponent = log(10000) / (half_dim - 1).
 #' @return Tensor (batch_size, dim)
 #' @keywords internal
-timestep_embedding <- function(timesteps, dim) {
+timestep_embedding <- function(timesteps, dim, flip_sin_to_cos = TRUE,
+                                downscale_freq_shift = 0L) {
   half_dim <- dim %/% 2L
-  emb_scale <- log(10000) / (half_dim - 1)
 
-  # Create frequency bands
+  # SDXL uses downscale_freq_shift=0, SD21 uses downscale_freq_shift=1
+  emb_scale <- log(10000) / (half_dim - downscale_freq_shift)
+
+  # Create frequency bands: [0, 1, ..., half_dim-1]
   freqs <- torch::torch_exp(torch::torch_arange(0, half_dim - 1L) * -emb_scale)
   freqs <- freqs$to(device = timesteps$device, dtype = torch::torch_float32())
 
   # Expand and compute embeddings
+  # timesteps: [batch] -> [batch, 1]
+  # freqs: [half_dim] -> [1, half_dim]
   timesteps_float <- timesteps$to(dtype = torch::torch_float32())$unsqueeze(2L)
   args <- timesteps_float * freqs$unsqueeze(1L)
 
-  # Concatenate sin and cos
-  embedding <- torch::torch_cat(list(torch::torch_sin(args), torch::torch_cos(args)), dim = 2L)
+  # SDXL uses flip_sin_to_cos=True -> [cos, sin]
+  # SD21 uses flip_sin_to_cos=False -> [sin, cos]
+  if (flip_sin_to_cos) {
+    embedding <- torch::torch_cat(list(torch::torch_cos(args), torch::torch_sin(args)), dim = 2L)
+  } else {
+    embedding <- torch::torch_cat(list(torch::torch_sin(args), torch::torch_cos(args)), dim = 2L)
+  }
 
   # Pad if odd dimension
-
   if (dim %% 2L == 1L) {
     embedding <- torch::nnf_pad(embedding, c(0L, 1L, 0L, 0L))
   }

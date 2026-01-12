@@ -231,7 +231,9 @@ unet_native <- torch::nn_module(
     model_dtype <- self$time_embedding_linear_1$weight$dtype
 
     # Time embedding (computed in float32, then cast to model dtype)
-    t_emb <- timestep_embedding(timestep, self$block_out_channels[1])
+    # SD21 uses flip_sin_to_cos=FALSE, downscale_freq_shift=1
+    t_emb <- timestep_embedding(timestep, self$block_out_channels[1],
+                                 flip_sin_to_cos = FALSE, downscale_freq_shift = 1L)
     t_emb <- t_emb$to(dtype = model_dtype)
     t_emb <- self$time_embedding_linear_1(t_emb)
     t_emb <- torch::nnf_silu(t_emb)
@@ -685,6 +687,7 @@ unet_sdxl_native <- torch::nn_module(
     model_dtype <- self$time_embedding_linear_1$weight$dtype
 
     # Time embedding (computed in float32, then cast to model dtype)
+    # SDXL uses flip_sin_to_cos=TRUE (default), downscale_freq_shift=0 (default)
     t_emb <- timestep_embedding(timestep, self$block_out_channels[1])
     t_emb <- t_emb$to(dtype = model_dtype)
     t_emb <- self$time_embedding_linear_1(t_emb)
@@ -692,6 +695,7 @@ unet_sdxl_native <- torch::nn_module(
     t_emb <- self$time_embedding_linear_2(t_emb)
 
     # Additional embedding (Fourier projection of time_ids + text_embeds)
+    # Uses same defaults as main time embedding
     time_ids_emb <- timestep_embedding(time_ids$flatten(), self$add_time_proj_dim)
     time_ids_emb <- time_ids_emb$to(dtype = model_dtype)
     time_ids_emb <- time_ids_emb$reshape(c(text_embeds$shape[1], -1L))

@@ -3,11 +3,13 @@
 \title{Sinusoidal Timestep Embedding}
 \description{Sinusoidal Timestep Embedding}
 \usage{
-timestep_embedding(timesteps, dim)
+timestep_embedding(timesteps, dim, flip_sin_to_cos, downscale_freq_shift)
 }
 \arguments{
   \item{timesteps}{Tensor of timesteps (batch_size,)}
   \item{dim}{Embedding dimension}
+  \item{flip_sin_to_cos}{If TRUE, output [cos, sin] instead of [sin, cos]. SDXL uses TRUE (default), SD21 uses FALSE.}
+  \item{downscale_freq_shift}{Frequency shift parameter. SDXL uses 0 (default), SD21 uses 1. With 0: exponent = log(10000) / half_dim. With 1: exponent = log(10000) / (half_dim - 1).}
 }
 \value{
 Tensor (batch_size, dim)
