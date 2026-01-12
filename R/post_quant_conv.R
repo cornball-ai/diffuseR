@@ -21,9 +21,11 @@ post_quant_conv <- function(x, dtype, device) {
                                         header=FALSE)[[1]])
   
   # Convert to torch tensors and reshape weights for conv2d
+  # Move weights to same device/dtype as input before convolution
   qc_weights_tensor <- torch::torch_tensor(qc_weights)$view(c(4, 4, 1, 1))
+  qc_weights_tensor <- qc_weights_tensor$to(dtype = dtype, device = torch::torch_device(device))
   qc_bias_tensor <- torch::torch_tensor(qc_bias)
-  
-  conv <- torch::nnf_conv2d(x, weight = qc_weights_tensor, bias = qc_bias_tensor)
-  conv$to(dtype = dtype, device = torch::torch_device(device))
+  qc_bias_tensor <- qc_bias_tensor$to(dtype = dtype, device = torch::torch_device(device))
+
+  torch::nnf_conv2d(x, weight = qc_weights_tensor, bias = qc_bias_tensor)
 }
