@@ -51,17 +51,71 @@ The `txt2img_*` and `img2img` functions default to `devices = "auto"`, which:
 
 ## GPU-Poor Execution Plan (TODO)
 
-For 6-8GB GPUs, implement memory-optimized execution:
+Profile-based memory optimization for constrained GPUs. Inspired by mmgp/Wan2GP approach.
 
-### New Parameters for txt2img_sdxl
+### API
 
 ```r
-cfg_mode = c("batched", "sequential")
-cleanup = c("none", "phase", "step")
-vram_debug = FALSE
+txt2img_sdxl("A cat", profile = "auto")  # Default: auto-detect via gpuctl
+txt2img_sdxl("A cat", profile = "gpu_poor")  # Force low-memory mode
+txt2img_sdxl("A cat", profile = "full_gpu", vram_debug = TRUE)  # Debug VRAM usage
 ```
 
-### 1. Sequential CFG Mode (`cfg_mode = "sequential"`)
+### Profiles
+
+| Profile | VRAM | Devices | CFG Mode | Cleanup | Use Case |
+|---------|------|---------|----------|---------|----------|
+| `full_gpu` | 16GB+ | All CUDA | batched | none | RTX 4090, 5080, 5090 |
+| `balanced` | 10-12GB | UNet+decoder CUDA | batched | phase | RTX 3080, 4070 Ti |
+| `gpu_poor` | 6-8GB | UNet CUDA only | sequential | phase | RTX 3060, 4060 |
+| `extreme` | <6GB | UNet CUDA only | sequential | step | GTX 1660, laptops |
+| `cpu_only` | 0 | All CPU | sequential | none | No GPU / testing |
+
+### Profile Details
+
+**full_gpu** (16GB+)
+- All components on CUDA
+- Batched CFG (uncond+cond in single forward pass)
+- No cleanup overhead
+- Fastest execution
+
+**balanced** (10-12GB)
+- UNet and decoder on CUDA, text encoders on CPU
+- Batched CFG
+- Phase cleanup between denoise and decode
+- Good speed/memory tradeoff
+
+**gpu_poor** (6-8GB)
+- Only UNet on CUDA, everything else CPU
+- Sequential CFG (halves peak activation memory)
+- Phase cleanup + UNet→CPU swap before decode
+- Slower but fits in limited VRAM
+
+**extreme** (<6GB)
+- Only UNet on CUDA
+- Sequential CFG
+- Step-level cleanup (gc + cuda_empty_cache each step)
+- Slowest but minimum peak memory
+
+### Implementation Components
+
+#### 1. Profile Resolution
+
+```r
+resolve_profile <- function(profile = "auto", model = "sdxl") {
+  if (profile == "auto") {
+    vram <- gpuctl::gpu_detect()$vram_gb
+    profile <- if (vram >= 16) "full_gpu"
+               else if (vram >= 10) "balanced"
+               else if (vram >= 6) "gpu_poor"
+               else if (vram > 0) "extreme"
+               else "cpu_only"
+  }
+  get_profile_config(profile, model)
+}
+```
+
+#### 2. Sequential CFG Mode
 
 Run uncond and cond UNet passes separately instead of batched:
 
@@ -76,31 +130,27 @@ if (cfg_mode == "sequential") {
 
 Halves peak activation memory during UNet forward pass.
 
-### 2. Phase Cleanup (`cleanup = "phase"`)
+#### 3. Phase Cleanup
 
 Clean up between denoise and decode phases:
 
 ```r
-# After denoise loop completes:
 if (cleanup %in% c("phase", "step")) {
-  # Move UNet to CPU if decoder needs GPU
-  if (decoder_device == "cuda") {
-    pipeline$unet$to(device = "cpu")
-  }
+  # Swap UNet to CPU before decode
+  pipeline$unet$to(device = "cpu")
   rm(noise_pred, timestep, ...)
   gc()
   torch::cuda_empty_cache()
 }
 ```
 
-### 3. Step Cleanup (`cleanup = "step"`)
+#### 4. Step Cleanup (extreme mode)
 
 Most aggressive - cleanup after each denoising step:
 
 ```r
 for (i in seq_along(timesteps)) {
   # ... denoising step ...
-
   if (cleanup == "step") {
     rm(noise_pred, timestep)
     gc()
@@ -109,15 +159,12 @@ for (i in seq_along(timesteps)) {
 }
 ```
 
-Slowest but lowest peak memory.
+#### 5. Function Isolation
 
-### 4. Refactor into Separate Functions
-
-Extract denoise and decode into isolated functions so tensors go out of scope:
+Extract denoise and decode into separate functions so tensors go out of scope:
 
 ```r
 run_denoise_sdxl <- function(latents, ...) {
-
   # Denoise loop
   # Returns ONLY latents (all other tensors die when function exits)
   latents
@@ -130,35 +177,24 @@ run_decode_sdxl <- function(latents, decoder, device) {
 }
 ```
 
-### 5. VRAM Debug (`vram_debug = TRUE`)
-
-Print memory stats at phase boundaries:
+#### 6. VRAM Debug
 
 ```r
 vram_report <- function(label) {
   allocated <- torch::cuda_memory_allocated() / 1024^3
   reserved <- torch::cuda_memory_reserved() / 1024^3
-
   message(sprintf("[%s] VRAM: %.2f GB allocated, %.2f GB reserved",
                   label, allocated, reserved))
 }
 ```
 
-### Example Usage
+### Future Optimizations (from mmgp)
 
-```r
-# GPU-poor mode for 6-8GB GPUs
-txt2img_sdxl("A cat",
-             cfg_mode = "sequential",
-             cleanup = "phase",
-             vram_debug = TRUE)
+Not implemented, but worth considering:
 
-# Extreme low-memory mode
-txt2img_sdxl("A cat",
-             cfg_mode = "sequential",
-             cleanup = "step",
-             devices = list(unet = "cuda", decoder = "cpu", ...))
-```
+- **Pinned CPU memory**: `$pin_memory()` for faster CPU↔GPU transfers
+- **Async prefetch**: Load next component while current one computes (needs torch streams)
+- **Resident set policy**: Keep hot components on GPU, evict cold ones (useful for batch generation)
 
 ## Native Torch Migration (Complete)
 
