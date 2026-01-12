@@ -46,9 +46,9 @@ targets::install_github("cornball-ai/diffuseR")
 
 - **Text-to-Image Generation**: Create images from textual descriptions
 - **Image-to-Image Generation**: Modify existing images based on text prompts
-- **Two Models**: Support for Stable Diffusion 2.1 and SDXL (more coming soon)
+- **Two Models**: Stable Diffusion 2.1 and SDXL (fully native R torch implementation)
 - **Scheduler Options**: DDIM (more coming soon)
-- **Device Support**: Works on both CPU and GPU
+- **Device Support**: CPU and CUDA GPUs (including Blackwell RTX 50xx)
 - **R-native Interface**: Functional programming approach that feels natural in R
 
 ## Quick Start
@@ -151,9 +151,13 @@ Future plans for diffuseR include:
 
 ## How It Works
 
-diffuseR uses TorchScript models exported from PyTorch implementations for the deep learning parts of the implementation. This approach was the quickest and easiest way to build the machinery that supports the deep learning models in stable diffusion. Full R torch implementations of the deep learning models are planned for the future, but this initial version allows users to quickly get started with diffusion models in R without needing to rely on any Python.
+diffuseR supports two execution modes:
 
-If you would like to build the TorchScript (.pt) files yourself, those scripts are available at the [diffuseR-TS](https://github.com/cornball-ai/diffuseR-TS/) repository. The models are exported from the Hugging Face diffusers library.
+**Native R torch (recommended for SDXL)**: Pure R implementations of VAE decoder, text encoders, and UNet. Required for Blackwell GPUs (RTX 50xx series) and recommended for best compatibility. Enable with `use_native_*` flags or use `txt2img_sdxl()` which defaults to native.
+
+**TorchScript (legacy)**: Pre-exported models from PyTorch. Still available for SD21 and older GPUs. Scripts to build TorchScript files are at [diffuseR-TS](https://github.com/cornball-ai/diffuseR-TS/).
+
+No Python dependencies required for either mode.
 
 ## Contributing
 
