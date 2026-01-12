@@ -22,4 +22,5 @@ Imports:
     jpeg
 Suggests:
     gpuctl,
+    safetensors,
     tinytest

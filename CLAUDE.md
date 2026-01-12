@@ -49,6 +49,117 @@ The `txt2img_*` and `img2img` functions default to `devices = "auto"`, which:
 2. Selects optimal strategy (full_gpu, unet_gpu, or cpu_only)
 3. Forces unet_gpu on Blackwell GPUs (TorchScript workaround)
 
+## GPU-Poor Execution Plan (TODO)
+
+For 6-8GB GPUs, implement memory-optimized execution:
+
+### New Parameters for txt2img_sdxl
+
+```r
+cfg_mode = c("batched", "sequential")
+cleanup = c("none", "phase", "step")
+vram_debug = FALSE
+```
+
+### 1. Sequential CFG Mode (`cfg_mode = "sequential"`)
+
+Run uncond and cond UNet passes separately instead of batched:
+
+```r
+if (cfg_mode == "sequential") {
+  noise_pred_uncond <- unet(latents, t, empty_prompt, ...)
+  noise_pred_cond <- unet(latents, t, prompt, ...)
+  noise_pred <- noise_pred_uncond + scale * (noise_pred_cond - noise_pred_uncond)
+  rm(noise_pred_uncond, noise_pred_cond)  # Free immediately
+}
+```
+
+Halves peak activation memory during UNet forward pass.
+
+### 2. Phase Cleanup (`cleanup = "phase"`)
+
+Clean up between denoise and decode phases:
+
+```r
+# After denoise loop completes:
+if (cleanup %in% c("phase", "step")) {
+  # Move UNet to CPU if decoder needs GPU
+  if (decoder_device == "cuda") {
+    pipeline$unet$to(device = "cpu")
+  }
+  rm(noise_pred, timestep, ...)
+  gc()
+  torch::cuda_empty_cache()
+}
+```
+
+### 3. Step Cleanup (`cleanup = "step"`)
+
+Most aggressive - cleanup after each denoising step:
+
+```r
+for (i in seq_along(timesteps)) {
+  # ... denoising step ...
+
+  if (cleanup == "step") {
+    rm(noise_pred, timestep)
+    gc()
+    torch::cuda_empty_cache()
+  }
+}
+```
+
+Slowest but lowest peak memory.
+
+### 4. Refactor into Separate Functions
+
+Extract denoise and decode into isolated functions so tensors go out of scope:
+
+```r
+run_denoise_sdxl <- function(latents, ...) {
+
+  # Denoise loop
+  # Returns ONLY latents (all other tensors die when function exits)
+  latents
+}
+
+run_decode_sdxl <- function(latents, decoder, device) {
+  # Decode latents to image
+  # Returns R array (all torch tensors die when function exits)
+  img_array
+}
+```
+
+### 5. VRAM Debug (`vram_debug = TRUE`)
+
+Print memory stats at phase boundaries:
+
+```r
+vram_report <- function(label) {
+  allocated <- torch::cuda_memory_allocated() / 1024^3
+  reserved <- torch::cuda_memory_reserved() / 1024^3
+
+  message(sprintf("[%s] VRAM: %.2f GB allocated, %.2f GB reserved",
+                  label, allocated, reserved))
+}
+```
+
+### Example Usage
+
+```r
+# GPU-poor mode for 6-8GB GPUs
+txt2img_sdxl("A cat",
+             cfg_mode = "sequential",
+             cleanup = "phase",
+             vram_debug = TRUE)
+
+# Extreme low-memory mode
+txt2img_sdxl("A cat",
+             cfg_mode = "sequential",
+             cleanup = "step",
+             devices = list(unet = "cuda", decoder = "cpu", ...))
+```
+
 ## Native Torch Migration (Complete)
 
 Replaced TorchScript with native R torch modules for Blackwell GPU compatibility.
@@ -61,7 +172,7 @@ Replaced TorchScript with native R torch modules for Blackwell GPU compatibility
 | Text Encoder | ✅ Complete | `use_native_text_encoder = TRUE`, auto-detects architecture |
 | Text Encoder 2 | ✅ Complete | SDXL's OpenCLIP ViT-bigG |
 | UNet (SD21) | ✅ Complete | `use_native_unet = TRUE`, 686 parameters |
-| UNet (SDXL) | ⚠️ Broken | Weights load correctly but forward pass has ~12% error, produces garbage |
+| UNet (SDXL) | ✅ Complete | `use_native_unet = TRUE`, 1680 parameters, fixed timestep_embedding |
 
 ### Usage with Native Components
 
@@ -72,28 +183,23 @@ txt2img_sd21("A cat wearing a hat",
              use_native_text_encoder = TRUE,
              use_native_unet = TRUE)
 
-# For SDXL - use native decoder/text_encoders, but TorchScript UNet
-# (native SDXL UNet is currently broken)
+# Full native pipeline for SDXL (works on Blackwell)
 txt2img_sdxl("A sunset over mountains",
              use_native_decoder = TRUE,
              use_native_text_encoder = TRUE,
-             use_native_unet = FALSE)  # TorchScript UNet still required for SDXL
+             use_native_unet = TRUE)
 ```
 
-### SDXL Native UNet Issue
+### SDXL Native UNet Fix (January 2026)
 
-The native SDXL UNet has a known issue where the forward pass produces ~12% mean error
-compared to TorchScript. Over multiple denoising steps, this compounds to garbage output.
+The native SDXL UNet initially had ~12% mean error due to incorrect `timestep_embedding()`:
 
-**Verified working:**
-- All 1680 weights load correctly (diff=0)
-- Architecture dimensions match TorchScript exactly
-- Correlation between outputs is 0.985 (structurally similar)
+**Root cause:** Model-specific parameters in shared utility function:
+- SDXL uses `flip_sin_to_cos=TRUE` (cos before sin), SD21 uses FALSE
+- SDXL uses `downscale_freq_shift=0` (divide by half_dim), SD21 uses 1
 
-**Investigation needed:**
-- Compare layer-by-layer against Python diffusers
-- Check for subtle differences in attention/transformer implementation
-- Possible float16 accumulation differences
+**Resolution:** Added config parameters to `timestep_embedding()` with correct defaults.
+Final output error: <0.1% (within float16 tolerance).
 
 ### Architecture Auto-Detection
 
@@ -134,13 +240,29 @@ All components now have native R torch implementations that work on Blackwell GP
 
 ### Model Files
 
+**Current (TorchScript - being phased out):**
+
 Models stored in `~/.local/share/R/diffuseR/{model_name}/`:
-- `unet-{device}-{dtype}.pt` (TorchScript - still required)
-- `decoder-{device}.pt` (TorchScript - used for weight loading)
-- `text_encoder-{device}.pt` (TorchScript - used for weight loading)
+- `unet-{device}-{dtype}.pt` (TorchScript)
+- `decoder-{device}.pt` (TorchScript)
+- `text_encoder-{device}.pt` (TorchScript)
 - `encoder-{device}.pt` (TorchScript)
 
 Downloaded from: `huggingface.co/datasets/cornball-ai/sdxl-R`
+
+**Future (safetensors):**
+
+Native torch modules will load weights directly from HuggingFace safetensors format:
+- No device-specific files needed
+- Direct loading from HuggingFace model repos
+- Smaller downloads (weights only, no traced graphs)
+
+```r
+# Future API (TODO)
+model <- load_from_hf("stabilityai/stable-diffusion-xl-base-1.0")
+```
+
+See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork until PR merged).
 
 ## Roadmap
 
