@@ -3,6 +3,9 @@
 \name{FeedForward}
 \alias{FeedForward}
 \title{FeedForward Network}
+\usage{
+FeedForward(dim, mult = 4L)
+}
 \description{
 FeedForward Network
 }

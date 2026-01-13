@@ -3,6 +3,9 @@
 \name{vae_decoder_native}
 \alias{vae_decoder_native}
 \title{Native VAE Decoder}
+\usage{
+vae_decoder_native(latent_channels = 4, out_channels = 3)
+}
 \arguments{
 \item{latent_channels}{Number of latent channels (default 4)}
 

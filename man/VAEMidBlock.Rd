@@ -3,6 +3,9 @@
 \name{VAEMidBlock}
 \alias{VAEMidBlock}
 \title{VAE Mid Block}
+\usage{
+VAEMidBlock(channels)
+}
 \arguments{
 \item{channels}{Number of channels}
 }

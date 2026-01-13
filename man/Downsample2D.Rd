@@ -3,6 +3,9 @@
 \name{Downsample2D}
 \alias{Downsample2D}
 \title{Downsample Block}
+\usage{
+Downsample2D(channels)
+}
 \description{
 Downsample Block
 }

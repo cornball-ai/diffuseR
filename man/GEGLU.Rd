@@ -3,6 +3,9 @@
 \name{GEGLU}
 \alias{GEGLU}
 \title{GEGLU Feedforward}
+\usage{
+GEGLU(dim_in, dim_out)
+}
 \description{
 GEGLU Feedforward
 }

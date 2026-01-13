@@ -3,6 +3,9 @@
 \name{VAEAttentionBlock}
 \alias{VAEAttentionBlock}
 \title{VAE Attention Block}
+\usage{
+VAEAttentionBlock(channels)
+}
 \arguments{
 \item{channels}{Number of channels}
 }

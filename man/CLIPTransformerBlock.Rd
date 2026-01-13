@@ -3,6 +3,9 @@
 \name{CLIPTransformerBlock}
 \alias{CLIPTransformerBlock}
 \title{CLIP Transformer Block}
+\usage{
+CLIPTransformerBlock(embed_dim, num_heads, mlp_dim, gelu_type = "tanh")
+}
 \arguments{
 \item{embed_dim}{Embedding dimension}
 

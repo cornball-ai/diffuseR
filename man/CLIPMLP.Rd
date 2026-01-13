@@ -3,6 +3,9 @@
 \name{CLIPMLP}
 \alias{CLIPMLP}
 \title{CLIP MLP Block}
+\usage{
+CLIPMLP(in_dim, hidden_dim, gelu_type = "tanh")
+}
 \arguments{
 \item{in_dim}{Input dimension}
 

@@ -3,6 +3,16 @@
 \name{unet_native}
 \alias{unet_native}
 \title{Native UNet for Stable Diffusion}
+\usage{
+unet_native(
+  in_channels = 4L,
+  out_channels = 4L,
+  block_out_channels = c(320L, 640L, 1280L, 1280L),
+  layers_per_block = 2L,
+  cross_attention_dim = 1024L,
+  attention_head_dim = 64L
+)
+}
 \arguments{
 \item{in_channels}{Input channels (default 4 for latent space)}
 

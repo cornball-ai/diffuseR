@@ -3,6 +3,17 @@
 \name{text_encoder_native}
 \alias{text_encoder_native}
 \title{Native CLIP Text Encoder}
+\usage{
+text_encoder_native(
+  vocab_size = 49408,
+  context_length = 77,
+  embed_dim = 768,
+  num_layers = 12,
+  num_heads = 12,
+  mlp_dim = 3072,
+  apply_final_ln = TRUE
+)
+}
 \arguments{
 \item{vocab_size}{Vocabulary size (default 49408)}
 

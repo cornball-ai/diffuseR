@@ -3,6 +3,19 @@
 \name{unet_sdxl_native}
 \alias{unet_sdxl_native}
 \title{Native SDXL UNet}
+\usage{
+unet_sdxl_native(
+  in_channels = 4L,
+  out_channels = 4L,
+  block_out_channels = c(320L, 640L, 1280L),
+  layers_per_block = 2L,
+  transformer_layers_per_block = c(0L, 2L, 10L),
+  cross_attention_dim = 2048L,
+  attention_head_dim = 64L,
+  addition_embed_dim = 1280L,
+  addition_time_embed_dim = 256L
+)
+}
 \arguments{
 \item{in_channels}{Input channels (default 4 for latent space)}
 

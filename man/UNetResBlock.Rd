@@ -3,6 +3,9 @@
 \name{UNetResBlock}
 \alias{UNetResBlock}
 \title{ResNet Block for UNet}
+\usage{
+UNetResBlock(in_channels, out_channels, time_embed_dim)
+}
 \description{
 ResNet Block for UNet
 }

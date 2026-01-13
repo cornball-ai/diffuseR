@@ -3,6 +3,9 @@
 \name{CLIPAttention}
 \alias{CLIPAttention}
 \title{CLIP Attention Block}
+\usage{
+CLIPAttention(embed_dim, num_heads)
+}
 \arguments{
 \item{embed_dim}{Embedding dimension}
 
