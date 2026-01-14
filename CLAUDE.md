@@ -589,20 +589,18 @@ dt <- torch::torch_tensor(sigma_next - sigma, dtype = latent_dtype, device = dev
 latents <- latents + dt * noise_pred  # Stays float16
 ```
 
-### `$numpy()` fails on tensors from `with_no_grad()`
+### Converting tensors to R arrays
 
-**Bug:** Tensors created inside `with_no_grad()` have corrupted method references. Calling `$numpy()` fails with: `Error: could not find function "fn"`.
+Use `as.array()` to convert torch tensors to R arrays. The `$numpy()` method is a Python-ism that doesn't work in R torch:
 
 ```r
-# WRONG - fails
+# CORRECT - R idiom
 result <- with_no_grad({
   x <- some_model(input)
   x$cpu()
 })
-arr <- result$numpy()  # Error!
-
-# CORRECT - use as.array() instead
 arr <- as.array(result)  # Works
-```
 
-This affects any tensor returned from a `with_no_grad()` block. Use `as.array()` for conversion to R arrays.
+# WRONG - Python-ism, doesn't exist in R torch
+arr <- result$numpy()  # Error: could not find function "fn"
+```
