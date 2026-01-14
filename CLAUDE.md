@@ -432,10 +432,61 @@ if (attention_mask$ndim == 2L) {
 
 **Flexible text encoding backends:**
 The `encode_text_ltx2()` function supports multiple backends:
+- `"gemma3"`: Native R torch Gemma3 encoder (no Python dependency)
 - `"precomputed"`: Load from file (cached embeddings)
 - `"api"`: HTTP request to external service (Gemma container)
 - `"random"`: Random embeddings for testing
-- Future: native Gemma3 in R torch
+
+#### Native Gemma3 Text Encoder
+
+Full Gemma3 12B implementation in R torch (`R/gemma3_text_encoder.R`):
+
+```r
+# Load tokenizer and model
+tokenizer <- gemma3_tokenizer("/path/to/LTX-2/tokenizer")
+model <- load_gemma3_text_encoder("/path/to/LTX-2/text_encoder",
+                                   device = "cuda", dtype = "float16")
+
+# Encode prompts
+result <- encode_with_gemma3("A robot dancing", model = model, tokenizer = tokenizer)
+# Returns: list(prompt_embeds, prompt_attention_mask)
+
+# Or use in pipeline
+txt2vid_ltx2("A robot dancing", text_backend = "gemma3",
+             model_path = "/path/to/LTX-2/text_encoder")
+```
+
+**Architecture:**
+- 48 hidden layers, hidden_size = 3840
+- 16 attention heads, 8 KV heads (GQA)
+- Sliding window attention (1024 tokens) on 5/6 layers
+- RoPE with 8x scaling for 128K context
+
+#### Native BPE Tokenizer
+
+Pure R BPE tokenizer (`R/tokenizer_bpe.R`) - no Python/reticulate dependency:
+
+```r
+# Load from HuggingFace tokenizer.json format
+tok <- bpe_tokenizer("/path/to/tokenizer")
+
+# Encode text
+result <- encode_bpe(tok, c("hello world", "testing"),
+                      max_length = 128L,
+                      padding = "max_length",
+                      return_tensors = "pt")
+# Returns: list(input_ids, attention_mask) as torch tensors
+
+# Decode back
+text <- decode_bpe(tok, result$input_ids)
+```
+
+**Features:**
+- HuggingFace tokenizer.json format support
+- UTF-8 character handling
+- Left/right padding, truncation
+- Torch tensor output
+- SentencePiece-style space markers (▁)
 
 ## R torch API Quirks
 
@@ -504,3 +555,54 @@ torch::with_no_grad({
 # Or torch::local_no_grad() but be careful with scope
 # (only disables gradients within calling function)
 ```
+
+### R scalar promotion breaks float16
+
+When mixing R scalars with tensors, R promotes to float64, then the operation promotes the tensor:
+
+```r
+# WRONG - promotes to float32
+x <- some_float16_tensor
+y <- x * (1 + scale)  # scale is float16, but (1 + scale) becomes float64 in R
+
+# CORRECT - use tensor methods
+y <- x * scale$add(1)  # Preserves float16
+```
+
+Same issue with scalar multiplication:
+```r
+# WRONG - scalar promotes dtype
+noise_pred <- noise_uncond + guidance_scale * (noise_cond - noise_uncond)
+
+# CORRECT - use tensor method
+noise_pred <- noise_uncond + (noise_cond - noise_uncond)$mul(guidance_scale)
+```
+
+And with FlowMatch/Euler step:
+```r
+# WRONG - R numeric creates float64
+dt <- sigma_next - sigma  # Float64
+latents <- latents + dt * noise_pred  # Promotes to float32
+
+# CORRECT - create tensor with explicit dtype
+dt <- torch::torch_tensor(sigma_next - sigma, dtype = latent_dtype, device = device)
+latents <- latents + dt * noise_pred  # Stays float16
+```
+
+### `$numpy()` fails on tensors from `with_no_grad()`
+
+**Bug:** Tensors created inside `with_no_grad()` have corrupted method references. Calling `$numpy()` fails with: `Error: could not find function "fn"`.
+
+```r
+# WRONG - fails
+result <- with_no_grad({
+  x <- some_model(input)
+  x$cpu()
+})
+arr <- result$numpy()  # Error!
+
+# CORRECT - use as.array() instead
+arr <- as.array(result)  # Works
+```
+
+This affects any tensor returned from a `with_no_grad()` block. Use `as.array()` for conversion to R arrays.
