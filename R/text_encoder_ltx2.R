@@ -335,12 +335,16 @@ ltx2_text_connectors <- torch::nn_module(
 #' Encode Text for LTX2
 #'
 #' Encodes text prompts for LTX2 video generation. Supports multiple backends:
+#' - "gemma3": Native R torch Gemma3 text encoder
 #' - "precomputed": Load pre-computed embeddings from file
 #' - "api": Call an HTTP API for text encoding
 #' - "random": Generate random embeddings (for testing only)
 #'
 #' @param prompt Character vector of prompts.
-#' @param backend Character. Backend to use ("precomputed", "api", "random").
+#' @param backend Character. Backend to use ("gemma3", "precomputed", "api", "random").
+#' @param model_path Character. Path to Gemma3 model directory (for "gemma3" backend).
+#' @param tokenizer_path Character. Path to tokenizer (for "gemma3" backend, defaults to model_path).
+#' @param text_encoder Pre-loaded Gemma3 text encoder module (for "gemma3" backend).
 #' @param embeddings_file Character. Path to pre-computed embeddings (for "precomputed" backend).
 #' @param api_url Character. URL of text encoding API (for "api" backend).
 #' @param max_sequence_length Integer. Maximum sequence length (default 1024).
@@ -351,6 +355,9 @@ ltx2_text_connectors <- torch::nn_module(
 #' @return List with prompt_embeds and prompt_attention_mask tensors.
 #' @export
 encode_text_ltx2 <- function(prompt, backend = "random",
+                              model_path = NULL,
+                              tokenizer_path = NULL,
+                              text_encoder = NULL,
                               embeddings_file = NULL,
                               api_url = NULL,
                               max_sequence_length = 1024L,
@@ -361,7 +368,24 @@ encode_text_ltx2 <- function(prompt, backend = "random",
   prompt <- if (is.character(prompt) && length(prompt) == 1) list(prompt) else as.list(prompt)
   batch_size <- length(prompt)
 
-  if (backend == "precomputed") {
+  if (backend == "gemma3") {
+    # Native Gemma3 text encoding
+    dtype_str <- if (identical(dtype, torch::torch_float16())) "float16" else "float32"
+
+    result <- encode_with_gemma3(
+      prompts = unlist(prompt),
+      model = text_encoder %||% model_path,
+      tokenizer = tokenizer_path %||% model_path,
+      max_sequence_length = max_sequence_length,
+      device = device,
+      dtype = dtype_str,
+      verbose = FALSE
+    )
+
+    prompt_embeds <- result$prompt_embeds$to(dtype = dtype)
+    prompt_attention_mask <- result$prompt_attention_mask
+
+  } else if (backend == "precomputed") {
     if (is.null(embeddings_file)) {
       stop("embeddings_file required for precomputed backend")
     }
@@ -392,14 +416,14 @@ encode_text_ltx2 <- function(prompt, backend = "random",
 
   } else if (backend == "random") {
     # Generate random embeddings (for testing)
-    message("Using random embeddings - for testing only!")
+    message("Using random embeddings - for testing only")
     prompt_embeds <- torch::torch_randn(c(batch_size, max_sequence_length, caption_channels),
                                          device = device, dtype = dtype)
     prompt_attention_mask <- torch::torch_ones(c(batch_size, max_sequence_length),
                                                 device = device, dtype = torch::torch_int64())
 
   } else {
-    stop("Unknown backend: ", backend)
+    stop("Unknown backend: ", backend, ". Use 'gemma3', 'precomputed', 'api', or 'random'")
   }
 
   list(

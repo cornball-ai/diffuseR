@@ -7,6 +7,9 @@
 encode_text_ltx2(
   prompt,
   backend = "random",
+  model_path = NULL,
+  tokenizer_path = NULL,
+  text_encoder = NULL,
   embeddings_file = NULL,
   api_url = NULL,
   max_sequence_length = 1024L,
@@ -18,7 +21,14 @@ encode_text_ltx2(
 \arguments{
 \item{prompt}{Character vector of prompts.}
 
-\item{backend}{Character. Backend to use ("precomputed", "api", "random").}
+\item{backend}{Character. Backend to use ("gemma3", "precomputed", "api", "random").}
+
+\item{model_path}{Character. Path to Gemma3 model directory (for "gemma3" backend).}
+
+\item{tokenizer_path}{Character. Path to tokenizer (for "gemma3" backend, defaults to
+model_path).}
+
+\item{text_encoder}{Pre-loaded Gemma3 text encoder module (for "gemma3" backend).}
 
 \item{embeddings_file}{Character. Path to pre-computed embeddings (for "precomputed" backend).}
 
@@ -37,7 +47,8 @@ List with prompt_embeds and prompt_attention_mask tensors.
 }
 \description{
 Encodes text prompts for LTX2 video generation. Supports multiple
-backends: - "precomputed": Load pre-computed embeddings from file -
-"api": Call an HTTP API for text encoding - "random": Generate random
-embeddings (for testing only)
+backends: - "gemma3": Native R torch Gemma3 text encoder -
+"precomputed": Load pre-computed embeddings from file - "api": Call an
+HTTP API for text encoding - "random": Generate random embeddings (for
+testing only)
 }
