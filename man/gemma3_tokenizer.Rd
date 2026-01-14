@@ -7,9 +7,12 @@
 gemma3_tokenizer(tokenizer_path)
 }
 \arguments{
-\item{tokenizer_path}{Character. Path to tokenizer directory or tokenizer.model file.}
+\item{tokenizer_path}{Character. Path to tokenizer directory or tokenizer.json file.}
+}
+\value{
+A gemma3_tokenizer object (extends bpe_tokenizer).
 }
 \description{
-Wrapper for SentencePiece tokenizer used by Gemma3. Requires the
-tokenizer.json file from HuggingFace.
+Native R tokenizer for Gemma3 using BPE. Loads from HuggingFace
+tokenizer.json format.
 }

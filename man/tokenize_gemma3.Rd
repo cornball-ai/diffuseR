@@ -8,7 +8,7 @@ tokenize_gemma3(
   tokenizer,
   text,
   max_length = 1024L,
-  padding = "left",
+  padding = "max_length",
   return_tensors = "pt"
 )
 }
@@ -19,12 +19,12 @@ tokenize_gemma3(
 
 \item{max_length}{Integer. Maximum sequence length.}
 
-\item{padding}{Character. Padding side ("left" or "right").}
+\item{padding}{Character. Padding strategy ("left", "right", "max_length", "none").}
 
-\item{return_tensors}{Character. Return type ("pt" for torch tensors).}
+\item{return_tensors}{Character. Return type ("list" or "pt" for torch tensors).}
 }
 \value{
-List with input_ids and attention_mask tensors.
+List with input_ids and attention_mask.
 }
 \description{
 Tokenize text for Gemma3

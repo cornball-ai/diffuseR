@@ -651,37 +651,24 @@ load_gemma3_weights <- function(model, weights, verbose = TRUE) {
 
 #' Gemma3 Tokenizer
 #'
-#' Wrapper for SentencePiece tokenizer used by Gemma3.
-#' Requires the tokenizer.json file from HuggingFace.
+#' Native R tokenizer for Gemma3 using BPE.
+#' Loads from HuggingFace tokenizer.json format.
 #'
-#' @param tokenizer_path Character. Path to tokenizer directory or tokenizer.model file.
+#' @param tokenizer_path Character. Path to tokenizer directory or tokenizer.json file.
+#' @return A gemma3_tokenizer object (extends bpe_tokenizer).
 #' @export
 gemma3_tokenizer <- function(tokenizer_path) {
-  # Check for tokenizer files
-  if (dir.exists(tokenizer_path)) {
-    tokenizer_model <- file.path(tokenizer_path, "tokenizer.model")
-    tokenizer_json <- file.path(tokenizer_path, "tokenizer.json")
-  } else {
-    tokenizer_model <- tokenizer_path
-    tokenizer_json <- NULL
-  }
+  # Load base BPE tokenizer
+  tokenizer <- bpe_tokenizer(tokenizer_path)
 
-  if (!file.exists(tokenizer_model) && !file.exists(tokenizer_json %||% "")) {
-    stop("Tokenizer not found. Need tokenizer.model or tokenizer.json in: ", tokenizer_path)
-  }
+  # Add Gemma-specific configuration
+  tokenizer$padding_side <- "left"  # Gemma uses left padding
 
-  # For now, we use a Python-based tokenizer via reticulate
-  # This is a practical approach since R doesn't have a good SentencePiece binding
-  structure(
-    list(
-      path = tokenizer_path,
-      vocab_size = 262208L,
-      pad_token_id = 0L,
-      eos_token_id = 1L,
-      bos_token_id = 2L
-    ),
-    class = "gemma3_tokenizer"
-  )
+  # Update class
+
+  class(tokenizer) <- c("gemma3_tokenizer", class(tokenizer))
+
+  tokenizer
 }
 
 #' Tokenize text for Gemma3
@@ -689,50 +676,28 @@ gemma3_tokenizer <- function(tokenizer_path) {
 #' @param tokenizer Gemma3 tokenizer object.
 #' @param text Character vector of prompts.
 #' @param max_length Integer. Maximum sequence length.
-#' @param padding Character. Padding side ("left" or "right").
-#' @param return_tensors Character. Return type ("pt" for torch tensors).
-#' @return List with input_ids and attention_mask tensors.
+#' @param padding Character. Padding strategy ("left", "right", "max_length", "none").
+#' @param return_tensors Character. Return type ("list" or "pt" for torch tensors).
+#' @return List with input_ids and attention_mask.
 #' @export
 tokenize_gemma3 <- function(tokenizer, text, max_length = 1024L,
-                             padding = "left", return_tensors = "pt") {
-  if (!inherits(tokenizer, "gemma3_tokenizer")) {
-    stop("tokenizer must be a gemma3_tokenizer object")
+                             padding = "max_length", return_tensors = "pt") {
+  if (!inherits(tokenizer, "gemma3_tokenizer") && !inherits(tokenizer, "bpe_tokenizer")) {
+    stop("tokenizer must be a gemma3_tokenizer or bpe_tokenizer object")
   }
 
-  # Use reticulate to call HuggingFace tokenizers
-  if (!requireNamespace("reticulate", quietly = TRUE)) {
-    stop("Package 'reticulate' required for tokenization. Install with: install.packages('reticulate')")
-  }
-
-  transformers <- reticulate::import("transformers", delay_load = TRUE)
-
-  # Load the tokenizer
-  hf_tokenizer <- transformers$AutoTokenizer$from_pretrained(tokenizer$path)
-  hf_tokenizer$padding_side <- padding
-
-  # Tokenize
-  result <- hf_tokenizer(
-    text,
-    max_length = as.integer(max_length),
-    padding = "max_length",
+  # Use native BPE encoding
+  result <- encode_bpe(
+    tokenizer = tokenizer,
+    text = text,
+    add_special_tokens = TRUE,
+    max_length = max_length,
+    padding = padding,
     truncation = TRUE,
-    return_tensors = "pt"
+    return_tensors = return_tensors
   )
 
-  # Convert to R torch tensors
-  input_ids <- torch::torch_tensor(
-    reticulate::py_to_r(result$input_ids$numpy()),
-    dtype = torch::torch_long()
-  )
-  attention_mask <- torch::torch_tensor(
-    reticulate::py_to_r(result$attention_mask$numpy()),
-    dtype = torch::torch_long()
-  )
-
-  list(
-    input_ids = input_ids,
-    attention_mask = attention_mask
-  )
+  result
 }
 
 # -----------------------------------------------------------------------------
