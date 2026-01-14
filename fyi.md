@@ -10,26 +10,34 @@
 | `apply_interleaved_rotary_emb` | x, freqs |
 | `apply_split_rotary_emb` | x, freqs |
 | `auto_devices` | model, strategy |
+| `bpe_tokenizer` | tokenizer_path |
 | `clear_vram` | verbose |
 | `CLIPTokenizer` | prompt, merges, vocab_file, pad_token |
 | `configure_vae_for_profile` | vae, profile |
 | `ddim_scheduler_create` | num_train_timesteps, num_inference_steps, eta, beta_schedule, beta_start, beta_end, rescale_betas_zero_snr, dtype, device |
 | `ddim_scheduler_step` | model_output, timestep, sample, schedule, eta, use_clipped_model_output, thresholding, generator, variance_noise, clip_sample, set_alpha_to_one, prediction_type, dtype, device |
+| `decode_bpe` | tokenizer, ids, skip_special_tokens |
 | `diagonal_gaussian_distribution` | parameters |
 | `dit_offloaded_forward` | hidden_states, layers, device, ... |
 | `download_component` | model_name, component, device, overwrite, show_progress |
 | `download_model` | model_name, devices, unet_dtype_str, overwrite, show_progress, download_models |
-| `encode_text_ltx2` | prompt, backend, embeddings_file, api_url, max_sequence_length, caption_channels, device, dtype |
+| `encode_bpe` | tokenizer, text, add_special_tokens, max_length, padding, truncation, return_tensors |
+| `encode_text_ltx2` | prompt, backend, model_path, tokenizer_path, text_encoder, embeddings_file, api_url, max_sequence_length, caption_channels, device, dtype |
+| `encode_with_gemma3` | prompts, model, tokenizer, max_sequence_length, scale_factor, device, dtype, verbose |
 | `filename_from_prompt` | prompt, datetime |
 | `flowmatch_calculate_shift` | seq_len, base_seq_len, max_seq_len, base_shift, max_shift |
 | `flowmatch_scale_noise` | sample, timestep, noise, schedule |
 | `flowmatch_scheduler_create` | num_train_timesteps, shift, use_dynamic_shifting, base_shift, max_shift, base_seq_len, max_seq_len, invert_sigmas, shift_terminal, time_shift_type |
 | `flowmatch_scheduler_step` | model_output, timestep, sample, schedule, generator |
 | `flowmatch_set_timesteps` | schedule, num_inference_steps, device, mu, sigmas, timesteps |
+| `gemma3_config_ltx2` |  |
+| `gemma3_text_model` | config |
+| `gemma3_tokenizer` | tokenizer_path |
 | `img2img` | input_image, prompt, negative_prompt, img_dim, model_name, pipeline, devices, unet_dtype_str, download_models, scheduler, num_inference_steps, strength, guidance_scale, seed, save_file, filename, metadata_path, use_native_decoder, use_native_text_encoder, use_native_unet, ... |
 | `is_blackwell_gpu` |  |
 | `latents_to_video` | latents, vae, file, fps, ... |
 | `load_decoder_weights` | native_decoder, torchscript_path, verbose |
+| `load_gemma3_text_encoder` | model_path, device, dtype, verbose |
 | `load_ltx2_connectors` | weights_path, config_path, device, dtype, verbose |
 | `load_ltx2_transformer` | weights_dir, config_path, device, dtype, verbose |
 | `load_ltx2_vae` | weights_path, config_path, device, dtype, verbose |
@@ -71,6 +79,7 @@
 | `sequential_cfg_forward` | model, latents, timestep, prompt_embeds, negative_prompt_embeds, guidance_scale, ... |
 | `text_encoder_native` | vocab_size, context_length, embed_dim, num_layers, num_heads, mlp_dim, apply_final_ln |
 | `text_encoder2_native` | vocab_size, context_length, embed_dim, num_layers, num_heads, mlp_dim |
+| `tokenize_gemma3` | tokenizer, text, max_length, padding, return_tensors |
 | `txt2img` | prompt, model_name, ... |
 | `txt2img_sd21` | prompt, negative_prompt, img_dim, pipeline, devices, unet_dtype_str, download_models, scheduler, timesteps, initial_latents, num_inference_steps, guidance_scale, seed, save_file, filename, metadata_path, use_native_decoder, use_native_text_encoder, use_native_unet, ... |
 | `txt2img_sdxl` | prompt, negative_prompt, img_dim, pipeline, devices, memory_profile, unet_dtype_str, download_models, scheduler, timesteps, initial_latents, num_inference_steps, guidance_scale, seed, save_file, filename, metadata_path, use_native_decoder, use_native_text_encoder, use_native_unet, verbose, ... |
@@ -81,6 +90,7 @@
 | `unet_sdxl_native_from_torchscript` | torchscript_path, verbose |
 | `vae_decoder_native` | latent_channels, out_channels |
 | `validate_resolution` | height, width, num_frames, profile |
+| `vocab_size` | tokenizer |
 | `vram_report` | label |
 
 
@@ -96,23 +106,36 @@
 | `.flowmatch_stretch_shift_to_terminal` | t, shift_terminal |
 | `.flowmatch_time_shift` | mu, sigma, t, shift_type |
 | `%||%` | x, y |
+| `apply_bpe_merges` | tokens, merge_priority, vocab |
 | `apply_interleaved_rotary_emb_list` | x, freqs |
+| `apply_rotary_pos_emb` | q, k, cos, sin |
 | `BasicTransformerBlock` | dim, n_heads, d_head, context_dim |
 | `CLIPAttention` | embed_dim, num_heads |
 | `CLIPMLP` | in_dim, hidden_dim, gelu_type |
 | `CLIPTransformerBlock` | embed_dim, num_heads, mlp_dim, gelu_type |
+| `create_sliding_window_mask` | seq_len, window_size, device |
 | `detect_text_encoder_architecture` | torchscript_path |
 | `detect_unet_architecture` | torchscript_path |
 | `detect_unet_sdxl_architecture` | torchscript_path |
 | `Downsample2D` | channels |
+| `encode_single` | tokenizer, text, add_special_tokens |
 | `feed_forward` | dim, dim_out, mult, dropout, activation_fn, inner_dim, bias |
 | `FeedForward` | dim, mult |
 | `GEGLU` | dim_in, dim_out |
 | `gelu_activation` | dim_in, dim_out, approximate, bias |
+| `gemma3_attention` | config, layer_idx |
+| `gemma3_decoder_layer` | config, layer_idx |
+| `gemma3_mlp` | config |
+| `gemma3_rms_norm` | dim, eps |
+| `gemma3_rotary_embedding` | dim, max_position_embeddings, base, scaling_factor |
+| `get_bos_id` | tokenizer |
 | `get_component_file_path` | component, model_dir, device, unet_dtype_str |
+| `get_eos_id` | tokenizer |
+| `get_pad_id` | tokenizer |
 | `get_required_components` | model_name |
 | `get_timestep_embedding` | timesteps, embedding_dim, flip_sin_to_cos, downscale_freq_shift, scale, max_period |
 | `group_norm_32` | channels |
+| `load_gemma3_weights` | model, weights, verbose |
 | `load_ltx2_connector_weights` | connectors, weights, verbose |
 | `load_ltx2_transformer_sharded` | transformer, weights_dir, index_path, verbose |
 | `load_ltx2_transformer_weights` | transformer, weights, verbose |
@@ -127,9 +150,11 @@
 | `ltx2_video_transformer_block` | dim, num_attention_heads, attention_head_dim, cross_attention_dim, audio_dim, audio_num_attention_heads, audio_attention_head_dim, audio_cross_attention_dim, qk_norm, activation_fn, attention_bias, attention_out_bias, eps, elementwise_affine, rope_type |
 | `pixart_alpha_combined_timestep_size_embeddings` | embedding_dim, size_emb_dim, use_additional_conditions |
 | `pixart_alpha_text_projection` | in_features, hidden_size, out_features, act_fn |
+| `print.bpe_tokenizer` | x, ... |
 | `quick_gelu` | x |
 | `rescale_zero_terminal_snr` | betas |
 | `rms_norm` | dim, eps, elementwise_affine |
+| `rotate_half` | x |
 | `save_video_av` | video, file, fps, verbose |
 | `save_video_ffmpeg` | video, file, fps, format, quality, verbose |
 | `setup_dtype` | devices, unet_dtype_str |
@@ -156,6 +181,21 @@ No options found in `diffuseR`.
 
 
 # Documentation: diffuseR
+
+## apply_bpe_merges
+
+### Apply BPE merge rules
+
+#### Description
+
+Apply BPE merge rules
+
+#### Usage
+
+```r
+apply_bpe_merges(tokens, merge_priority, vocab)
+```
+
 
 ## apply_interleaved_rotary_emb_list
 
@@ -195,6 +235,28 @@ apply_interleaved_rotary_emb(x, freqs)
 #### Value
 
 torch tensor. Rotated tensor with same shape as input.
+
+
+## apply_rotary_pos_emb
+
+### Apply rotary position embeddings
+
+#### Description
+
+Apply rotary position embeddings
+
+#### Usage
+
+```r
+apply_rotary_pos_emb(q, k, cos, sin)
+```
+
+#### Arguments
+
+- **`q`**: Query tensor [batch, heads, seq, head_dim]
+- **`k`**: Key tensor [batch, heads, seq, head_dim]
+- **`cos`**: Cosine embeddings [batch, seq, head_dim]
+- **`sin`**: Sine embeddings [batch, seq, head_dim]
 
 
 ## apply_split_rotary_emb
@@ -290,6 +352,30 @@ Basic Transformer Block
 ```r
 BasicTransformerBlock(dim, n_heads, d_head, context_dim = NULL)
 ```
+
+
+## bpe_tokenizer
+
+### BPE Tokenizer
+
+#### Description
+
+Native R implementation of Byte-Pair Encoding tokenizer. Loads from
+HuggingFace tokenizer.json format.
+
+#### Usage
+
+```r
+bpe_tokenizer(tokenizer_path)
+```
+
+#### Arguments
+
+- **`tokenizer_path`**: Path to tokenizer.json or directory containing it.
+
+#### Value
+
+A bpe_tokenizer object.
 
 
 ## clear_vram
@@ -446,6 +532,21 @@ The VAE (modified in place).
 profile <- ltx2_memory_profile(vram_gb = 8)
 vae <- load_ltx2_vae(...)
 configure_vae_for_profile(vae, profile)
+```
+
+
+## create_sliding_window_mask
+
+### Create sliding window causal attention mask
+
+#### Description
+
+Create sliding window causal attention mask
+
+#### Usage
+
+```r
+create_sliding_window_mask(seq_len, window_size, device = "cpu")
 ```
 
 
@@ -634,6 +735,31 @@ result <- ddim_scheduler_step(
   eta = 0,  # Deterministic sampling
   prediction_type = "epsilon")
 ```
+
+
+## decode_bpe
+
+### Decode token IDs to text
+
+#### Description
+
+Decode token IDs to text
+
+#### Usage
+
+```r
+decode_bpe(tokenizer, ids, skip_special_tokens = TRUE)
+```
+
+#### Arguments
+
+- **`tokenizer`**: A bpe_tokenizer object.
+- **`ids`**: Integer vector or matrix of token IDs.
+- **`skip_special_tokens`**: Logical. Skip special tokens in output.
+
+#### Value
+
+Character string or vector.
 
 
 ## detect_text_encoder_architecture
@@ -943,6 +1069,58 @@ Downsample2D(channels)
 ```
 
 
+## encode_bpe
+
+### Encode text to token IDs
+
+#### Description
+
+Encode text to token IDs
+
+#### Usage
+
+```r
+encode_bpe(
+  tokenizer,
+  text,
+  add_special_tokens = TRUE,
+  max_length = NULL,
+  padding = "none",
+  truncation = FALSE,
+  return_tensors = "list"
+)
+```
+
+#### Arguments
+
+- **`tokenizer`**: A bpe_tokenizer object.
+- **`text`**: Character string or vector to encode.
+- **`add_special_tokens`**: Logical. Add BOS/EOS tokens.
+- **`max_length`**: Integer. Maximum sequence length (NULL for no limit).
+- **`padding`**: Character. Padding strategy: "none", "max_length", or "longest".
+- **`truncation`**: Logical. Truncate to max_length.
+- **`return_tensors`**: Character. Return type: "list" or "pt" (torch tensors).
+
+#### Value
+
+List with input_ids and attention_mask.
+
+
+## encode_single
+
+### Encode a single text string
+
+#### Description
+
+Encode a single text string
+
+#### Usage
+
+```r
+encode_single(tokenizer, text, add_special_tokens = TRUE)
+```
+
+
 ## encode_text_ltx2
 
 ### Encode Text for LTX2
@@ -950,9 +1128,10 @@ Downsample2D(channels)
 #### Description
 
 Encodes text prompts for LTX2 video generation. Supports multiple
-backends: - "precomputed": Load pre-computed embeddings from file -
-"api": Call an HTTP API for text encoding - "random": Generate random
-embeddings (for testing only)
+backends: - "gemma3": Native R torch Gemma3 text encoder -
+"precomputed": Load pre-computed embeddings from file - "api": Call an
+HTTP API for text encoding - "random": Generate random embeddings (for
+testing only)
 
 #### Usage
 
@@ -960,6 +1139,9 @@ embeddings (for testing only)
 encode_text_ltx2(
   prompt,
   backend = "random",
+  model_path = NULL,
+  tokenizer_path = NULL,
+  text_encoder = NULL,
   embeddings_file = NULL,
   api_url = NULL,
   max_sequence_length = 1024L,
@@ -972,7 +1154,11 @@ encode_text_ltx2(
 #### Arguments
 
 - **`prompt`**: Character vector of prompts.
-- **`backend`**: Character. Backend to use ("precomputed", "api", "random").
+- **`backend`**: Character. Backend to use ("gemma3", "precomputed", "api", "random").
+- **`model_path`**: Character. Path to Gemma3 model directory (for "gemma3" backend).
+- **`tokenizer_path`**: Character. Path to tokenizer (for "gemma3" backend, defaults to
+model_path).
+- **`text_encoder`**: Pre-loaded Gemma3 text encoder module (for "gemma3" backend).
 - **`embeddings_file`**: Character. Path to pre-computed embeddings (for "precomputed" backend).
 - **`api_url`**: Character. URL of text encoding API (for "api" backend).
 - **`max_sequence_length`**: Integer. Maximum sequence length (default 1024).
@@ -983,6 +1169,46 @@ encode_text_ltx2(
 #### Value
 
 List with prompt_embeds and prompt_attention_mask tensors.
+
+
+## encode_with_gemma3
+
+### Encode text with Gemma3 for LTX-2
+
+#### Description
+
+Full pipeline for encoding text prompts using Gemma3 text encoder.
+Returns packed embeddings ready for LTX-2 connectors.
+
+#### Usage
+
+```r
+encode_with_gemma3(
+  prompts,
+  model = NULL,
+  tokenizer = NULL,
+  max_sequence_length = 1024L,
+  scale_factor = 8,
+  device = "cuda",
+  dtype = "float16",
+  verbose = TRUE
+)
+```
+
+#### Arguments
+
+- **`prompts`**: Character vector of prompts.
+- **`model`**: Gemma3 text model (or path to load from).
+- **`tokenizer`**: Gemma3 tokenizer (or path to load from).
+- **`max_sequence_length`**: Integer. Maximum sequence length.
+- **`scale_factor`**: Numeric. Scale factor for packing (default 8).
+- **`device`**: Character. Device for computation.
+- **`dtype`**: Character. Data type.
+- **`verbose`**: Logical. Print progress.
+
+#### Value
+
+List with prompt_embeds and prompt_attention_mask.
 
 
 ## feed_forward
@@ -1315,6 +1541,220 @@ gelu_activation(dim_in, dim_out, approximate = "none", bias = TRUE)
 ```
 
 
+## gemma3_attention
+
+### Gemma3 Attention
+
+#### Description
+
+Multi-head attention with Grouped Query Attention (GQA) and optional
+sliding window attention.
+
+#### Usage
+
+```r
+gemma3_attention(config, layer_idx = 0L)
+```
+
+#### Arguments
+
+- **`config`**: Model configuration.
+- **`layer_idx`**: Integer. Layer index for layer-specific settings.
+
+
+## gemma3_config_ltx2
+
+### Create Gemma3 configuration for LTX-2
+
+#### Description
+
+Returns the default configuration used by LTX-2's text encoder.
+
+#### Usage
+
+```r
+gemma3_config_ltx2()
+```
+
+#### Value
+
+List with model configuration parameters.
+
+
+## gemma3_decoder_layer
+
+### Gemma3 Decoder Layer
+
+#### Description
+
+Single transformer block with pre-norm attention and MLP.
+
+#### Usage
+
+```r
+gemma3_decoder_layer(config, layer_idx = 0L)
+```
+
+#### Arguments
+
+- **`config`**: Model configuration.
+- **`layer_idx`**: Integer. Layer index.
+
+
+## gemma3_mlp
+
+### Gemma3 MLP
+
+#### Description
+
+Feed-forward network with gated linear units and GELU activation.
+
+#### Usage
+
+```r
+gemma3_mlp(config)
+```
+
+#### Arguments
+
+- **`config`**: List with hidden_size and intermediate_size.
+
+
+## gemma3_rms_norm
+
+### Gemma3 RMS Normalization
+
+#### Description
+
+RMSNorm with optional addition of 1 to weights (Gemma-style).
+
+#### Usage
+
+```r
+gemma3_rms_norm(dim, eps = 1e-06)
+```
+
+#### Arguments
+
+- **`dim`**: Integer. Hidden dimension.
+- **`eps`**: Numeric. Epsilon for numerical stability.
+
+
+## gemma3_rotary_embedding
+
+### Gemma3 Rotary Position Embeddings
+
+#### Description
+
+Standard RoPE with optional scaling factor for extended context.
+
+#### Usage
+
+```r
+gemma3_rotary_embedding(
+  dim,
+  max_position_embeddings = 8192L,
+  base = 10000,
+  scaling_factor = 1
+)
+```
+
+#### Arguments
+
+- **`dim`**: Integer. Head dimension.
+- **`max_position_embeddings`**: Integer. Maximum sequence length.
+- **`base`**: Numeric. RoPE base frequency.
+- **`scaling_factor`**: Numeric. Optional scaling factor for extended context.
+
+
+## gemma3_text_model
+
+### Gemma3 Text Model
+
+#### Description
+
+Full Gemma3 text encoder model.
+
+#### Usage
+
+```r
+gemma3_text_model(config)
+```
+
+#### Arguments
+
+- **`config`**: Model configuration list.
+
+
+## gemma3_tokenizer
+
+### Gemma3 Tokenizer
+
+#### Description
+
+Native R tokenizer for Gemma3 using BPE. Loads from HuggingFace
+tokenizer.json format.
+
+#### Usage
+
+```r
+gemma3_tokenizer(tokenizer_path)
+```
+
+#### Arguments
+
+- **`tokenizer_path`**: Character. Path to tokenizer directory or tokenizer.json file.
+
+#### Value
+
+A gemma3_tokenizer object (extends bpe_tokenizer).
+
+
+## get_bos_id
+
+### Get BOS token ID
+
+#### Description
+
+Get BOS token ID
+
+#### Usage
+
+```r
+get_bos_id(tokenizer)
+```
+
+
+## get_eos_id
+
+### Get EOS token ID
+
+#### Description
+
+Get EOS token ID
+
+#### Usage
+
+```r
+get_eos_id(tokenizer)
+```
+
+
+## get_pad_id
+
+### Get padding token ID
+
+#### Description
+
+Get padding token ID
+
+#### Usage
+
+```r
+get_pad_id(tokenizer)
+```
+
+
 ## get_required_components
 
 ### Get required components for each model type
@@ -1531,6 +1971,52 @@ load_decoder_weights(native_decoder, torchscript_path, verbose = TRUE)
 The native decoder with loaded weights (invisibly)
 
 
+## load_gemma3_text_encoder
+
+### Load Gemma3 Text Model from safetensors
+
+#### Description
+
+Loads pre-trained Gemma3 weights from HuggingFace safetensors files.
+
+#### Usage
+
+```r
+load_gemma3_text_encoder(
+  model_path,
+  device = "cpu",
+  dtype = "float16",
+  verbose = TRUE
+)
+```
+
+#### Arguments
+
+- **`model_path`**: Character. Path to directory containing model files.
+- **`device`**: Character. Device to load model to.
+- **`dtype`**: Character. Data type ("float32", "float16", "bfloat16").
+- **`verbose`**: Logical. Print loading progress.
+
+#### Value
+
+Initialized gemma3_text_model with loaded weights.
+
+
+## load_gemma3_weights
+
+### Load weights into Gemma3 model
+
+#### Description
+
+Load weights into Gemma3 model
+
+#### Usage
+
+```r
+load_gemma3_weights(model, weights, verbose = TRUE)
+```
+
+
 ## load_ltx2_connector_weights
 
 ### Load weights into LTX2 connectors module
@@ -1716,8 +2202,10 @@ load_ltx2_vae(
 
 #### Arguments
 
-- **`weights_path`**: Character. Path to safetensors file.
-- **`config_path`**: Character. Optional path to config.json. If NULL, uses default config.
+- **`weights_path`**: Character. Path to safetensors file or directory containing weights.
+- **`config_path`**: Character. Optional path to config.json. If NULL and weights_path is a
+directory, looks for config.json in that directory. Otherwise uses
+default config.
 - **`device`**: Character. Device to load weights to. Default: "cpu"
 - **`dtype`**: Character or torch dtype. Data type. Default: "float32"
 - **`verbose`**: Logical. Print loading progress. Default: TRUE
@@ -2964,6 +3452,26 @@ preprocess_image(input, device = "cpu", width = 512, height = 512)
 Torch tensor of shape c(1, 3, 512, 512), scaled to c(-1, 1)
 
 
+## print.bpe_tokenizer
+
+### Print BPE Tokenizer
+
+#### Description
+
+Print BPE Tokenizer
+
+#### Usage
+
+```r
+print.bpe_tokenizer(x, ...)
+```
+
+#### Arguments
+
+- **`x`**: A bpe_tokenizer object.
+- **`...`**: Additional arguments (ignored).
+
+
 ## quant_conv
 
 ### Quant Conv
@@ -3141,6 +3649,21 @@ rope_prepare_video_coords(
 #### Value
 
 torch tensor of shape (batch_size, 3, num_patches, 2).
+
+
+## rotate_half
+
+### Rotate half of the hidden dims
+
+#### Description
+
+Rotate half of the hidden dims
+
+#### Usage
+
+```r
+rotate_half(x)
+```
 
 
 ## save_frames
@@ -3671,6 +4194,39 @@ timesteps_module(
   scale = 1L
 )
 ```
+
+
+## tokenize_gemma3
+
+### Tokenize text for Gemma3
+
+#### Description
+
+Tokenize text for Gemma3
+
+#### Usage
+
+```r
+tokenize_gemma3(
+  tokenizer,
+  text,
+  max_length = 1024L,
+  padding = "max_length",
+  return_tensors = "pt"
+)
+```
+
+#### Arguments
+
+- **`tokenizer`**: Gemma3 tokenizer object.
+- **`text`**: Character vector of prompts.
+- **`max_length`**: Integer. Maximum sequence length.
+- **`padding`**: Character. Padding strategy ("left", "right", "max_length", "none").
+- **`return_tensors`**: Character. Return type ("list" or "pt" for torch tensors).
+
+#### Value
+
+List with input_ids and attention_mask.
 
 
 ## txt2img_sd21
@@ -4279,6 +4835,29 @@ List with adjusted height, width, num_frames and warning if adjusted.
 profile <- ltx2_memory_profile(vram_gb = 8)
 validated <- validate_resolution(720, 1280, 60, profile)
 ```
+
+
+## vocab_size
+
+### Get vocabulary size
+
+#### Description
+
+Get vocabulary size
+
+#### Usage
+
+```r
+vocab_size(tokenizer)
+```
+
+#### Arguments
+
+- **`tokenizer`**: A bpe_tokenizer object.
+
+#### Value
+
+Integer vocabulary size.
 
 
 ## vram_report
