@@ -79,9 +79,7 @@ txt2vid_ltx2 <- function(
   # Set seed if provided
   if (!is.null(seed)) {
     torch::torch_manual_seed(seed)
-    if (torch::cuda_is_available()) {
-      torch::cuda_manual_seed(seed)
-    }
+    # torch_manual_seed sets both CPU and CUDA seeds
   }
 
   # Resolve memory profile
@@ -273,13 +271,14 @@ txt2vid_ltx2 <- function(
         # Batched CFG
         latents_input <- torch::torch_cat(list(latents, latents), dim = 1L)
         prompt_input <- torch::torch_cat(list(negative_prompt_embeds, prompt_embeds), dim = 1L)
+        timestep_input <- torch::torch_cat(list(timestep, timestep), dim = 1L)
 
         output <- dit(
           hidden_states = latents_input,
           audio_hidden_states = torch::torch_cat(list(audio_latents, audio_latents), dim = 1L),
           encoder_hidden_states = prompt_input,
           audio_encoder_hidden_states = prompt_input,
-          timestep = timestep,
+          timestep = timestep_input,
           num_frames = latent_frames,
           height = latent_height,
           width = latent_width,
@@ -290,11 +289,12 @@ txt2vid_ltx2 <- function(
         noise_pred_all <- output$sample
         noise_pred_uncond <- noise_pred_all[1, , ]$unsqueeze(1L)
         noise_pred_cond <- noise_pred_all[2, , ]$unsqueeze(1L)
-        noise_pred <- noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+        # CFG: use tensor method to preserve dtype
+        noise_pred <- noise_pred_uncond + (noise_pred_cond - noise_pred_uncond)$mul(guidance_scale)
       }
 
       # FlowMatch step
-      dt <- sigma_next - sigma
+      dt <- torch::torch_tensor(sigma_next - sigma, dtype = latent_dtype, device = dit_device)
       latents <- latents + dt * noise_pred
 
       # Cleanup for low memory
@@ -325,13 +325,20 @@ txt2vid_ltx2 <- function(
       video_tensor <- vae$decode(latents)
     }
 
-    # Convert to array [T, H, W, C]
-    video_array <- video_tensor$squeeze(1L)$permute(c(2, 3, 4, 1))$cpu()$numpy()
+    # Prepare tensor for conversion to R array
+    # NOTE: Must use as.array() instead of $numpy() due to R torch bug where
 
-    # Clamp to [0, 1]
-    video_array <- pmax(pmin(video_array, 1), 0)
+    # tensors returned from with_no_grad() have corrupted method references
+    # (error: "could not find function 'fn'"). See cornyverse CLAUDE.md.
+    video_cpu <- video_tensor$squeeze(1L)$permute(c(2, 3, 4, 1))$cpu()
 
   })  # end with_no_grad
+
+  # Convert to R array (as.array works, $numpy() fails on tensors from with_no_grad)
+  video_array <- as.array(video_cpu)
+
+  # Clamp to [0, 1]
+  video_array <- pmax(pmin(video_array, 1), 0)
 
   # ---- Step 7: Save Output ----
   if (!is.null(output_file)) {

@@ -13,9 +13,11 @@ load_ltx2_vae(
 )
 }
 \arguments{
-\item{weights_path}{Character. Path to safetensors file.}
+\item{weights_path}{Character. Path to safetensors file or directory containing weights.}
 
-\item{config_path}{Character. Optional path to config.json. If NULL, uses default config.}
+\item{config_path}{Character. Optional path to config.json. If NULL and weights_path is a
+directory, looks for config.json in that directory. Otherwise uses
+default config.}
 
 \item{device}{Character. Device to load weights to. Default: "cpu"}
 

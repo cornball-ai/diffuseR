@@ -14,8 +14,12 @@ get_timestep_embedding <- function(timesteps, embedding_dim, flip_sin_to_cos = F
     timesteps <- timesteps$flatten()
   }
 
+  # Store original dtype to convert back at end
+  orig_dtype <- timesteps$dtype
+
   half_dim <- embedding_dim %/% 2L
 
+  # Compute in float32 for numerical precision
   exponent <- -log(max_period) * torch::torch_arange(
     start = 0, end = half_dim - 1L, dtype = torch::torch_float32(), device = timesteps$device
   )
@@ -41,6 +45,9 @@ get_timestep_embedding <- function(timesteps, embedding_dim, flip_sin_to_cos = F
   if (embedding_dim %% 2L == 1L) {
     emb <- torch::nnf_pad(emb, c(0L, 1L, 0L, 0L))
   }
+
+  # Convert back to original dtype (for mixed precision training)
+  emb <- emb$to(dtype = orig_dtype)
 
   emb
 }
@@ -544,7 +551,7 @@ ltx2_video_transformer_block <- torch::nn_module(
 
     # Ada values for video
     num_ada_params <- self$scale_shift_table$shape[1]
-    ada_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb$device) +
+    ada_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb$device, dtype = temb$dtype) +
       temb$reshape(c(batch_size, temb$shape[2], num_ada_params, -1L))
 
     shift_msa <- ada_values[, , 1, ]
@@ -554,7 +561,7 @@ ltx2_video_transformer_block <- torch::nn_module(
     scale_mlp <- ada_values[, , 5, ]
     gate_mlp <- ada_values[, , 6, ]
 
-    norm_hidden_states <- norm_hidden_states * (1 + scale_msa) + shift_msa
+    norm_hidden_states <- norm_hidden_states * scale_msa$add(1) + shift_msa
 
     attn_hidden_states <- self$attn1(
       hidden_states = norm_hidden_states,
@@ -567,7 +574,7 @@ ltx2_video_transformer_block <- torch::nn_module(
     norm_audio_hidden_states <- self$audio_norm1(audio_hidden_states)
 
     num_audio_ada_params <- self$audio_scale_shift_table$shape[1]
-    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb_audio$device) +
+    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb_audio$device, dtype = temb_audio$dtype) +
       temb_audio$reshape(c(batch_size, temb_audio$shape[2], num_audio_ada_params, -1L))
 
     audio_shift_msa <- audio_ada_values[, , 1, ]
@@ -577,7 +584,7 @@ ltx2_video_transformer_block <- torch::nn_module(
     audio_scale_mlp <- audio_ada_values[, , 5, ]
     audio_gate_mlp <- audio_ada_values[, , 6, ]
 
-    norm_audio_hidden_states <- norm_audio_hidden_states * (1 + audio_scale_msa) + audio_shift_msa
+    norm_audio_hidden_states <- norm_audio_hidden_states * audio_scale_msa$add(1) + audio_shift_msa
 
     attn_audio_hidden_states <- self$audio_attn1(
       hidden_states = norm_audio_hidden_states,
@@ -640,8 +647,8 @@ ltx2_video_transformer_block <- torch::nn_module(
     v2a_gate <- audio_ca_gate[, , 1, ]
 
     # Audio-to-Video Cross Attention
-    mod_norm_hidden_states <- norm_hidden_states * (1 + video_a2v_ca_scale) + video_a2v_ca_shift
-    mod_norm_audio_hidden_states <- norm_audio_hidden_states * (1 + audio_a2v_ca_scale) + audio_a2v_ca_shift
+    mod_norm_hidden_states <- norm_hidden_states * video_a2v_ca_scale$add(1) + video_a2v_ca_shift
+    mod_norm_audio_hidden_states <- norm_audio_hidden_states * audio_a2v_ca_scale$add(1) + audio_a2v_ca_shift
 
     a2v_attn_hidden_states <- self$audio_to_video_attn(
       mod_norm_hidden_states,
@@ -653,8 +660,8 @@ ltx2_video_transformer_block <- torch::nn_module(
     hidden_states <- hidden_states + a2v_gate * a2v_attn_hidden_states
 
     # Video-to-Audio Cross Attention
-    mod_norm_hidden_states <- norm_hidden_states * (1 + video_v2a_ca_scale) + video_v2a_ca_shift
-    mod_norm_audio_hidden_states <- norm_audio_hidden_states * (1 + audio_v2a_ca_scale) + audio_v2a_ca_shift
+    mod_norm_hidden_states <- norm_hidden_states * video_v2a_ca_scale$add(1) + video_v2a_ca_shift
+    mod_norm_audio_hidden_states <- norm_audio_hidden_states * audio_v2a_ca_scale$add(1) + audio_v2a_ca_shift
 
     v2a_attn_hidden_states <- self$video_to_audio_attn(
       mod_norm_audio_hidden_states,
@@ -666,11 +673,11 @@ ltx2_video_transformer_block <- torch::nn_module(
     audio_hidden_states <- audio_hidden_states + v2a_gate * v2a_attn_hidden_states
 
     # 4. Feedforward
-    norm_hidden_states <- self$norm3(hidden_states) * (1 + scale_mlp) + shift_mlp
+    norm_hidden_states <- self$norm3(hidden_states) * scale_mlp$add(1) + shift_mlp
     ff_output <- self$ff(norm_hidden_states)
     hidden_states <- hidden_states + ff_output * gate_mlp
 
-    norm_audio_hidden_states <- self$audio_norm3(audio_hidden_states) * (1 + audio_scale_mlp) + audio_shift_mlp
+    norm_audio_hidden_states <- self$audio_norm3(audio_hidden_states) * audio_scale_mlp$add(1) + audio_shift_mlp
     audio_ff_output <- self$audio_ff(norm_audio_hidden_states)
     audio_hidden_states <- audio_hidden_states + audio_ff_output * audio_gate_mlp
 

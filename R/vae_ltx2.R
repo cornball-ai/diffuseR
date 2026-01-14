@@ -699,8 +699,9 @@ ltx2_video_vae <- torch::nn_module(
 #'
 #' Load pre-trained LTX2 VAE weights from a HuggingFace safetensors file.
 #'
-#' @param weights_path Character. Path to safetensors file.
-#' @param config_path Character. Optional path to config.json. If NULL, uses default config.
+#' @param weights_path Character. Path to safetensors file or directory containing weights.
+#' @param config_path Character. Optional path to config.json. If NULL and weights_path
+#'   is a directory, looks for config.json in that directory. Otherwise uses default config.
 #' @param device Character. Device to load weights to. Default: "cpu"
 #' @param dtype Character or torch dtype. Data type. Default: "float32"
 #' @param verbose Logical. Print loading progress. Default: TRUE
@@ -709,7 +710,23 @@ ltx2_video_vae <- torch::nn_module(
 load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
                           dtype = "float32", verbose = TRUE) {
   if (!file.exists(weights_path)) {
-    stop("Weights file not found: ", weights_path)
+    stop("Weights path not found: ", weights_path)
+  }
+
+  # Handle directory vs file
+  if (dir.exists(weights_path)) {
+    vae_dir <- weights_path
+    # Look for config.json
+    if (is.null(config_path)) {
+      config_path <- file.path(vae_dir, "config.json")
+      if (!file.exists(config_path)) config_path <- NULL
+    }
+    # Look for weights file
+    weights_file <- file.path(vae_dir, "diffusion_pytorch_model.safetensors")
+    if (!file.exists(weights_file)) {
+      stop("Could not find diffusion_pytorch_model.safetensors in: ", vae_dir)
+    }
+    weights_path <- weights_file
   }
 
   # Load config if provided
@@ -756,8 +773,9 @@ load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
   # Load weights into VAE
   load_ltx2_vae_weights(vae, weights, verbose = verbose)
 
-  # Move to device
-  vae$to(device = device)
+  # Move to device with dtype
+  torch_dtype <- if (dtype == "float16") torch::torch_float16() else torch::torch_float32()
+  vae$to(device = device, dtype = torch_dtype)
 
   if (verbose) message("VAE loaded successfully on device: ", device)
   vae

@@ -119,8 +119,9 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
     }
   },
 
-  forward = function(coords, device = NULL) {
+  forward = function(coords, device = NULL, dtype = NULL) {
     if (is.null(device)) device <- coords$device
+    # Store target dtype for conversion at end (RoPE computed in float32 for precision)
 
     num_pos_dims <- coords$shape[2]
 
@@ -198,6 +199,12 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
 
       cos_freqs <- cos_freq$transpose(2L, 3L)  # (B, H, T, D//2)
       sin_freqs <- sin_freq$transpose(2L, 3L)
+    }
+
+    # Convert to target dtype if specified (for mixed precision)
+    if (!is.null(dtype)) {
+      cos_freqs <- cos_freqs$to(dtype = dtype)
+      sin_freqs <- sin_freqs$to(dtype = dtype)
     }
 
     list(cos_freqs, sin_freqs)
@@ -443,11 +450,11 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
       audio_coords <- self$audio_rope$prepare_audio_coords(batch_size, audio_num_frames, audio_hidden_states$device)
     }
 
-    video_rotary_emb <- self$rope(video_coords, device = hidden_states$device)
-    audio_rotary_emb <- self$audio_rope(audio_coords, device = audio_hidden_states$device)
+    video_rotary_emb <- self$rope(video_coords, device = hidden_states$device, dtype = hidden_states$dtype)
+    audio_rotary_emb <- self$audio_rope(audio_coords, device = audio_hidden_states$device, dtype = audio_hidden_states$dtype)
 
-    video_cross_attn_rotary_emb <- self$cross_attn_rope(video_coords[, 1:1, , ], device = hidden_states$device)
-    audio_cross_attn_rotary_emb <- self$cross_attn_audio_rope(audio_coords[, 1:1, , ], device = audio_hidden_states$device)
+    video_cross_attn_rotary_emb <- self$cross_attn_rope(video_coords[, 1:1, , ], device = hidden_states$device, dtype = hidden_states$dtype)
+    audio_cross_attn_rotary_emb <- self$cross_attn_audio_rope(audio_coords[, 1:1, , ], device = audio_hidden_states$device, dtype = audio_hidden_states$dtype)
 
     # 2. Patchify input projections
     hidden_states <- self$proj_in(hidden_states)
@@ -511,20 +518,20 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
     }
 
     # 6. Output layers
-    scale_shift_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1) + embedded_timestep$unsqueeze(3)
+    scale_shift_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(dtype = hidden_states$dtype) + embedded_timestep$unsqueeze(3)
     shift <- scale_shift_values[, , 1, ]
     scale <- scale_shift_values[, , 2, ]
 
     hidden_states <- self$norm_out(hidden_states)
-    hidden_states <- hidden_states * (1 + scale) + shift
+    hidden_states <- hidden_states * scale$add(1) + shift
     output <- self$proj_out(hidden_states)
 
-    audio_scale_shift_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1) + audio_embedded_timestep$unsqueeze(3)
+    audio_scale_shift_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(dtype = audio_hidden_states$dtype) + audio_embedded_timestep$unsqueeze(3)
     audio_shift <- audio_scale_shift_values[, , 1, ]
     audio_scale <- audio_scale_shift_values[, , 2, ]
 
     audio_hidden_states <- self$audio_norm_out(audio_hidden_states)
-    audio_hidden_states <- audio_hidden_states * (1 + audio_scale) + audio_shift
+    audio_hidden_states <- audio_hidden_states * audio_scale$add(1) + audio_shift
     audio_output <- self$audio_proj_out(audio_hidden_states)
 
     list(sample = output, audio_sample = audio_output)
