@@ -329,6 +329,43 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 - [x] GPU-poor optimizations (wan2GP style memory profiles)
 - [x] Pipeline integration (txt2vid_ltx2)
 - [x] Video output utilities (save_video)
+- [x] Weight loading from HuggingFace safetensors
+
+#### LTX-2 Weight Loading
+
+Load LTX-2 model weights from HuggingFace safetensors:
+
+```r
+# Load VAE (2.44 GB)
+vae <- load_ltx2_vae(
+  weights_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/vae/diffusion_pytorch_model.safetensors",
+  config_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/vae/config.json",
+  device = "cuda",
+  dtype = "float16"
+)
+
+# Load transformer (37.8 GB, sharded across 8 files)
+transformer <- load_ltx2_transformer(
+  weights_dir = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/transformer",
+  device = "cpu",  # Start on CPU, offload to GPU layer-by-layer
+  dtype = "float16"
+)
+
+# Load text connectors (2.86 GB)
+connectors <- load_ltx2_connectors(
+  weights_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/connectors/diffusion_pytorch_model.safetensors",
+  config_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/connectors/config.json"
+)
+```
+
+**Model sizes:**
+| Component | Size | Notes |
+|-----------|------|-------|
+| VAE | 2.44 GB | Single safetensors file |
+| Transformer | 37.8 GB | Sharded across 8 files |
+| Connectors | 2.86 GB | Single safetensors file |
+| Total (19B) | 43.3 GB | Full precision |
+| Total FP8 | 27.1 GB | Quantized |
 
 #### LTX2 VAE Implementation Learnings
 

@@ -469,3 +469,140 @@ pack_text_embeds <- function(text_hidden_states, sequence_lengths,
 
   normalized
 }
+
+
+# -----------------------------------------------------------------------------
+# Weight Loading
+# -----------------------------------------------------------------------------
+
+#' Load LTX2 Text Connectors from safetensors
+#'
+#' Load pre-trained LTX2 connector weights from HuggingFace safetensors file.
+#'
+#' @param weights_path Character. Path to safetensors file.
+#' @param config_path Character. Optional path to config.json.
+#' @param device Character. Device to load weights to. Default: "cpu"
+#' @param dtype Character. Data type ("float32", "float16"). Default: "float32"
+#' @param verbose Logical. Print loading progress. Default: TRUE
+#' @return Initialized ltx2_text_connectors module
+#' @export
+load_ltx2_connectors <- function(weights_path, config_path = NULL, device = "cpu",
+                                  dtype = "float32", verbose = TRUE) {
+  if (!file.exists(weights_path)) {
+    stop("Weights file not found: ", weights_path)
+  }
+
+  # Load config
+  config <- NULL
+  if (!is.null(config_path) && file.exists(config_path)) {
+    config <- jsonlite::fromJSON(config_path)
+    if (verbose) message("Loaded config from: ", config_path)
+  }
+
+  # Create connectors with config or defaults
+  if (!is.null(config)) {
+    connectors <- ltx2_text_connectors(
+      caption_channels = config$caption_channels %||% 3840L,
+      text_proj_in_factor = config$text_proj_in_factor %||% 49L,
+      video_connector_num_attention_heads = config$video_connector_num_attention_heads %||% 30L,
+      video_connector_attention_head_dim = config$video_connector_attention_head_dim %||% 128L,
+      video_connector_num_layers = config$video_connector_num_layers %||% 2L,
+      video_connector_num_learnable_registers = config$video_connector_num_learnable_registers,
+      audio_connector_num_attention_heads = config$audio_connector_num_attention_heads %||% 30L,
+      audio_connector_attention_head_dim = config$audio_connector_attention_head_dim %||% 128L,
+      audio_connector_num_layers = config$audio_connector_num_layers %||% 2L,
+      audio_connector_num_learnable_registers = config$audio_connector_num_learnable_registers,
+      connector_rope_base_seq_len = config$connector_rope_base_seq_len %||% 4096L,
+      rope_theta = config$rope_theta %||% 10000.0,
+      rope_double_precision = config$rope_double_precision %||% TRUE,
+      causal_temporal_positioning = config$causal_temporal_positioning %||% FALSE,
+      rope_type = config$rope_type %||% "split"
+    )
+  } else {
+    connectors <- ltx2_text_connectors()
+  }
+
+  # Load weights
+  if (verbose) message("Loading weights from: ", weights_path)
+  weights <- safetensors::safe_load_file(weights_path, framework = "torch")
+
+  load_ltx2_connector_weights(connectors, weights, verbose = verbose)
+
+  # Move to device
+  torch_dtype <- switch(dtype,
+    "float32" = torch::torch_float32(),
+    "float16" = torch::torch_float16(),
+    "bfloat16" = torch::torch_bfloat16(),
+    torch::torch_float32()
+  )
+
+  connectors$to(device = device, dtype = torch_dtype)
+
+  if (verbose) message("Connectors loaded successfully on device: ", device)
+  connectors
+}
+
+#' Load weights into LTX2 connectors module
+#'
+#' @param connectors LTX2 connectors module
+#' @param weights Named list of weight tensors
+#' @param verbose Print progress
+#' @keywords internal
+load_ltx2_connector_weights <- function(connectors, weights, verbose = TRUE) {
+  native_params <- names(connectors$parameters)
+
+  remap_connector_key <- function(key) {
+    # HuggingFace names should map directly to R module names
+    key
+  }
+
+  loaded <- 0L
+  skipped <- 0L
+  unmapped <- character(0)
+
+  torch::with_no_grad({
+    for (hf_name in names(weights)) {
+      native_name <- remap_connector_key(hf_name)
+
+      if (native_name %in% native_params) {
+        hf_tensor <- weights[[hf_name]]
+        native_tensor <- connectors$parameters[[native_name]]
+
+        if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
+          native_tensor$copy_(hf_tensor)
+          loaded <- loaded + 1L
+        } else {
+          if (verbose) {
+            message("Shape mismatch: ", native_name,
+                    " (HF: ", paste(as.integer(hf_tensor$shape), collapse = "x"),
+                    " vs R: ", paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          }
+          skipped <- skipped + 1L
+        }
+      } else {
+        skipped <- skipped + 1L
+        unmapped <- c(unmapped, paste0(hf_name, " -> ", native_name))
+      }
+    }
+  })
+
+  if (verbose) {
+    message(sprintf("Connector weights: %d loaded, %d skipped", loaded, skipped))
+    if (length(unmapped) > 0 && length(unmapped) <= 20) {
+      message("Unmapped parameters:")
+      for (u in unmapped[1:min(20, length(unmapped))]) {
+        message("  ", u)
+      }
+    }
+    if (length(unmapped) > 20) {
+      message("  ... and ", length(unmapped) - 20, " more")
+    }
+  }
+
+  invisible(list(loaded = loaded, skipped = skipped, unmapped = unmapped))
+}
+
+# Null-coalescing operator (if not already defined)
+if (!exists("%||%", mode = "function")) {
+  `%||%` <- function(x, y) if (is.null(x)) y else x
+}

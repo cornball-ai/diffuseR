@@ -4,14 +4,24 @@
 \alias{load_ltx2_vae}
 \title{Load LTX2 Video VAE from safetensors}
 \usage{
-load_ltx2_vae(weights_path, device = "cpu", dtype = "float32")
+load_ltx2_vae(
+  weights_path,
+  config_path = NULL,
+  device = "cpu",
+  dtype = "float32",
+  verbose = TRUE
+)
 }
 \arguments{
 \item{weights_path}{Character. Path to safetensors file.}
 
+\item{config_path}{Character. Optional path to config.json. If NULL, uses default config.}
+
 \item{device}{Character. Device to load weights to. Default: "cpu"}
 
 \item{dtype}{Character or torch dtype. Data type. Default: "float32"}
+
+\item{verbose}{Logical. Print loading progress. Default: TRUE}
 }
 \value{
 Initialized ltx2_video_vae module

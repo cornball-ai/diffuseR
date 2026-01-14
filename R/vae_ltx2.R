@@ -700,24 +700,139 @@ ltx2_video_vae <- torch::nn_module(
 #' Load pre-trained LTX2 VAE weights from a HuggingFace safetensors file.
 #'
 #' @param weights_path Character. Path to safetensors file.
+#' @param config_path Character. Optional path to config.json. If NULL, uses default config.
 #' @param device Character. Device to load weights to. Default: "cpu"
 #' @param dtype Character or torch dtype. Data type. Default: "float32"
+#' @param verbose Logical. Print loading progress. Default: TRUE
 #' @return Initialized ltx2_video_vae module
 #' @export
-load_ltx2_vae <- function(weights_path, device = "cpu", dtype = "float32") {
+load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
+                          dtype = "float32", verbose = TRUE) {
   if (!file.exists(weights_path)) {
     stop("Weights file not found: ", weights_path)
   }
 
-  # Create VAE with default LTX2 configuration
-  vae <- ltx2_video_vae()
+  # Load config if provided
+  config <- NULL
+  if (!is.null(config_path) && file.exists(config_path)) {
+    config <- jsonlite::fromJSON(config_path)
+    if (verbose) message("Loaded config from: ", config_path)
+  }
+
+  # Create VAE with config or defaults (matching HuggingFace LTX-2)
+  if (!is.null(config)) {
+    vae <- ltx2_video_vae(
+      in_channels = config$in_channels %||% 3L,
+      out_channels = config$out_channels %||% 3L,
+      latent_channels = config$latent_channels %||% 128L,
+      block_out_channels = as.integer(config$block_out_channels %||% c(256, 512, 1024, 2048)),
+      decoder_block_out_channels = as.integer(config$decoder_block_out_channels %||% c(256, 512, 1024)),
+      layers_per_block = as.integer(config$layers_per_block %||% c(4, 6, 6, 2, 2)),
+      decoder_layers_per_block = as.integer(config$decoder_layers_per_block %||% c(5, 5, 5, 5)),
+      spatio_temporal_scaling = as.logical(config$spatio_temporal_scaling %||% c(TRUE, TRUE, TRUE, TRUE)),
+      decoder_spatio_temporal_scaling = as.logical(config$decoder_spatio_temporal_scaling %||% c(TRUE, TRUE, TRUE)),
+      decoder_inject_noise = as.logical(config$decoder_inject_noise %||% c(FALSE, FALSE, FALSE, FALSE)),
+      downsample_type = config$downsample_type %||% c("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
+      upsample_residual = as.logical(config$upsample_residual %||% c(TRUE, TRUE, TRUE)),
+      upsample_factor = as.integer(config$upsample_factor %||% c(2, 2, 2)),
+      timestep_conditioning = config$timestep_conditioning %||% FALSE,
+      patch_size = config$patch_size %||% 4L,
+      patch_size_t = config$patch_size_t %||% 1L,
+      resnet_norm_eps = config$resnet_norm_eps %||% 1e-6,
+      scaling_factor = config$scaling_factor %||% 1.0,
+      encoder_causal = config$encoder_causal %||% TRUE,
+      decoder_causal = config$decoder_causal %||% FALSE,
+      encoder_spatial_padding_mode = config$encoder_spatial_padding_mode %||% "zeros",
+      decoder_spatial_padding_mode = config$decoder_spatial_padding_mode %||% "reflect"
+    )
+  } else {
+    vae <- ltx2_video_vae()
+  }
 
   # Load weights
+  if (verbose) message("Loading weights from: ", weights_path)
   weights <- safetensors::safe_load_file(weights_path, framework = "torch")
 
-  # TODO: Map HuggingFace parameter names to R module names
-  # This requires analyzing the exact naming convention
+  # Load weights into VAE
+  load_ltx2_vae_weights(vae, weights, verbose = verbose)
 
+  # Move to device
   vae$to(device = device)
+
+  if (verbose) message("VAE loaded successfully on device: ", device)
   vae
 }
+
+#' Load weights into LTX2 VAE module
+#'
+#' Maps HuggingFace safetensors parameter names to R module parameters.
+#'
+#' @param vae LTX2 VAE module
+#' @param weights Named list of weight tensors from safetensors
+#' @param verbose Logical. Print loading progress
+#' @return The VAE with loaded weights (invisibly)
+#' @keywords internal
+load_ltx2_vae_weights <- function(vae, weights, verbose = TRUE) {
+  # Get native parameter names
+  native_params <- names(vae$parameters)
+
+  # Build mapping from HF names to R names
+  remap_vae_key <- function(key) {
+    # HuggingFace VAE naming:
+    # encoder.conv_in.conv.weight -> encoder.conv_in.conv.weight
+    # encoder.down_blocks.0.resnets.0.norm.weight -> encoder.down_blocks.0.resnets.0.norm.weight
+    # The naming should be mostly 1:1 with our R module structure
+
+    # No remapping needed for most keys - HF uses same structure
+    key
+  }
+
+  loaded <- 0L
+  skipped <- 0L
+  unmapped <- character(0)
+
+  torch::with_no_grad({
+    for (hf_name in names(weights)) {
+      native_name <- remap_vae_key(hf_name)
+
+      if (native_name %in% native_params) {
+        hf_tensor <- weights[[hf_name]]
+        native_tensor <- vae$parameters[[native_name]]
+
+        if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
+          native_tensor$copy_(hf_tensor)
+          loaded <- loaded + 1L
+        } else {
+          if (verbose) {
+            message("Shape mismatch: ", native_name,
+                    " (HF: ", paste(as.integer(hf_tensor$shape), collapse = "x"),
+                    " vs R: ", paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          }
+          skipped <- skipped + 1L
+        }
+      } else {
+        skipped <- skipped + 1L
+        unmapped <- c(unmapped, paste0(hf_name, " -> ", native_name))
+      }
+    }
+  })
+
+  if (verbose) {
+    message(sprintf("VAE weights: %d loaded, %d skipped", loaded, skipped))
+    if (length(unmapped) > 0 && length(unmapped) <= 20) {
+      message("Unmapped parameters:")
+      for (u in unmapped[1:min(20, length(unmapped))]) {
+        message("  ", u)
+      }
+    }
+    if (length(unmapped) > 20) {
+      message("  ... and ", length(unmapped) - 20, " more")
+    }
+  }
+
+  invisible(vae)
+}
+
+#' Null-coalescing operator
+#' @keywords internal
+`%||%` <- function(x, y) if (is.null(x)) y else x

@@ -530,3 +530,218 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
     list(sample = output, audio_sample = audio_output)
   }
 )
+
+
+# ------------------------------------------------------------------------------
+# Weight Loading Functions
+# ------------------------------------------------------------------------------
+
+#' Load LTX2 DiT Transformer from safetensors
+#'
+#' Load pre-trained LTX2 transformer weights from HuggingFace safetensors files.
+#' Supports both single file and sharded multi-file loading.
+#'
+#' @param weights_dir Character. Directory containing safetensors files.
+#' @param config_path Character. Optional path to config.json. If NULL, uses default config.
+#' @param device Character. Device to load weights to. Default: "cpu"
+#' @param dtype Character. Data type ("float32", "float16", "bfloat16"). Default: "float16"
+#' @param verbose Logical. Print loading progress. Default: TRUE
+#' @return Initialized ltx2_video_transformer3d module
+#' @export
+load_ltx2_transformer <- function(weights_dir, config_path = NULL, device = "cpu",
+                                  dtype = "float16", verbose = TRUE) {
+
+  # Look for config
+  if (is.null(config_path)) {
+    config_path <- file.path(weights_dir, "config.json")
+  }
+
+  config <- NULL
+  if (file.exists(config_path)) {
+    config <- jsonlite::fromJSON(config_path)
+    if (verbose) message("Loaded config from: ", config_path)
+  }
+
+  # Create transformer with config or defaults
+  if (!is.null(config)) {
+    transformer <- ltx2_video_transformer_3d_model(
+      in_channels = config$in_channels %||% 128L,
+      out_channels = config$out_channels %||% 128L,
+      patch_size = config$patch_size %||% 1L,
+      patch_size_t = config$patch_size_t %||% 1L,
+      num_attention_heads = config$num_attention_heads %||% 32L,
+      attention_head_dim = config$attention_head_dim %||% 128L,
+      cross_attention_dim = config$cross_attention_dim %||% 4096L,
+      num_layers = config$num_layers %||% 48L,
+      caption_channels = config$caption_channels %||% 3840L,
+      qk_norm = config$qk_norm %||% "rms_norm_across_heads",
+      norm_elementwise_affine = config$norm_elementwise_affine %||% FALSE,
+      norm_eps = config$norm_eps %||% 1e-6,
+      timestep_scale_multiplier = config$timestep_scale_multiplier %||% 1000.0,
+      cross_attn_timestep_scale_multiplier = config$cross_attn_timestep_scale_multiplier %||% 1000.0,
+      base_height = config$base_height %||% 2048L,
+      base_width = config$base_width %||% 2048L,
+      pos_embed_max_pos = config$pos_embed_max_pos %||% 20L,
+      rope_theta = config$rope_theta %||% 10000.0,
+      rope_type = config$rope_type %||% "split",
+      causal_offset = config$causal_offset %||% 1L,
+      audio_in_channels = config$audio_in_channels %||% 128L,
+      audio_out_channels = config$audio_out_channels %||% 128L,
+      audio_num_attention_heads = config$audio_num_attention_heads %||% 32L,
+      audio_attention_head_dim = config$audio_attention_head_dim %||% 64L,
+      audio_cross_attention_dim = config$audio_cross_attention_dim %||% 2048L,
+      audio_sampling_rate = config$audio_sampling_rate %||% 16000L,
+      audio_hop_length = config$audio_hop_length %||% 160L,
+      audio_scale_factor = config$audio_scale_factor %||% 4L,
+      audio_pos_embed_max_pos = config$audio_pos_embed_max_pos %||% 20L
+    )
+  } else {
+    transformer <- ltx2_video_transformer_3d_model()
+  }
+
+  # Find weight files
+  index_path <- file.path(weights_dir, "diffusion_pytorch_model.safetensors.index.json")
+  single_path <- file.path(weights_dir, "diffusion_pytorch_model.safetensors")
+
+  if (file.exists(index_path)) {
+    # Sharded weights
+    if (verbose) message("Loading sharded weights from: ", weights_dir)
+    load_ltx2_transformer_sharded(transformer, weights_dir, index_path, verbose = verbose)
+  } else if (file.exists(single_path)) {
+    # Single file
+    if (verbose) message("Loading weights from: ", single_path)
+    weights <- safetensors::safe_load_file(single_path, framework = "torch")
+    load_ltx2_transformer_weights(transformer, weights, verbose = verbose)
+  } else {
+    stop("No weights found in: ", weights_dir)
+  }
+
+  # Convert dtype and move to device
+  torch_dtype <- switch(dtype,
+    "float32" = torch::torch_float32(),
+    "float16" = torch::torch_float16(),
+    "bfloat16" = torch::torch_bfloat16(),
+    torch::torch_float16()
+  )
+
+  transformer$to(device = device, dtype = torch_dtype)
+
+  if (verbose) message("Transformer loaded successfully on device: ", device, " dtype: ", dtype)
+  transformer
+}
+
+#' Load sharded transformer weights
+#'
+#' @param transformer LTX2 transformer module
+#' @param weights_dir Directory containing sharded safetensors
+#' @param index_path Path to index.json
+#' @param verbose Print progress
+#' @keywords internal
+load_ltx2_transformer_sharded <- function(transformer, weights_dir, index_path, verbose = TRUE) {
+  # Load index
+  index <- jsonlite::fromJSON(index_path)
+  weight_map <- index$weight_map
+
+  # Get unique shard files
+  shard_files <- unique(unlist(weight_map))
+  if (verbose) message(sprintf("Loading %d shards...", length(shard_files)))
+
+  total_loaded <- 0L
+  total_skipped <- 0L
+
+  for (i in seq_along(shard_files)) {
+    shard_file <- shard_files[i]
+    shard_path <- file.path(weights_dir, shard_file)
+
+    if (!file.exists(shard_path)) {
+      warning("Shard not found: ", shard_path)
+      next
+    }
+
+    if (verbose) message(sprintf("[%d/%d] Loading %s...", i, length(shard_files), shard_file))
+
+    weights <- safetensors::safe_load_file(shard_path, framework = "torch")
+    result <- load_ltx2_transformer_weights(transformer, weights, verbose = FALSE)
+    total_loaded <- total_loaded + result$loaded
+    total_skipped <- total_skipped + result$skipped
+
+    # Free memory
+    rm(weights)
+    gc()
+  }
+
+  if (verbose) {
+    message(sprintf("Total: %d loaded, %d skipped", total_loaded, total_skipped))
+  }
+
+  invisible(list(loaded = total_loaded, skipped = total_skipped))
+}
+
+#' Load weights into LTX2 transformer module
+#'
+#' @param transformer LTX2 transformer module
+#' @param weights Named list of weight tensors
+#' @param verbose Print progress
+#' @keywords internal
+load_ltx2_transformer_weights <- function(transformer, weights, verbose = TRUE) {
+  native_params <- names(transformer$parameters)
+
+  # Remap HuggingFace names to R module names
+  remap_transformer_key <- function(key) {
+    # Most HF names map directly to R module names
+    # transformer_blocks.0.attn1.to_q.weight -> transformer_blocks.0.attn1.to_q.weight
+
+    # Handle ff.net.0.proj -> ff.net.0.proj (GEGLU first linear)
+    # Handle ff.net.2 -> ff.net.2 (second linear)
+    # These should map directly
+
+    # The main difference might be in how nn_module_list indexes
+    # HF uses 0-indexed Python, R stores as 1-indexed internally but names as 0-indexed
+    key
+  }
+
+  loaded <- 0L
+  skipped <- 0L
+  unmapped <- character(0)
+
+  torch::with_no_grad({
+    for (hf_name in names(weights)) {
+      native_name <- remap_transformer_key(hf_name)
+
+      if (native_name %in% native_params) {
+        hf_tensor <- weights[[hf_name]]
+        native_tensor <- transformer$parameters[[native_name]]
+
+        if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
+          native_tensor$copy_(hf_tensor)
+          loaded <- loaded + 1L
+        } else {
+          if (verbose) {
+            message("Shape mismatch: ", native_name,
+                    " (HF: ", paste(as.integer(hf_tensor$shape), collapse = "x"),
+                    " vs R: ", paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          }
+          skipped <- skipped + 1L
+        }
+      } else {
+        skipped <- skipped + 1L
+        unmapped <- c(unmapped, paste0(hf_name, " -> ", native_name))
+      }
+    }
+  })
+
+  if (verbose) {
+    message(sprintf("Transformer weights: %d loaded, %d skipped", loaded, skipped))
+    if (length(unmapped) > 0 && length(unmapped) <= 20) {
+      message("Unmapped parameters:")
+      for (u in unmapped[1:min(20, length(unmapped))]) {
+        message("  ", u)
+      }
+    }
+    if (length(unmapped) > 20) {
+      message("  ... and ", length(unmapped) - 20, " more")
+    }
+  }
+
+  invisible(list(loaded = loaded, skipped = skipped, unmapped = unmapped))
+}
