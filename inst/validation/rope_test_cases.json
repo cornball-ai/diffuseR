@@ -1,0 +1,99 @@
+{
+  "video_coords": {
+    "config": {
+      "batch_size": 2,
+      "num_frames": 4,
+      "height": 16,
+      "width": 16,
+      "fps": 24.0
+    },
+    "coords_shape": [
+      2,
+      3,
+      1024,
+      2
+    ],
+    "coords_min": 0.0,
+    "coords_max": 512.0,
+    "coords_mean": 170.80381774902344,
+    "coords_first_patch": [
+      [
+        0.0,
+        0.0416666679084301
+      ],
+      [
+        0.0,
+        32.0
+      ],
+      [
+        0.0,
+        32.0
+      ]
+    ],
+    "coords_last_patch": [
+      [
+        0.7083333134651184,
+        1.0416666269302368
+      ],
+      [
+        480.0,
+        512.0
+      ],
+      [
+        480.0,
+        512.0
+      ]
+    ]
+  },
+  "rope_freqs": {
+    "cos_shape": [
+      2,
+      1024,
+      2048
+    ],
+    "sin_shape": [
+      2,
+      1024,
+      2048
+    ],
+    "cos_min": -1.0,
+    "cos_max": 1.0,
+    "cos_mean": -0.037733569741249084,
+    "sin_min": -1.0,
+    "sin_max": 0.9999998807907104,
+    "sin_mean": -0.04302237927913666
+  },
+  "apply_rope": {
+    "seed": 42,
+    "input_shape": [
+      2,
+      1024,
+      2048
+    ],
+    "output_shape": [
+      2,
+      1024,
+      2048
+    ],
+    "output_mean": 0.0007427411619573832,
+    "output_std": 1.0001155138015747,
+    "output_min": -5.028654098510742,
+    "output_max": 4.897626876831055
+  },
+  "patched_coords": {
+    "config": {
+      "patch_size": 2,
+      "patch_size_t": 2,
+      "num_frames": 8,
+      "height": 32,
+      "width": 32
+    },
+    "coords_shape": [
+      1,
+      3,
+      1024,
+      2
+    ],
+    "expected_num_patches": 1024
+  }
+}

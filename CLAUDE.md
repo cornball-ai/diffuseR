@@ -319,3 +319,151 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 - [ ] Add FLUX model support
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
+
+### LTX-2 Video Generation (In Progress)
+- [x] FlowMatch scheduler (validated against Python)
+- [x] RoPE positional embeddings (validated against Python)
+- [x] LTX2 Video VAE (3D causal convolutions) - see learnings below
+- [x] DiT transformer (audio-video) - see learnings below
+- [x] Text encoder integration (connectors + flexible backends)
+- [x] GPU-poor optimizations (wan2GP style memory profiles)
+- [x] Pipeline integration (txt2vid_ltx2)
+- [x] Video output utilities (save_video)
+
+#### LTX2 VAE Implementation Learnings
+
+**Temporal dimension constraint for causal downsampling:**
+For LTX2's causal 3D convolutions with stride S downsampling, the temporal dimension T must satisfy:
+```
+(T + S - 1) % S == 0
+```
+This means T % S == 1, so **T must be odd for stride=2**.
+
+Example valid sequences for 2 spatiotemporal downsampling stages:
+- T=5 → (5+1)/2=3 → (3+1)/2=2 ✓
+- T=9 → (9+1)/2=5 → (5+1)/2=3 ✓
+- T=4 → (4+1)/2=2.5 ✗ (fails unflatten)
+
+**R torch `unflatten` is 1-indexed:**
+```r
+# Python: x.unflatten(2, (-1, stride))  # dim 2 is 0-indexed
+# R: x$unflatten(3, c(-1, stride))      # dim 3 is 1-indexed
+```
+
+**LTX2 decoder channel flow:**
+In LTX2 up blocks, `in_channels == out_channels` always. The upsampler handles channel reduction via pixel shuffle. Test inputs must match this pattern.
+
+#### LTX2 DiT Transformer Learnings
+
+**cross_attention_dim must equal inner_dim:**
+In the LTX2 transformer, `caption_projection` projects text embeddings from `caption_channels` to `inner_dim`. The transformer blocks then expect `encoder_hidden_states` to have dimension `cross_attention_dim`. These must be equal:
+```r
+# In model config:
+inner_dim = num_attention_heads * attention_head_dim  # e.g., 32 * 128 = 4096
+cross_attention_dim = 4096  # Must equal inner_dim!
+```
+
+**R torch lacks nnf_scaled_dot_product_attention:**
+Manual scaled dot-product attention is required:
+```r
+scale <- 1.0 / sqrt(head_dim)
+attn_weights <- torch::torch_matmul(query, key$transpose(-2L, -1L)) * scale
+if (!is.null(attention_mask)) attn_weights <- attn_weights + attention_mask
+attn_weights <- torch::nnf_softmax(attn_weights, dim = -1L)
+hidden_states <- torch::torch_matmul(attn_weights, value)
+```
+
+**Avoid function name collisions across files:**
+The `apply_interleaved_rotary_emb` function in `rope.R` expects `freqs$cos_freqs`, while a similar function in `dit_ltx2_modules.R` expects `freqs[[1]]`. Name collision caused segfaults - renamed to `apply_interleaved_rotary_emb_list` in dit module.
+
+#### LTX2 Text Encoder Learnings
+
+**Architecture: Gemma3 + Connectors:**
+LTX-2 uses Gemma3 as the text encoder, with separate connector transformers for video and audio streams:
+```
+Gemma3 → pack_text_embeds → text_proj_in → video_connector → video_embeds
+                                        → audio_connector → audio_embeds
+```
+
+**Attention mask broadcasting:**
+When using 2D attention masks [B, S], they must be expanded to [B, 1, 1, S] for broadcasting with attention weights [B, H, S, S]:
+```r
+if (attention_mask$ndim == 2L) {
+  attention_mask <- attention_mask$unsqueeze(2L)$unsqueeze(2L)
+}
+```
+
+**Flexible text encoding backends:**
+The `encode_text_ltx2()` function supports multiple backends:
+- `"precomputed"`: Load from file (cached embeddings)
+- `"api"`: HTTP request to external service (Gemma container)
+- `"random"`: Random embeddings for testing
+- Future: native Gemma3 in R torch
+
+## R torch API Quirks
+
+Important differences between R torch and Python PyTorch:
+
+### `torch_arange` is inclusive
+R's `torch_arange` includes the end value, unlike Python's `torch.arange`:
+```r
+# R: 0, 1, 2, 3, 4 (5 elements)
+torch::torch_arange(start = 0, end = 4)
+
+# To match Python behavior (0, 1, 2, 3):
+torch::torch_arange(start = 0, end = 3)  # or end = n - 1
+```
+
+### `$flatten()` requires named arguments
+```r
+# Wrong - positional args don't work
+x$flatten(2, 4)
+
+# Correct - use named args
+x$flatten(start_dim = 2, end_dim = 4)
+
+# Or use the function form
+torch::torch_flatten(x, start_dim = 2, end_dim = 4)
+```
+
+### `$repeat()` needs backticks
+```r
+# `repeat` is a reserved word in R
+x$`repeat`(c(2, 1, 1, 1))
+```
+
+### Tensor slicing is 1-indexed
+```r
+# R: first element is index 1
+x[1, , ]  # First batch element
+
+# Python: first element is index 0
+# x[0, :, :]
+```
+
+### Method chaining with dots
+R torch methods use `$` not `.`:
+```r
+x$unsqueeze(1)$to(device = "cuda")$contiguous()
+```
+
+### Device specification
+```r
+# R uses character strings
+device <- "cuda"  # or "cpu"
+torch::torch_tensor(c(1, 2, 3), device = device)
+
+# For torch_device objects
+torch::torch_device("cuda")
+```
+
+### No `with torch.no_grad()` context manager
+```r
+# Use torch::with_no_grad() function
+torch::with_no_grad({
+  # inference code here
+})
+
+# Or torch::local_no_grad() but be careful with scope
+# (only disables gradients within calling function)
+```
