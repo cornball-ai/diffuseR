@@ -2,29 +2,30 @@
 % Please edit documentation in R/txt2img_sdxl.R
 \name{txt2img_sdxl}
 \alias{txt2img_sdxl}
-\title{Generate an image from a text prompt using a diffusion pipeline}
+\title{Generate an image from a text prompt using SDXL}
 \usage{
 txt2img_sdxl(
   prompt,
-  negative_prompt = NULL,
-  img_dim = 1024,
-  pipeline = NULL,
-  devices = "auto",
-  unet_dtype_str = NULL,
-  download_models = FALSE,
-  scheduler = "ddim",
-  timesteps = NULL,
-  initial_latents = NULL,
-  num_inference_steps = 30,
-  guidance_scale = 7.5,
-  seed = NULL,
-  save_file = TRUE,
-  filename = NULL,
-  metadata_path = NULL,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  ...
+  negative_prompt,
+  img_dim,
+  pipeline,
+  devices,
+  memory_profile,
+  unet_dtype_str,
+  download_models,
+  scheduler,
+  timesteps,
+  initial_latents,
+  num_inference_steps,
+  guidance_scale,
+  seed,
+  save_file,
+  filename,
+  metadata_path,
+  use_native_decoder,
+  use_native_text_encoder,
+  use_native_unet,
+  verbose
 )
 }
 \arguments{
@@ -38,7 +39,13 @@ txt2img_sdxl(
 based on the model name and devices.}
 
 \item{devices}{A named list of devices for each model component (e.g., `list(unet =
-"cuda", decoder = "cpu", text_encoder = "cpu")`).}
+"cuda", decoder = "cpu", text_encoder = "cpu")`), or "auto" to use
+`auto_devices()`, or NULL to use memory_profile devices.}
+
+\item{memory_profile}{Character or list. Memory profile for GPU-poor optimization: "auto" for
+auto-detection, or a profile name ("full_gpu", "balanced", "unet_gpu",
+"cpu_only"), or a list from `sdxl_memory_profile()`. When specified,
+overrides devices parameter.}
 
 \item{unet_dtype_str}{Optional A character for dtype of the unet component (typically
 "float16" for cuda and "float32" for cpu; float32 is available for
@@ -76,16 +83,26 @@ TorchScript. Native text encoder has better GPU compatibility
 \item{use_native_unet}{Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 Native UNet has better GPU compatibility (especially Blackwell).}
 
+\item{verbose}{Logical. Print progress and memory status messages.}
+
 \item{...}{Additional parameters passed to the diffusion process.}
 }
 \value{
 An image array and metadata
 }
 \description{
-Generate an image from a text prompt using a diffusion pipeline
+Generate an image from a text prompt using SDXL
 }
 \examples{
 \dontrun{
-img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
+# Basic usage with auto-detection
+img <- txt2img_sdxl("a cat wearing sunglasses in space")
+
+# GPU-poor mode (8GB VRAM)
+img <- txt2img_sdxl("a sunset over mountains", memory_profile = "unet_gpu")
+
+# Explicit memory profile
+profile <- sdxl_memory_profile(vram_gb = 8)
+img <- txt2img_sdxl("a forest path", memory_profile = profile)
 }
 }

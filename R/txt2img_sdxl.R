@@ -1,10 +1,14 @@
-#' Generate an image from a text prompt using a diffusion pipeline
+#' Generate an image from a text prompt using SDXL
 #'
 #' @param prompt A character string prompt describing the image to generate.
 #' @param negative_prompt Optional negative prompt to guide the generation.
 #' @param img_dim Dimension of the output image (e.g., 512 for 512x512).
 #' @param pipeline Optional A pre-loaded diffusion pipeline. If `NULL`, it will be loaded based on the model name and devices.
-#' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`).
+#' @param devices A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`),
+#'   or "auto" to use `auto_devices()`, or NULL to use memory_profile devices.
+#' @param memory_profile Character or list. Memory profile for GPU-poor optimization:
+#'   "auto" for auto-detection, or a profile name ("full_gpu", "balanced", "unet_gpu", "cpu_only"),
+#'   or a list from `sdxl_memory_profile()`. When specified, overrides devices parameter.
 #' @param unet_dtype_str Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).
 #' @param download_models Logical indicating whether to download the model files if they are not found.
 #' @param scheduler Scheduler to use (e.g., `"ddim"`, `"euler"`).
@@ -22,6 +26,7 @@
 #'   Native text encoder has better GPU compatibility (especially Blackwell).
 #' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 #'   Native UNet has better GPU compatibility (especially Blackwell).
+#' @param verbose Logical. Print progress and memory status messages.
 #' @param ... Additional parameters passed to the diffusion process.
 #'
 #' @return An image array and metadata
@@ -29,13 +34,22 @@
 #'
 #' @examples
 #' \dontrun{
-#' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
+#' # Basic usage with auto-detection
+#' img <- txt2img_sdxl("a cat wearing sunglasses in space")
+#'
+#' # GPU-poor mode (8GB VRAM)
+#' img <- txt2img_sdxl("a sunset over mountains", memory_profile = "unet_gpu")
+#'
+#' # Explicit memory profile
+#' profile <- sdxl_memory_profile(vram_gb = 8)
+#' img <- txt2img_sdxl("a forest path", memory_profile = profile)
 #' }
 txt2img_sdxl <- function(prompt,
                          negative_prompt = NULL,
                          img_dim = 1024,
                          pipeline = NULL,
                          devices = "auto",
+                         memory_profile = NULL,
                          unet_dtype_str = NULL,
                          download_models = FALSE,
                          scheduler = "ddim",
@@ -50,11 +64,49 @@ txt2img_sdxl <- function(prompt,
                          use_native_decoder = FALSE,
                          use_native_text_encoder = FALSE,
                          use_native_unet = FALSE,
+                         verbose = TRUE,
                          ...) {
   model_name <- "sdxl"
 
-  # Handle "auto" devices
-  if (identical(devices, "auto")) {
+  # Resolve memory profile if provided
+  profile <- NULL
+  if (!is.null(memory_profile)) {
+    if (identical(memory_profile, "auto")) {
+      profile <- sdxl_memory_profile()
+    } else if (is.character(memory_profile)) {
+      # Named profile
+      vram <- switch(memory_profile,
+        "full_gpu" = 20,
+        "balanced" = 12,
+        "unet_gpu" = 8,
+        "cpu_only" = 0,
+        NULL
+      )
+      if (!is.null(vram)) {
+        profile <- sdxl_memory_profile(vram_gb = vram)
+      }
+    } else if (is.list(memory_profile)) {
+      profile <- memory_profile
+    }
+  }
+
+  # Use profile devices if available, otherwise fall back to devices parameter
+  if (!is.null(profile)) {
+    devices <- profile$devices
+    if (verbose) {
+      message(sprintf("Using memory profile: %s", profile$name))
+    }
+    # Validate resolution
+    if (img_dim > profile$max_resolution) {
+      warning(sprintf("Resolution %d exceeds profile max %d, reducing",
+                      img_dim, profile$max_resolution))
+      img_dim <- profile$max_resolution
+    }
+    # Set dtype from profile if not explicitly provided
+    if (is.null(unet_dtype_str)) {
+      unet_dtype_str <- profile$dtype
+    }
+  } else if (identical(devices, "auto")) {
     devices <- auto_devices(model_name)
   }
 
@@ -79,7 +131,7 @@ txt2img_sdxl <- function(prompt,
   # Start timing
   start_time <- proc.time()
   # Process text prompt
-  message("Processing prompt...")
+  if (verbose) message("Processing prompt...")
   ## Tokenizer
   tokens <- CLIPTokenizer(prompt)
   prompt_embed1 <- pipeline$text_encoder(tokens)
@@ -114,7 +166,13 @@ txt2img_sdxl <- function(prompt,
   empty_text_embeds <- empty_text_embeds$to(dtype = unet_dtype,
                                             device = torch::torch_device(devices$unet))
 
-  message("Creating schedule...")
+  # Phase cleanup after text encoding (for GPU-poor mode)
+  if (!is.null(profile) && profile$cleanup == "phase") {
+    if (verbose) message("Clearing VRAM after text encoding...")
+    clear_vram(verbose = FALSE)
+  }
+
+  if (verbose) message("Creating schedule...")
   # Load scheduler
   schedule <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
                                     beta_schedule = "scaled_linear",
@@ -127,7 +185,7 @@ txt2img_sdxl <- function(prompt,
   }
 
   # Run diffusion process
-  message("Generating image...")
+  if (verbose) message("Generating image...")
   if(!is.null(seed)){
     set.seed(seed)
     torch::torch_manual_seed(seed = seed)
@@ -177,10 +235,23 @@ txt2img_sdxl <- function(prompt,
                                      device = devices$unet)
       latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
       utils::setTxtProgressBar(pb, i)
+
+      # Step cleanup for GPU-poor mode
+      if (!is.null(profile) && profile$step_cleanup_interval > 0) {
+        if (i %% profile$step_cleanup_interval == 0) {
+          clear_vram(verbose = FALSE)
+        }
+      }
     }
   })
   close(pb)
-  
+
+  # Phase cleanup before decode (for GPU-poor mode)
+  if (!is.null(profile) && profile$cleanup == "phase") {
+    if (verbose) message("Clearing VRAM before decode...")
+    clear_vram(verbose = FALSE)
+  }
+
   # Decode latents to image
   scaled_latent <- latents / 0.18215
   scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
@@ -190,7 +261,7 @@ txt2img_sdxl <- function(prompt,
   post_conv_latent <- post_quant_conv(x = scaled_latent,
                                       dtype = torch::torch_float32(),
                                       device = devices$decoder)
-  message("Decoding image...")
+  if (verbose) message("Decoding image...")
   decoded_output <- pipeline$decoder(post_conv_latent)
   # Ensure tensor is on CPU
   img <- decoded_output$cpu()
@@ -242,7 +313,7 @@ txt2img_sdxl <- function(prompt,
   }
   # Report timing
   elapsed <- proc.time() - start_time
-  message(sprintf("Image generated in %.2f seconds", elapsed[3]))
+  if (verbose) message(sprintf("Image generated in %.2f seconds", elapsed[3]))
   
   # Return the generated image and metadata
   return(list(
