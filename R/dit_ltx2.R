@@ -688,15 +688,17 @@ load_ltx2_transformer_weights <- function(transformer, weights, verbose = TRUE) 
 
   # Remap HuggingFace names to R module names
   remap_transformer_key <- function(key) {
-    # Most HF names map directly to R module names
-    # transformer_blocks.0.attn1.to_q.weight -> transformer_blocks.0.attn1.to_q.weight
+    # HuggingFace uses nn.ModuleList for FeedForward:
+    #   ff.net.0.proj.weight -> ff.act_fn.proj.weight
+    #   ff.net.2.weight -> ff.proj_out.weight
+    key <- gsub("\\.ff\\.net\\.0\\.", ".ff.act_fn.", key)
+    key <- gsub("\\.ff\\.net\\.2\\.", ".ff.proj_out.", key)
+    # Same for audio_ff
+    key <- gsub("\\.audio_ff\\.net\\.0\\.", ".audio_ff.act_fn.", key)
+    key <- gsub("\\.audio_ff\\.net\\.2\\.", ".audio_ff.proj_out.", key)
 
-    # Handle ff.net.0.proj -> ff.net.0.proj (GEGLU first linear)
-    # Handle ff.net.2 -> ff.net.2 (second linear)
-    # These should map directly
-
-    # The main difference might be in how nn_module_list indexes
-    # HF uses 0-indexed Python, R stores as 1-indexed internally but names as 0-indexed
+    # to_out.0 is used in both HF and our module (ModuleList)
+    # No remapping needed for to_out
     key
   }
 

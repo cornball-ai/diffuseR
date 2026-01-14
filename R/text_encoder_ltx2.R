@@ -507,11 +507,11 @@ load_ltx2_connectors <- function(weights_path, config_path = NULL, device = "cpu
       video_connector_num_attention_heads = config$video_connector_num_attention_heads %||% 30L,
       video_connector_attention_head_dim = config$video_connector_attention_head_dim %||% 128L,
       video_connector_num_layers = config$video_connector_num_layers %||% 2L,
-      video_connector_num_learnable_registers = config$video_connector_num_learnable_registers,
+      video_connector_num_learnable_registers = as.integer(config$video_connector_num_learnable_registers),
       audio_connector_num_attention_heads = config$audio_connector_num_attention_heads %||% 30L,
       audio_connector_attention_head_dim = config$audio_connector_attention_head_dim %||% 128L,
       audio_connector_num_layers = config$audio_connector_num_layers %||% 2L,
-      audio_connector_num_learnable_registers = config$audio_connector_num_learnable_registers,
+      audio_connector_num_learnable_registers = as.integer(config$audio_connector_num_learnable_registers),
       connector_rope_base_seq_len = config$connector_rope_base_seq_len %||% 4096L,
       rope_theta = config$rope_theta %||% 10000.0,
       rope_double_precision = config$rope_double_precision %||% TRUE,
@@ -552,7 +552,13 @@ load_ltx2_connector_weights <- function(connectors, weights, verbose = TRUE) {
   native_params <- names(connectors$parameters)
 
   remap_connector_key <- function(key) {
-    # HuggingFace names should map directly to R module names
+    # HuggingFace uses nn.ModuleList for FeedForward:
+    #   ff.net.0.proj.weight -> ff.act_fn.proj.weight
+    #   ff.net.2.weight -> ff.proj_out.weight
+    key <- gsub("\\.ff\\.net\\.0\\.", ".ff.act_fn.", key)
+    key <- gsub("\\.ff\\.net\\.2\\.", ".ff.proj_out.", key)
+
+    # to_out.0 is correct - both HF and our module use ModuleList
     key
   }
 
