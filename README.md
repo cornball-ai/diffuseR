@@ -139,7 +139,32 @@ Currently supported models:
 
 - Stable Diffusion 2.1
 - Stable Diffusion XL (SDXL)
-- More coming soon!
+- LTX-2 Video (in development)
+
+### Downloading Models
+
+Models are automatically downloaded from HuggingFace on first use. For gated models (like Gemma for LTX-2), you need to:
+
+1. Create a HuggingFace account at https://huggingface.co
+2. Accept the model's license agreement (visit the model page and click "Agree")
+3. Create an access token at https://huggingface.co/settings/tokens
+4. Add to your `~/.Renviron`:
+   ```
+   HF_TOKEN=hf_your_token_here
+   ```
+
+**Manual download with hfhub:**
+
+```r
+# Install hfhub with HF_TOKEN fix (until PR merged upstream)
+remotes::install_github("cornball-ai/hfhub@fix-gated-repos")
+
+# Download a model
+library(hfhub)
+path <- hub_download("google/gemma-3-12b-it", "config.json")
+# Or download entire model:
+# path <- hub_snapshot("stabilityai/stable-diffusion-2-1")
+```
 
 ## Roadmap
 
