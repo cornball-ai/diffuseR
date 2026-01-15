@@ -134,6 +134,7 @@
 | `get_pad_id` | tokenizer |
 | `get_required_components` | model_name |
 | `get_timestep_embedding` | timesteps, embedding_dim, flip_sin_to_cos, downscale_freq_shift, scale, max_period |
+| `greedy_tokenize` | text, vocab, byte_fallback, unk_token |
 | `group_norm_32` | channels |
 | `load_gemma3_weights` | model, weights, verbose |
 | `load_ltx2_connector_weights` | connectors, weights, verbose |
@@ -152,6 +153,7 @@
 | `pixart_alpha_text_projection` | in_features, hidden_size, out_features, act_fn |
 | `print.bpe_tokenizer` | x, ... |
 | `quick_gelu` | x |
+| `repeat_kv` | hidden_states, n_rep |
 | `rescale_zero_terminal_snr` | betas |
 | `rms_norm` | dim, eps, elementwise_affine |
 | `rotate_half` | x |
@@ -1798,6 +1800,21 @@ get_timestep_embedding(
   scale = 1,
   max_period = 10000
 )
+```
+
+
+## greedy_tokenize
+
+### Greedy longest match tokenization
+
+#### Description
+
+Greedy longest match tokenization
+
+#### Usage
+
+```r
+greedy_tokenize(text, vocab, byte_fallback = FALSE, unk_token = NULL)
 ```
 
 
