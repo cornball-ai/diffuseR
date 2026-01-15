@@ -60,21 +60,25 @@ gemma3_rotary_embedding <- torch::nn_module(
     self$scaling_factor <- scaling_factor
 
     # Precompute inverse frequencies
+    # For linear scaling, divide inv_freq by the scaling factor (HuggingFace convention)
     inv_freq <- 1.0 / (base ^ (torch::torch_arange(0, dim - 1L, 2L)$to(dtype = torch::torch_float32()) / dim))
+    inv_freq <- inv_freq / scaling_factor
     self$inv_freq <- torch::nn_buffer(inv_freq, persistent = FALSE)
   },
 
   forward = function(x, position_ids) {
     # x: [batch, seq_len, ...]
-    # position_ids: [batch, seq_len]
-
-    # Scale positions if using extended context
-    position_ids_scaled <- position_ids$to(dtype = torch::torch_float32()) / self$scaling_factor
+    # position_ids: [batch, seq_len] or [1, seq_len]
 
     # Compute frequencies: [batch, seq_len, dim/2]
-    freqs <- torch::torch_einsum("bs,d->bsd", list(position_ids_scaled, self$inv_freq$to(device = x$device)))
+    position_ids_float <- position_ids$to(dtype = torch::torch_float32())
 
-    # Duplicate for interleaved: [batch, seq_len, dim]
+    # HuggingFace uses matmul: inv_freq[None,:,None] @ position_ids[:,None,:]
+    # We use einsum which is equivalent
+    freqs <- torch::torch_einsum("bs,d->bsd", list(position_ids_float, self$inv_freq$to(device = x$device)))
+
+    # Concatenate for full dimension: [batch, seq_len, dim]
+    # This duplicates freqs so that first half and second half are identical
     emb <- torch::torch_cat(list(freqs, freqs), dim = -1L)
 
     cos_emb <- torch::torch_cos(emb)$to(dtype = x$dtype)
@@ -113,6 +117,28 @@ rotate_half <- function(x) {
   x1 <- x[.., 1:half_dim]
   x2 <- x[.., (half_dim + 1L):dim]
   torch::torch_cat(list(-x2, x1), dim = -1L)
+}
+
+#' Repeat KV heads for GQA (Grouped Query Attention)
+#'
+#' Interleaves KV heads to match query heads: [k0,k0,k1,k1,...] not [k0,k1,...,k0,k1,...]
+#' @param hidden_states Tensor of shape [batch, num_kv_heads, seq_len, head_dim]
+#' @param n_rep Number of repetitions per KV head
+#' @return Tensor of shape [batch, num_kv_heads * n_rep, seq_len, head_dim]
+#' @keywords internal
+repeat_kv <- function(hidden_states, n_rep) {
+  if (n_rep == 1L) {
+    return(hidden_states)
+  }
+  batch <- hidden_states$shape[1]
+  num_kv_heads <- hidden_states$shape[2]
+  seq_len <- hidden_states$shape[3]
+  head_dim <- hidden_states$shape[4]
+
+  # Add dimension and expand: [batch, kv_heads, 1, seq, dim] -> [batch, kv_heads, n_rep, seq, dim]
+  hidden_states <- hidden_states$unsqueeze(3L)$expand(c(batch, num_kv_heads, n_rep, seq_len, head_dim))
+  # Reshape to interleave: [batch, kv_heads * n_rep, seq, dim]
+  hidden_states$reshape(c(batch, num_kv_heads * n_rep, seq_len, head_dim))
 }
 
 # -----------------------------------------------------------------------------
@@ -197,7 +223,8 @@ gemma3_attention <- torch::nn_module(
     return((layer_idx + 1L) %% sliding_window_pattern != 0L)
   },
 
-  forward = function(hidden_states, attention_mask = NULL, position_embeddings = NULL) {
+  forward = function(hidden_states, attention_mask = NULL,
+                     position_embeddings_global = NULL, position_embeddings_local = NULL) {
     batch_size <- hidden_states$shape[1]
     seq_len <- hidden_states$shape[2]
 
@@ -215,7 +242,8 @@ gemma3_attention <- torch::nn_module(
     query_states <- self$q_norm(query_states)
     key_states <- self$k_norm(key_states)
 
-    # Apply rotary embeddings
+    # Apply rotary embeddings - use local for sliding window layers, global otherwise
+    position_embeddings <- if (self$is_sliding) position_embeddings_local else position_embeddings_global
     if (!is.null(position_embeddings)) {
       cos <- position_embeddings[[1]]
       sin <- position_embeddings[[2]]
@@ -224,10 +252,10 @@ gemma3_attention <- torch::nn_module(
       key_states <- rope_result[[2]]
     }
 
-    # Repeat K/V for GQA
+    # Repeat K/V for GQA (interleaved: [k0,k0,k1,k1,...] not [k0,k1,...,k0,k1,...])
     if (self$num_key_value_groups > 1L) {
-      key_states <- key_states$`repeat`(c(1L, self$num_key_value_groups, 1L, 1L))
-      value_states <- value_states$`repeat`(c(1L, self$num_key_value_groups, 1L, 1L))
+      key_states <- repeat_kv(key_states, self$num_key_value_groups)
+      value_states <- repeat_kv(value_states, self$num_key_value_groups)
     }
 
     # Compute attention scores
@@ -240,14 +268,8 @@ gemma3_attention <- torch::nn_module(
       attn_weights <- attn_weights * self$attn_logit_softcapping
     }
 
-    # Apply sliding window mask if needed
-    if (self$is_sliding && !is.null(self$sliding_window)) {
-      # Create sliding window causal mask
-      sliding_mask <- create_sliding_window_mask(seq_len, self$sliding_window, device = attn_weights$device)
-      attn_weights <- attn_weights + sliding_mask$unsqueeze(1L)$unsqueeze(1L)
-    }
-
-    # Apply attention mask
+    # Apply attention mask (includes causal mask from layer)
+    # Note: sliding window constraint is handled at the model level, not here
     if (!is.null(attention_mask)) {
       attn_weights <- attn_weights + attention_mask
     }
@@ -317,14 +339,16 @@ gemma3_decoder_layer <- torch::nn_module(
     self$post_feedforward_layernorm <- gemma3_rms_norm(config$hidden_size, eps = config$rms_norm_eps %||% 1e-6)
   },
 
-  forward = function(hidden_states, attention_mask = NULL, position_embeddings = NULL) {
+  forward = function(hidden_states, attention_mask = NULL,
+                     position_embeddings_global = NULL, position_embeddings_local = NULL) {
     residual <- hidden_states
 
     # Pre-norm self-attention
     hidden_states <- self$input_layernorm(hidden_states)
     hidden_states <- self$self_attn(hidden_states,
                                      attention_mask = attention_mask,
-                                     position_embeddings = position_embeddings)
+                                     position_embeddings_global = position_embeddings_global,
+                                     position_embeddings_local = position_embeddings_local)
     hidden_states <- self$post_attention_layernorm(hidden_states)
     hidden_states <- residual + hidden_states
 
@@ -360,13 +384,21 @@ gemma3_text_model <- torch::nn_module(
     self$embed_tokens <- torch::nn_embedding(config$vocab_size, config$hidden_size)
     self$embed_scale <- sqrt(config$hidden_size)
 
-    # Rotary embeddings
+    # Rotary embeddings - Gemma3 uses different frequencies for global vs local layers
     head_dim <- config$head_dim %||% (config$hidden_size %/% config$num_attention_heads)
+    # Global rotary embedding (for every 6th layer - layers 5, 11, 17, etc.)
     self$rotary_emb <- gemma3_rotary_embedding(
       dim = head_dim,
       max_position_embeddings = config$max_position_embeddings %||% 8192L,
-      base = config$rope_theta %||% 10000.0,
+      base = config$rope_theta %||% 1000000.0,  # Global default
       scaling_factor = config$rope_scaling$factor %||% 1.0
+    )
+    # Local rotary embedding (for sliding window layers)
+    self$rotary_emb_local <- gemma3_rotary_embedding(
+      dim = head_dim,
+      max_position_embeddings = config$max_position_embeddings %||% 8192L,
+      base = config$rope_local_base_freq %||% 10000.0,  # Local default
+      scaling_factor = 1.0  # No scaling for local
     )
 
     # Decoder layers
@@ -383,8 +415,9 @@ gemma3_text_model <- torch::nn_module(
     batch_size <- input_ids$shape[1]
     seq_len <- input_ids$shape[2]
 
-    # Token embeddings (scaled)
-    hidden_states <- self$embed_tokens(input_ids) * self$embed_scale
+    # Token embeddings (scaled by sqrt(hidden_size) - Gemma style)
+    # R torch uses 1-based indexing, HF uses 0-based, so add 1
+    hidden_states <- self$embed_tokens(input_ids + 1L) * self$embed_scale
 
     # Position IDs
     if (is.null(position_ids)) {
@@ -392,8 +425,9 @@ gemma3_text_model <- torch::nn_module(
       position_ids <- position_ids$unsqueeze(1L)$expand(c(batch_size, -1L))
     }
 
-    # Compute rotary embeddings
-    position_embeddings <- self$rotary_emb(hidden_states, position_ids)
+    # Compute rotary embeddings (both global and local)
+    position_embeddings_global <- self$rotary_emb(hidden_states, position_ids)
+    position_embeddings_local <- self$rotary_emb_local(hidden_states, position_ids)
 
     # Prepare causal attention mask
     if (is.null(attention_mask)) {
@@ -423,7 +457,8 @@ gemma3_text_model <- torch::nn_module(
       layer <- self$layers[[i]]
       hidden_states <- layer(hidden_states,
                               attention_mask = causal_mask,
-                              position_embeddings = position_embeddings)
+                              position_embeddings_global = position_embeddings_global,
+                              position_embeddings_local = position_embeddings_local)
 
       if (output_hidden_states) {
         all_hidden_states <- c(all_hidden_states, list(hidden_states))
@@ -465,11 +500,11 @@ gemma3_config_ltx2 <- function() {
     head_dim = 256L,
     max_position_embeddings = 131072L,
     rms_norm_eps = 1e-6,
-    rope_theta = 10000.0,
+    rope_theta = 1000000.0,  # Gemma3 uses 1M, not 10K
     rope_scaling = list(factor = 8.0, type = "linear"),
     sliding_window = 1024L,
     sliding_window_pattern = 6L,
-    attn_logit_softcapping = 50.0,
+    attn_logit_softcapping = NULL,  # Gemma3 doesn't use softcapping by default
     query_pre_attn_scalar = 256L
   )
 }
@@ -513,11 +548,11 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
     head_dim = config_raw$head_dim %||% 256L,
     max_position_embeddings = config_raw$max_position_embeddings %||% 131072L,
     rms_norm_eps = config_raw$rms_norm_eps %||% 1e-6,
-    rope_theta = config_raw$rope_theta %||% 10000.0,
+    rope_theta = config_raw$rope_theta %||% 1000000.0,  # Gemma3 uses 1M
     rope_scaling = list(factor = config_raw$rope_scaling$factor %||% 8.0),
     sliding_window = config_raw$sliding_window %||% 1024L,
     sliding_window_pattern = config_raw$sliding_window_pattern %||% 6L,
-    attn_logit_softcapping = config_raw$attn_logit_softcapping %||% 50.0,
+    attn_logit_softcapping = config_raw$attn_logit_softcapping,  # NULL = no softcapping (HF default)
     query_pre_attn_scalar = config_raw$query_pre_attn_scalar %||% 256L
   )
 
@@ -597,15 +632,8 @@ load_gemma3_weights <- function(model, weights, verbose = TRUE) {
 
     key <- sub("^model\\.", "", key)
 
-    # Convert 0-indexed layer numbers to 1-indexed
-    # Use gregexpr to find and replace layer numbers
-    matches <- gregexpr("layers\\.(\\d+)\\.", key)
-    if (matches[[1]][1] != -1) {
-      # Extract the layer number
-      layer_match <- regmatches(key, matches)[[1]]
-      layer_num <- as.integer(gsub("layers\\.(\\d+)\\.", "\\1", layer_match)) + 1L
-      key <- sub("layers\\.\\d+\\.", paste0("layers.", layer_num, "."), key)
-    }
+    # Note: R torch model$parameters uses 0-indexed layer names even though
+    # R list indexing is 1-based. So we keep the layer numbers as-is.
 
     key
   }

@@ -220,40 +220,72 @@ encode_single <- function(tokenizer, text, add_special_tokens = TRUE) {
     }
   }
 
-  # Split into UTF-8 characters (not bytes)
-  chars <- strsplit(text, "")[[1]]
-
-  # Initialize tokens as individual characters
-  tokens <- chars
-
-  # Apply BPE merges
-  tokens <- apply_bpe_merges(tokens, tokenizer$merge_priority, tokenizer$vocab)
-
-  # Convert tokens to IDs
-  ids <- vapply(tokens, function(tok) {
-    if (tok %in% names(tokenizer$vocab)) {
-      tokenizer$vocab[[tok]]
-    } else if (tokenizer$byte_fallback) {
-      # Try byte fallback for each byte in the token
-      bytes <- charToRaw(tok)
-      # For now, just return UNK - full byte fallback is complex
-      if (!is.null(tokenizer$unk_token) && tokenizer$unk_token %in% names(tokenizer$vocab)) {
-        tokenizer$vocab[[tokenizer$unk_token]]
-      } else {
-        3L
-      }
-    } else if (!is.null(tokenizer$unk_token) && tokenizer$unk_token %in% names(tokenizer$vocab)) {
-      tokenizer$vocab[[tokenizer$unk_token]]
-    } else {
-      3L  # Default UNK id
-    }
-  }, integer(1))
+  # Use greedy longest match tokenization (for large vocabs like Gemma)
+  # This is more efficient than BPE merging for pre-trained vocabs
+  ids <- greedy_tokenize(text, tokenizer$vocab, tokenizer$byte_fallback, tokenizer$unk_token)
 
   # Add special tokens
   if (add_special_tokens) {
     bos_id <- get_bos_id(tokenizer)
     if (!is.null(bos_id)) {
       ids <- c(bos_id, ids)
+    }
+  }
+
+  ids
+}
+
+#' Greedy longest match tokenization
+#' @keywords internal
+greedy_tokenize <- function(text, vocab, byte_fallback = FALSE, unk_token = NULL) {
+  ids <- integer(0)
+  i <- 1
+  n <- nchar(text)
+  vocab_names <- names(vocab)
+
+  while (i <= n) {
+    # Try to match the longest token starting at position i
+    matched <- FALSE
+
+    # Try decreasing lengths
+    for (len in min(n - i + 1, 50):1) {  # Cap at 50 chars max
+      candidate <- substr(text, i, i + len - 1)
+
+      if (candidate %in% vocab_names) {
+        ids <- c(ids, vocab[[candidate]])
+        i <- i + len
+        matched <- TRUE
+        break
+      }
+    }
+
+    if (!matched) {
+      # No match found - use byte fallback or UNK
+      char <- substr(text, i, i)
+      if (byte_fallback) {
+        # Try single character in vocab first
+        if (char %in% vocab_names) {
+          ids <- c(ids, vocab[[char]])
+        } else {
+          # Byte fallback: convert to <0xHH> format
+          bytes <- charToRaw(char)
+          for (b in bytes) {
+            byte_token <- sprintf("<0x%02X>", as.integer(b))
+            if (byte_token %in% vocab_names) {
+              ids <- c(ids, vocab[[byte_token]])
+            } else if (!is.null(unk_token) && unk_token %in% vocab_names) {
+              ids <- c(ids, vocab[[unk_token]])
+            } else {
+              ids <- c(ids, 3L)  # Default UNK
+            }
+          }
+        }
+      } else if (!is.null(unk_token) && unk_token %in% vocab_names) {
+        ids <- c(ids, vocab[[unk_token]])
+      } else {
+        ids <- c(ids, 3L)  # Default UNK
+      }
+      i <- i + 1
     }
   }
 
