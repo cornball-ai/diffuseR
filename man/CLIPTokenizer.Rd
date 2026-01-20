@@ -4,7 +4,12 @@
 \alias{CLIPTokenizer}
 \title{Tokenize a prompt}
 \usage{
-CLIPTokenizer(prompt, merges, vocab_file)
+CLIPTokenizer(
+  prompt,
+  merges = system.file("tokenizer/merges.txt", package = "diffuseR"),
+  vocab_file = system.file("tokenizer/vocab.json", package = "diffuseR"),
+  pad_token = 0L
+)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}

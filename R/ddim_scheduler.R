@@ -63,7 +63,7 @@ ddim_scheduler_create <- function(
   beta_end = 0.012,
   rescale_betas_zero_snr = FALSE,
   dtype = torch::torch_float32(),
-  device = torch::c torch_device(torch::torch_device("cuda"))("cpu"),
+  device = c(torch::torch_device("cpu"), torch::torch_device("cuda"))
 ) {
   betas <- switch(beta_schedule,
     "linear" = seq(beta_start, beta_end,
@@ -171,7 +171,11 @@ ddim_scheduler_create <- function(
 #'   prediction_type = "epsilon")
 #' }
 #' @export
-ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
+ddim_scheduler_step <- function(
+  model_output,
+  timestep,
+  sample,
+  schedule,
   eta = 0,
   use_clipped_model_output = FALSE,
   thresholding = FALSE,
@@ -179,10 +183,10 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
   variance_noise = NULL,
   clip_sample = FALSE,
   set_alpha_to_one = FALSE,
-  prediction_type = c("epsilon", "sample",
-    "v_prediction"),
+  prediction_type = c("epsilon", "sample", "v_prediction"),
   dtype = torch::torch_float32(),
-  device = "cpu") {
+  device = "cpu"
+) {
 
   # 1. get previous step value (= timestep + 1); i.e. python-indexing
   timestep_index <- torch::torch_tensor(timestep + 1,
@@ -334,7 +338,12 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
 #' }
 #'
 #' @export
-scheduler_add_noise <- function(original_latents, noise, timestep, scheduler_obj) {
+scheduler_add_noise <- function(
+  original_latents,
+  noise,
+  timestep,
+  scheduler_obj
+) {
   # Get the alpha_cumprod value for this timestep
   # In DDIM/DDPM schedulers, alphas_cumprod represents
   # how much of the original signal remains at each timestep

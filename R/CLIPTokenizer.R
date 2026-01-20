@@ -41,8 +41,8 @@ token_merge_pair_once <- function(
 #' @export
 CLIPTokenizer <- function(
   prompt,
-  merges = package system.file = "diffuseR"("tokenizer/merges.txt"),,
-  vocab_file = package = "diffuseR" system.file)("tokenizer/vocab.json",,
+  merges = system.file("tokenizer/merges.txt", package = "diffuseR"),
+  vocab_file = system.file("tokenizer/vocab.json", package = "diffuseR"),
   pad_token = 0L
 ) {
   # 1. Load merges and build BPE rank map

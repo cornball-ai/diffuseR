@@ -415,11 +415,10 @@ ltx2_attention <- torch::nn_module(
     # QK normalization
     self$norm_q <- rms_norm(dim_head * heads, eps = norm_eps, elementwise_affine = norm_elementwise_affine)
     if (is.null(kv_heads)) {
-      self$norm_k <- heads
+      self$norm_k <- rms_norm(dim_head * heads, eps = norm_eps, elementwise_affine = norm_elementwise_affine)
     } else {
-      self$norm_k <- kv_heads),
+      self$norm_k <- rms_norm(dim_head * kv_heads, eps = norm_eps, elementwise_affine = norm_elementwise_affine)
     }
-      eps = norm_eps, elementwise_affine = norm_elementwise_affine)
 
     # Projections
     self$to_q <- make_linear(query_dim, self$inner_dim, bias = bias)
@@ -458,7 +457,11 @@ ltx2_attention <- torch::nn_module(
     if (!is.null(query_rotary_emb)) {
       if (self$rope_type == "interleaved") {
         query <- apply_interleaved_rotary_emb_list(query, query_rotary_emb)
-        key_rope <- if (!is.null(key_rotary_emb)) key_rotary_emb else query_rotary_emb
+        if (!is.null(key_rotary_emb)) {
+          key_rope <- key_rotary_emb
+        } else {
+          key_rope <- query_rotary_emb
+        }
         key <- apply_interleaved_rotary_emb_list(key, key_rope)
       }
     }

@@ -294,7 +294,9 @@ txt2vid_ltx2 <- function(
         # Try to load INT4 quantized weights from R_user_dir cache
         cache_dir <- tools::R_user_dir("diffuseR", "cache")
         int4_path <- file.path(cache_dir, "ltx2_transformer_int4.safetensors")
-        if (file.exists(int4_path)) {
+        # Check for single file or sharded files
+        int4_shards <- list.files(cache_dir, pattern = "ltx2_transformer_int4.*\\.safetensors$")
+        if (file.exists(int4_path) || length(int4_shards) > 0) {
           if (verbose) message("Loading INT4 quantized DiT...")
 
           # Enable INT4-native model creation
@@ -435,9 +437,41 @@ txt2vid_ltx2 <- function(
 
       # Load/create VAE if needed
       if (is.null(vae)) {
-        if (verbose) message("NOTE: VAE not provided - skipping decode")
-        video_tensor <- latents# Return latents as placeholder
-      } else {
+        if (verbose) message("Loading VAE...")
+
+        # Try to find VAE in HuggingFace cache
+        vae_path <- tryCatch({
+            if (requireNamespace("hfhub", quietly = TRUE)) {
+              config_path <- hfhub::hub_download("Lightricks/LTX-2", "vae/config.json",
+                local_files_only = TRUE)
+              dirname(config_path)
+            } else {
+              NULL
+            }
+          }, error = function(e) NULL)
+
+        if (is.null(vae_path)) {
+          if (verbose) message("NOTE: VAE not found in cache - skipping decode")
+          video_tensor <- latents
+        } else {
+          # Determine VAE dtype based on latent dtype
+          vae_dtype <- if (identical(latent_dtype, torch::torch_bfloat16()) ||
+            identical(latent_dtype, torch::torch_float16())) {
+            "float16"
+          } else {
+            "float32"
+          }
+
+          vae <- load_ltx2_vae(
+            weights_path = vae_path,
+            device = vae_device,
+            dtype = vae_dtype,
+            verbose = verbose
+          )
+        }
+      }
+
+      if (!is.null(vae)) {
         # Configure VAE for memory profile
         configure_vae_for_profile(vae, memory_profile)
 
@@ -466,9 +500,7 @@ txt2vid_ltx2 <- function(
   # ---- Step 7: Save Output ----
   if (!is.null(output_file)) {
     if (verbose) message(sprintf("Saving to %s...", output_file))
-    # TODO: Implement save_video in Phase 8
-    # save_video(video_array, output_file, fps = fps, format = output_format)
-    message("NOTE: Video saving not yet implemented - use save_video()")
+    save_video_frames(video_array, output_file, fps = fps, verbose = verbose)
   }
 
   # Build result
@@ -499,5 +531,85 @@ txt2vid_ltx2 <- function(
   }
 
   result
+}
+
+#' Save video frames to file
+#'
+#' Saves an array of video frames to an MP4 file using ffmpeg via the av package.
+#'
+#' @param video_array Numeric array with dimensions [frames, height, width, channels].
+#'   Values should be in range [0, 1].
+#' @param output_file Character. Path to output video file.
+#' @param fps Numeric. Frames per second. Default: 24.
+#' @param verbose Logical. Print progress messages. Default: TRUE.
+#' @return Invisibly returns the output file path.
+#' @keywords internal
+save_video_frames <- function(
+  video_array,
+  output_file,
+  fps = 24,
+  verbose = TRUE
+) {
+  if (!requireNamespace("av", quietly = TRUE)) {
+    stop("Package 'av' is required for video saving. Install with: install.packages('av')")
+  }
+
+  # video_array should be [frames, height, width, channels]
+  dims <- dim(video_array)
+  if (length(dims) != 4) {
+    stop("video_array must have 4 dimensions: [frames, height, width, channels]")
+  }
+
+  num_frames <- dims[1]
+  height <- dims[2]
+  width <- dims[3]
+  channels <- dims[4]
+
+  if (channels != 3) {
+    stop("Expected 3 color channels, got ", channels)
+  }
+
+  # Create temporary directory for frames
+
+  temp_dir <- tempfile("video_frames_")
+  dir.create(temp_dir)
+  on.exit(unlink(temp_dir, recursive = TRUE), add = TRUE)
+
+  # Save each frame as PNG
+  if (verbose) message(sprintf("  Writing %d frames...", num_frames))
+
+  for (i in seq_len(num_frames)) {
+    # Extract frame and convert to [0, 255] uint8
+    frame <- video_array[i,,,]
+    frame <- pmax(pmin(frame, 1), 0) * 255
+
+    # Convert to integer matrix for png
+    # frame is [height, width, channels]
+    frame_int <- array(as.integer(round(frame)), dim = dim(frame))
+
+    # Save as PNG
+    frame_path <- file.path(temp_dir, sprintf("frame_%05d.png", i))
+    png::writePNG(frame_int / 255, frame_path)
+  }
+
+  # Encode video using av
+  if (verbose) message("  Encoding video...")
+
+  # Get list of frame files
+  frame_files <- list.files(temp_dir, pattern = "frame_.*\\.png$", full.names = TRUE)
+  frame_files <- sort(frame_files)
+
+  # Use av to encode
+  av::av_encode_video(
+    input = frame_files,
+    output = output_file,
+    framerate = fps,
+    codec = "libx264",
+    verbose = FALSE
+  )
+
+  if (verbose) message(sprintf("  Saved: %s", output_file))
+
+  invisible(output_file)
 }
 
