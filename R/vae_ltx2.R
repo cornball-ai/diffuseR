@@ -40,7 +40,7 @@ ltx2_video_encoder3d <- torch::nn_module(
   ) {
     self$patch_size <- patch_size
     self$patch_size_t <- patch_size_t
-    self$in_channels <- in_channels * patch_size^2
+    self$in_channels <- in_channels * patch_size ^ 2
     self$is_causal <- is_causal
 
     output_channel <- out_channels
@@ -86,14 +86,17 @@ ltx2_video_encoder3d <- torch::nn_module(
     self$conv_act <- torch::nn_silu()
     self$conv_out <- ltx2_video_causal_conv3d(
       in_channels = output_channel,
-      out_channels = out_channels + 1L,  # +1 for log variance
+      out_channels = out_channels + 1L, # +1 for log variance
       kernel_size = 3L,
       stride = 1L,
       spatial_padding_mode = spatial_padding_mode
     )
   },
 
-  forward = function(hidden_states, causal = NULL) {
+  forward = function(
+    hidden_states,
+    causal = NULL
+  ) {
     p <- self$patch_size
     p_t <- self$patch_size_t
 
@@ -111,11 +114,11 @@ ltx2_video_encoder3d <- torch::nn_module(
 
     # Patchify: reshape to separate patches
     hidden_states <- hidden_states$reshape(c(
-      batch_size, num_channels,
-      post_patch_num_frames, p_t,
-      post_patch_height, p,
-      post_patch_width, p
-    ))
+        batch_size, num_channels,
+        post_patch_num_frames, p_t,
+        post_patch_height, p,
+        post_patch_width, p
+      ))
     # Permute to channel-first for patches
     # [B, C, F', p_t, H', p, W', p] -> [B, C, p_t, p, p, F', H', W']
     hidden_states <- hidden_states$permute(c(1, 2, 4, 8, 6, 3, 5, 7))
@@ -134,7 +137,7 @@ ltx2_video_encoder3d <- torch::nn_module(
     hidden_states <- self$conv_out(hidden_states, causal = causal)
 
     # Duplicate last channel for mean/logvar split
-    last_channel <- hidden_states[, -1, , , ]$unsqueeze(2)
+    last_channel <- hidden_states[, - 1,,,]$unsqueeze(2)
     last_channel <- last_channel$`repeat`(c(1L, hidden_states$shape[2] - 2L, 1L, 1L, 1L))
     hidden_states <- torch::torch_cat(list(hidden_states, last_channel), dim = 2)
 
@@ -182,7 +185,7 @@ ltx2_video_decoder3d <- torch::nn_module(
   ) {
     self$patch_size <- patch_size
     self$patch_size_t <- patch_size_t
-    self$out_channels <- out_channels * patch_size^2
+    self$out_channels <- out_channels * patch_size ^ 2
     self$is_causal <- is_causal
 
     # Reverse orders for decoder
@@ -253,7 +256,11 @@ ltx2_video_decoder3d <- torch::nn_module(
     self$timestep_scale_multiplier <- NULL
   },
 
-  forward = function(hidden_states, temb = NULL, causal = NULL) {
+  forward = function(
+    hidden_states,
+    temb = NULL,
+    causal = NULL
+  ) {
     if (is.null(causal)) causal <- self$is_causal
 
     hidden_states <- self$conv_in(hidden_states, causal = causal)
@@ -284,14 +291,14 @@ ltx2_video_decoder3d <- torch::nn_module(
 
     # [B, C*p_t*p*p, F, H, W] -> [B, C, p_t, p, p, F, H, W]
     hidden_states <- hidden_states$reshape(c(
-      batch_size, -1, p_t, p, p, num_frames, height, width
-    ))
+        batch_size, - 1, p_t, p, p, num_frames, height, width
+      ))
     # Permute: [B, C, p_t, p, p, F, H, W] -> [B, C, F, p_t, H, p, W, p]
     hidden_states <- hidden_states$permute(c(1, 2, 6, 3, 7, 5, 8, 4))
     # Flatten to full resolution
-    hidden_states <- hidden_states$flatten(start_dim = 7, end_dim = 8)  # W*p
-    hidden_states <- hidden_states$flatten(start_dim = 5, end_dim = 6)  # H*p
-    hidden_states <- hidden_states$flatten(start_dim = 3, end_dim = 4)  # F*p_t
+    hidden_states <- hidden_states$flatten(start_dim = 7, end_dim = 8) # W*p
+    hidden_states <- hidden_states$flatten(start_dim = 5, end_dim = 6) # H*p
+    hidden_states <- hidden_states$flatten(start_dim = 3, end_dim = 4) # F*p_t
 
     hidden_states
   }
@@ -305,13 +312,13 @@ ltx2_video_decoder3d <- torch::nn_module(
 #' @export
 diagonal_gaussian_distribution <- function(parameters) {
   # Split parameters into mean and logvar
-  chunk_dim <- 2  # Channel dimension
+  chunk_dim <- 2# Channel dimension
   mean_logvar <- parameters$chunk(2, dim = chunk_dim)
   mean <- mean_logvar[[1]]
   logvar <- mean_logvar[[2]]
 
   # Clamp logvar for numerical stability
-  logvar <- logvar$clamp(min = -30.0, max = 20.0)
+  logvar <- logvar$clamp(min = - 30.0, max = 20.0)
   std <- torch::torch_exp(0.5 * logvar)
   var <- torch::torch_exp(logvar)
 
@@ -419,8 +426,8 @@ ltx2_video_vae <- torch::nn_module(
     self$latents_std <- torch::nn_buffer(torch::torch_ones(latent_channels))
 
     # Compression ratios
-    self$spatial_compression_ratio <- patch_size * 2^sum(spatio_temporal_scaling)
-    self$temporal_compression_ratio <- patch_size_t * 2^sum(spatio_temporal_scaling)
+    self$spatial_compression_ratio <- patch_size * 2 ^ sum(spatio_temporal_scaling)
+    self$temporal_compression_ratio <- patch_size_t * 2 ^ sum(spatio_temporal_scaling)
 
     self$scaling_factor <- scaling_factor
 
@@ -442,7 +449,7 @@ ltx2_video_vae <- torch::nn_module(
     self$tile_sample_stride_num_frames <- 8L
   },
 
-  #' Enable tiled encoding/decoding for memory efficiency
+#' Enable tiled encoding/decoding for memory efficiency
   enable_tiling = function(
     tile_sample_min_height = NULL,
     tile_sample_min_width = NULL,
@@ -461,53 +468,68 @@ ltx2_video_vae <- torch::nn_module(
     invisible(self)
   },
 
-  #' Disable tiling
+#' Disable tiling
   disable_tiling = function() {
     self$use_tiling <- FALSE
     invisible(self)
   },
 
-  #' Enable framewise decoding for long videos
+#' Enable framewise decoding for long videos
   enable_framewise_decoding = function() {
     self$use_framewise_decoding <- TRUE
     invisible(self)
   },
 
-  #' Blend tiles vertically
-  blend_v = function(a, b, blend_extent) {
+#' Blend tiles vertically
+  blend_v = function(
+    a,
+    b,
+    blend_extent
+  ) {
     blend_extent <- min(a$shape[4], b$shape[4], blend_extent)
     for (y in seq_len(blend_extent)) {
       weight <- (y - 1) / blend_extent
       idx <- as.integer(a$shape[4] - blend_extent + y)
-      b[, , , y, ] <- a[, , , idx, ] * (1 - weight) + b[, , , y, ] * weight
+      b[,,, y,] <- a[,,, idx,] * (1 - weight) + b[,,, y,] * weight
     }
     b
   },
 
-  #' Blend tiles horizontally
-  blend_h = function(a, b, blend_extent) {
+#' Blend tiles horizontally
+  blend_h = function(
+    a,
+    b,
+    blend_extent
+  ) {
     blend_extent <- min(a$shape[5], b$shape[5], blend_extent)
     for (x in seq_len(blend_extent)) {
       weight <- (x - 1) / blend_extent
       idx <- as.integer(a$shape[5] - blend_extent + x)
-      b[, , , , x] <- a[, , , , idx] * (1 - weight) + b[, , , , x] * weight
+      b[,,,, x] <- a[,,,, idx] * (1 - weight) + b[,,,, x] * weight
     }
     b
   },
 
-  #' Blend tiles temporally
-  blend_t = function(a, b, blend_extent) {
+#' Blend tiles temporally
+  blend_t = function(
+    a,
+    b,
+    blend_extent
+  ) {
     blend_extent <- min(a$shape[3], b$shape[3], blend_extent)
     for (t in seq_len(blend_extent)) {
       weight <- (t - 1) / blend_extent
       idx <- as.integer(a$shape[3] - blend_extent + t)
-      b[, , t, , ] <- a[, , idx, , ] * (1 - weight) + b[, , t, , ] * weight
+      b[,, t,,] <- a[,, idx,,] * (1 - weight) + b[,, t,,] * weight
     }
     b
   },
 
-  #' Tiled encoding for large spatial dimensions
-  tiled_encode = function(x, causal = NULL) {
+#' Tiled encoding for large spatial dimensions
+  tiled_encode = function(
+    x,
+    causal = NULL
+  ) {
     batch_size <- x$shape[1]
     num_channels <- x$shape[2]
     num_frames <- x$shape[3]
@@ -532,7 +554,7 @@ ltx2_video_vae <- torch::nn_module(
       for (j in seq(1, width, by = self$tile_sample_stride_width)) {
         i_end <- min(i + self$tile_sample_min_height - 1, height)
         j_end <- min(j + self$tile_sample_min_width - 1, width)
-        tile <- self$encoder(x[, , , i:i_end, j:j_end], causal = causal)
+        tile <- self$encoder(x[,,, i:i_end, j:j_end], causal = causal)
         row[[length(row) + 1]] <- tile
       }
       rows[[length(rows) + 1]] <- row
@@ -550,17 +572,21 @@ ltx2_video_vae <- torch::nn_module(
         if (j > 1) {
           tile <- self$blend_h(rows[[i]][[j - 1]], tile, blend_width)
         }
-        result_row[[length(result_row) + 1]] <- tile[, , , 1:tile_latent_stride_height, 1:tile_latent_stride_width]
+        result_row[[length(result_row) + 1]] <- tile[,,, 1:tile_latent_stride_height, 1:tile_latent_stride_width]
       }
       result_rows[[length(result_rows) + 1]] <- torch::torch_cat(result_row, dim = 5)
     }
 
-    enc <- torch::torch_cat(result_rows, dim = 4)[, , , 1:latent_height, 1:latent_width]
+    enc <- torch::torch_cat(result_rows, dim = 4)[,,, 1:latent_height, 1:latent_width]
     enc
   },
 
-  #' Tiled decoding for large spatial dimensions
-  tiled_decode = function(z, temb = NULL, causal = NULL) {
+#' Tiled decoding for large spatial dimensions
+  tiled_decode = function(
+    z,
+    temb = NULL,
+    causal = NULL
+  ) {
     batch_size <- z$shape[1]
     num_channels <- z$shape[2]
     num_frames <- z$shape[3]
@@ -585,7 +611,7 @@ ltx2_video_vae <- torch::nn_module(
       for (j in seq(1, width, by = tile_latent_stride_width)) {
         i_end <- min(i + tile_latent_min_height - 1, height)
         j_end <- min(j + tile_latent_min_width - 1, width)
-        tile <- self$decoder(z[, , , i:i_end, j:j_end], temb, causal = causal)
+        tile <- self$decoder(z[,,, i:i_end, j:j_end], temb, causal = causal)
         row[[length(row) + 1]] <- tile
       }
       rows[[length(rows) + 1]] <- row
@@ -603,17 +629,20 @@ ltx2_video_vae <- torch::nn_module(
         if (j > 1) {
           tile <- self$blend_h(rows[[i]][[j - 1]], tile, blend_width)
         }
-        result_row[[length(result_row) + 1]] <- tile[, , , 1:self$tile_sample_stride_height, 1:self$tile_sample_stride_width]
+        result_row[[length(result_row) + 1]] <- tile[,,, 1:self$tile_sample_stride_height, 1:self$tile_sample_stride_width]
       }
       result_rows[[length(result_rows) + 1]] <- torch::torch_cat(result_row, dim = 5)
     }
 
-    dec <- torch::torch_cat(result_rows, dim = 4)[, , , 1:sample_height, 1:sample_width]
+    dec <- torch::torch_cat(result_rows, dim = 4)[,,, 1:sample_height, 1:sample_width]
     dec
   },
 
-  #' Internal encode with tiling support
-  .encode = function(x, causal = NULL) {
+#' Internal encode with tiling support
+  .encode = function(
+    x,
+    causal = NULL
+  ) {
     batch_size <- x$shape[1]
     num_channels <- x$shape[2]
     num_frames <- x$shape[3]
@@ -627,12 +656,15 @@ ltx2_video_vae <- torch::nn_module(
     self$encoder(x, causal = causal)
   },
 
-  #' Encode video to latent space
-  encode = function(x, causal = NULL) {
+#' Encode video to latent space
+  encode = function(
+    x,
+    causal = NULL
+  ) {
     if (self$use_slicing && x$shape[1] > 1) {
       encoded_slices <- lapply(seq_len(x$shape[1]), function(i) {
-        self$.encode(x[i:i, , , , , drop = FALSE], causal = causal)
-      })
+          self$.encode(x[i:i,,,,, drop = FALSE], causal = causal)
+        })
       h <- torch::torch_cat(encoded_slices, dim = 1)
     } else {
       h <- self$.encode(x, causal = causal)
@@ -640,8 +672,12 @@ ltx2_video_vae <- torch::nn_module(
     diagonal_gaussian_distribution(h)
   },
 
-  #' Internal decode with tiling support
-  .decode = function(z, temb = NULL, causal = NULL) {
+#' Internal decode with tiling support
+  .decode = function(
+    z,
+    temb = NULL,
+    causal = NULL
+  ) {
     batch_size <- z$shape[1]
     num_channels <- z$shape[2]
     num_frames <- z$shape[3]
@@ -658,17 +694,21 @@ ltx2_video_vae <- torch::nn_module(
     self$decoder(z, temb, causal = causal)
   },
 
-  #' Decode latent to video
-  decode = function(z, temb = NULL, causal = NULL) {
+#' Decode latent to video
+  decode = function(
+    z,
+    temb = NULL,
+    causal = NULL
+  ) {
     if (self$use_slicing && z$shape[1] > 1) {
       if (!is.null(temb)) {
         decoded_slices <- lapply(seq_len(z$shape[1]), function(i) {
-          self$.decode(z[i:i, , , , , drop = FALSE], temb[i:i, drop = FALSE], causal = causal)
-        })
+            self$.decode(z[i:i,,,,, drop = FALSE], temb[i:i, drop = FALSE], causal = causal)
+          })
       } else {
         decoded_slices <- lapply(seq_len(z$shape[1]), function(i) {
-          self$.decode(z[i:i, , , , , drop = FALSE], causal = causal)
-        })
+            self$.decode(z[i:i,,,,, drop = FALSE], causal = causal)
+          })
       }
       torch::torch_cat(decoded_slices, dim = 1)
     } else {
@@ -676,7 +716,7 @@ ltx2_video_vae <- torch::nn_module(
     }
   },
 
-  #' Full forward pass (encode -> sample/mode -> decode)
+#' Full forward pass (encode -> sample/mode -> decode)
   forward = function(
     sample,
     temb = NULL,
@@ -707,8 +747,13 @@ ltx2_video_vae <- torch::nn_module(
 #' @param verbose Logical. Print loading progress. Default: TRUE
 #' @return Initialized ltx2_video_vae module
 #' @export
-load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
-                          dtype = "float32", verbose = TRUE) {
+load_ltx2_vae <- function(
+  weights_path,
+  config_path = NULL,
+  device = "cpu",
+  dtype = "float32",
+  verbose = TRUE
+) {
   if (!file.exists(weights_path)) {
     stop("Weights path not found: ", weights_path)
   }
@@ -774,7 +819,11 @@ load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
   load_ltx2_vae_weights(vae, weights, verbose = verbose)
 
   # Move to device with dtype
-  torch_dtype <- if (dtype == "float16") torch::torch_float16() else torch::torch_float32()
+  if (dtype == "float16") {
+    torch_dtype <- torch::torch_float16()
+  } else {
+    torch_dtype <- torch::torch_float32()
+  }
   vae$to(device = device, dtype = torch_dtype)
 
   if (verbose) message("VAE loaded successfully on device: ", device)
@@ -790,7 +839,11 @@ load_ltx2_vae <- function(weights_path, config_path = NULL, device = "cpu",
 #' @param verbose Logical. Print loading progress
 #' @return The VAE with loaded weights (invisibly)
 #' @keywords internal
-load_ltx2_vae_weights <- function(vae, weights, verbose = TRUE) {
+load_ltx2_vae_weights <- function(
+  vae,
+  weights,
+  verbose = TRUE
+) {
   # Get native parameter names
   native_params <- names(vae$parameters)
 
@@ -810,30 +863,30 @@ load_ltx2_vae_weights <- function(vae, weights, verbose = TRUE) {
   unmapped <- character(0)
 
   torch::with_no_grad({
-    for (hf_name in names(weights)) {
-      native_name <- remap_vae_key(hf_name)
+      for (hf_name in names(weights)) {
+        native_name <- remap_vae_key(hf_name)
 
-      if (native_name %in% native_params) {
-        hf_tensor <- weights[[hf_name]]
-        native_tensor <- vae$parameters[[native_name]]
+        if (native_name %in% native_params) {
+          hf_tensor <- weights[[hf_name]]
+          native_tensor <- vae$parameters[[native_name]]
 
-        if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
-          native_tensor$copy_(hf_tensor)
-          loaded <- loaded + 1L
-        } else {
-          if (verbose) {
-            message("Shape mismatch: ", native_name,
-                    " (HF: ", paste(as.integer(hf_tensor$shape), collapse = "x"),
-                    " vs R: ", paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
+            native_tensor$copy_(hf_tensor)
+            loaded <- loaded + 1L
+          } else {
+            if (verbose) {
+              message("Shape mismatch: ", native_name,
+                " (HF: ", paste(as.integer(hf_tensor$shape), collapse = "x"),
+                " vs R: ", paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+            }
+            skipped <- skipped + 1L
           }
+        } else {
           skipped <- skipped + 1L
+          unmapped <- c(unmapped, paste0(hf_name, " -> ", native_name))
         }
-      } else {
-        skipped <- skipped + 1L
-        unmapped <- c(unmapped, paste0(hf_name, " -> ", native_name))
       }
-    }
-  })
+    })
 
   if (verbose) {
     message(sprintf("VAE weights: %d loaded, %d skipped", loaded, skipped))
@@ -853,4 +906,8 @@ load_ltx2_vae_weights <- function(vae, weights, verbose = TRUE) {
 
 #' Null-coalescing operator
 #' @keywords internal
-`%||%` <- function(x, y) if (is.null(x)) y else x
+`%||%` <- function(
+  x,
+  y
+) if (is.null(x)) y else x
+

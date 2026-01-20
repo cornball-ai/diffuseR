@@ -54,21 +54,24 @@
 #' )
 #' }
 #' @export
-ddim_scheduler_create <- function(num_train_timesteps = 1000,
-                                  num_inference_steps = 50, eta = 0,
-                                  beta_schedule = c("linear", "scaled_linear", "cosine"),
-                                  beta_start =  0.00085, beta_end = 0.012,
-                                  rescale_betas_zero_snr = FALSE,
-                                  dtype = torch::torch_float32(),
-                                  device = c(torch::torch_device("cpu"),
-                                             torch::torch_device("cuda"))) {
+ddim_scheduler_create <- function(
+  num_train_timesteps = 1000,
+  num_inference_steps = 50,
+  eta = 0,
+  beta_schedule = c("linear", "scaled_linear", "cosine"),
+  beta_start = 0.00085,
+  beta_end = 0.012,
+  rescale_betas_zero_snr = FALSE,
+  dtype = torch::torch_float32(),
+  device = torch::c torch_device(torch::torch_device("cuda"))("cpu"),
+) {
   betas <- switch(beta_schedule,
-                  "linear" = seq(beta_start, beta_end,
-                                 length.out = num_train_timesteps),
-                  "scaled_linear" = seq(sqrt(beta_start), sqrt(beta_end),
-                                        length.out = num_train_timesteps) ^ 2,
-                  "cosine" = NULL)
-  if(rescale_betas_zero_snr) {
+    "linear" = seq(beta_start, beta_end,
+      length.out = num_train_timesteps),
+    "scaled_linear" = seq(sqrt(beta_start), sqrt(beta_end),
+      length.out = num_train_timesteps) ^ 2,
+    "cosine" = NULL)
+  if (rescale_betas_zero_snr) {
     betas <- rescale_zero_terminal_snr(betas)
   }
   betas <- torch::torch_tensor(betas, dtype = dtype, device = device)
@@ -76,13 +79,13 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
   alphas <- torch::torch_tensor(alphas, dtype = dtype, device = device)
   alphas_cumprod <- torch::torch_cumprod(alphas, dim = 1, dtype = dtype)
   alphas_cumprod_prev <- torch::torch_cat(list(torch::torch_ones(1, device = device),
-                                               alphas_cumprod[1:(length(alphas_cumprod) - 1)]))
-  
+      alphas_cumprod[1:(length(alphas_cumprod) - 1)]))
+
   step_ratio <- num_train_timesteps %/% num_inference_steps
   # Could add 2 here instead of 1 and remove it from timestep_index and prev_timestep_index below
   timesteps <- as.integer(rev(round((0:(num_inference_steps - 1)) * step_ratio) + 1))
   # timesteps <- as.integer(seq(num_train_timesteps, 0, length.out = num_inference_steps + 1)[-1] + 1)
-  
+
   list(
     betas = betas,
     alphas = alphas,
@@ -114,7 +117,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #'   Default: NULL
 #' @param variance_noise Optional pre-generated noise for the variance when eta > 0.
 #'   If NULL and eta > 0, noise will be generated. Default: NULL
-#' @param clip_sample Logical. Whether to clip the sample. Default: FALSE 
+#' @param clip_sample Logical. Whether to clip the sample. Default: FALSE
 #' @param set_alpha_to_one Logical. Whether to override the final alpha value to 1.
 #'   Used for numerical stability in the final step. Default: FALSE
 #' @param prediction_type Character. The type of prediction the model outputs.
@@ -142,7 +145,7 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #' The algorithm differs from DDPM by using a non-Markovian diffusion process that
 #' allows for deterministic sampling and fewer inference steps without sacrificing
 #' quality.
-#' 
+#'
 #' When using `prediction_type="epsilon"` (most common), the model predicts the
 #' noise that was added to create the current noisy sample. For `prediction_type="sample"`,
 #' the model predicts the clean sample directly. The `v_prediction` option implements
@@ -169,97 +172,97 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #' }
 #' @export
 ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
-                                eta = 0,
-                                use_clipped_model_output = FALSE,
-                                thresholding = FALSE,
-                                generator = NULL,
-                                variance_noise = NULL,
-                                clip_sample = FALSE,
-                                set_alpha_to_one = FALSE,
-                                prediction_type = c("epsilon", "sample",
-                                                    "v_prediction"),
-                                dtype = torch::torch_float32(),
-                                device = "cpu"){
-  
+  eta = 0,
+  use_clipped_model_output = FALSE,
+  thresholding = FALSE,
+  generator = NULL,
+  variance_noise = NULL,
+  clip_sample = FALSE,
+  set_alpha_to_one = FALSE,
+  prediction_type = c("epsilon", "sample",
+    "v_prediction"),
+  dtype = torch::torch_float32(),
+  device = "cpu") {
+
   # 1. get previous step value (= timestep + 1); i.e. python-indexing
   timestep_index <- torch::torch_tensor(timestep + 1,
-                                        dtype = torch::torch_long(),
-                                        device = torch::torch_device(device))
-  if(as.numeric(timestep_index) <= 2){ #schedule$timesteps[1]) {
-    prev_timestep <- 1 #length(schedule$alphas)
+    dtype = torch::torch_long(),
+    device = torch::torch_device(device))
+  if (as.numeric(timestep_index) <= 2) { #schedule$timesteps[1]) {
+    prev_timestep <- 1#length(schedule$alphas)
     prev_timestep_index <- torch::torch_tensor(prev_timestep,
-                                               dtype = torch::torch_long(),
-                                               device = torch::torch_device(device))
+      dtype = torch::torch_long(),
+      device = torch::torch_device(device))
   } else {
     prev_timestep <- schedule$timesteps[which(as.logical(schedule$timesteps == (timestep))) + 1]
     prev_timestep_index <- torch::torch_tensor(prev_timestep + 1,
-                                               dtype = torch::torch_long(),
-                                               device = torch::torch_device(device))
+      dtype = torch::torch_long(),
+      device = torch::torch_device(device))
   }
-  
+
   # 2. compute alphas, betas
   alpha_prod_t <- schedule$alphas_cumprod[timestep_index]
   alpha_prod_t_prev <- schedule$alphas_cumprod[prev_timestep_index]
   # alpha_prod_t <- alpha_prod_t + 1e-7  # Prevent division by zero
   # alpha_prod_t_prev <- alpha_prod_t_prev + 1e-7
-  if (set_alpha_to_one & prev_timestep == 1){
+  if (set_alpha_to_one & prev_timestep == 1) {
     alpha_prod_t_prev <- torch::torch_tensor(1.0,
-                                             dtype = dtype,
-                                             device = torch::torch_device(device))
+      dtype = dtype,
+      device = torch::torch_device(device))
   } else {
     alpha_prod_t_prev <- schedule$alphas_cumprod[prev_timestep_index]
     alpha_prod_t_prev <- alpha_prod_t_prev$to(dtype = dtype, device = torch::torch_device(device))
   }
-  
+
   beta_prod_t <- 1 - alpha_prod_t
   beta_prod_t <- beta_prod_t$to(dtype = dtype, device = torch::torch_device(device))
   beta_prod_t_prev = 1 - alpha_prod_t_prev
   beta_prod_t_prev <- beta_prod_t_prev$to(dtype = dtype, device = torch::torch_device(device))
-  
+
   # 3. Handle different prediction types (epsilon or v-prediction)
   preds <- switch(prediction_type,
-                  "epsilon" = list(pred_original_sample = (sample - beta_prod_t ^ (0.5) * model_output) / alpha_prod_t ^ (0.5),
-                                   pred_epsilon = model_output),
-                  "sample" = list(pred_original_sample = model_output,
-                                  pred_epsilon = (sample - alpha_prod_t ^ (0.5) * model_output) / beta_prod_t ^ (0.5)),
-                  "v_prediction" = list(pred_original_sample = (alpha_prod_t ^ 0.5) * sample - (beta_prod_t ^ 0.5) * model_output,
-                                        pred_epsilon = (alpha_prod_t ^ 0.5) * model_output + (beta_prod_t ^ 0.5) * sample))
+    "epsilon" = list(pred_original_sample = (sample - beta_prod_t ^ (0.5) * model_output) / alpha_prod_t ^ (0.5),
+      pred_epsilon = model_output),
+    "sample" = list(pred_original_sample = model_output,
+      pred_epsilon = (sample - alpha_prod_t ^ (0.5) * model_output) / beta_prod_t ^ (0.5)),
+    "v_prediction" = list(pred_original_sample = (alpha_prod_t ^ 0.5) * sample - (beta_prod_t ^ 0.5) * model_output,
+      pred_epsilon = (alpha_prod_t ^ 0.5) * model_output + (beta_prod_t ^ 0.5) * sample))
   pred_original_sample <- preds$pred_original_sample$to(dtype = dtype, device = torch::torch_device(device))
   pred_epsilon <- preds$pred_epsilon$to(dtype = dtype, device = torch::torch_device(device))
   # if self.config.prediction_type == "epsilon":
   # pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
   # pred_epsilon = model_output
-  
+
   # 4. Clip or threshold "predicted x_0"
   # Check thresholding sample code
   if (thresholding) {
-    flat <- pred_original_sample$view(c(pred_original_sample$size(1), -1))
+    flat <- pred_original_sample$view(c(pred_original_sample$size(1), - 1))
     abs_flat <- torch::torch_abs(flat, device = torch::torch_device(device))
     s <- torch::torch_quantile(abs_flat,
-                               torch::torch_tensor(0.995, device = torch::torch_device(device)),
-                               dim = 2,
-                               device = torch::torch_device(device)) # dim=2 because batch is dim=1 in R torch
+      torch::torch_tensor(0.995, device = torch::torch_device(device)),
+      dim = 2,
+      device = torch::torch_device(device)) # dim=2 because batch is dim=1 in R torch
     s <- torch::torch_max(s, device = torch::torch_device(device))
     s <- s$view(c(pred_original_sample$size(1), 1, 1, 1))
     pred_original_sample <- torch::torch_clamp(pred_original_sample,
-                                               min = -s, max = s,
-                                               device = torch::torch_device(device)) / s
+      min = - s, max = s,
+      device = torch::torch_device(device)) / s
   } else {
-    if(clip_sample){
+    if (clip_sample) {
       # Clip to [-1, 1] range
       pred_original_sample <- torch::torch_clamp(pred_original_sample,
-                                                 min = -1, max = 1,
-                                                 device = torch::torch_device(device))
+        min = - 1, max = 1,
+        device = torch::torch_device(device))
     }
   }
-  
+
   # 5. compute variance
   variance <- (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
   std_dev_t = eta * sqrt(variance)
-  
+
   # Re-compute model_output (noise prediction) from clipped pred_original_sample if needed
-  if(use_clipped_model_output) {
-    if(prediction_type == "v_prediction") {
+  if (use_clipped_model_output) {
+    if (prediction_type == "v_prediction") {
       # Recompute v-prediction from clipped pred_original_sample
       model_output <- sqrt(alpha_prod_t) * pred_epsilon - sqrt(beta_prod_t) * pred_original_sample
     } else {
@@ -267,59 +270,58 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
       model_output <- (sample - sqrt(alpha_prod_t) * pred_original_sample) / sqrt(beta_prod_t)
     }
   }
-  
+
   # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-  pred_sample_direction <- sqrt(1 - alpha_prod_t_prev - std_dev_t^2) * pred_epsilon
-  
+  pred_sample_direction <- sqrt(1 - alpha_prod_t_prev - std_dev_t ^ 2) * pred_epsilon
+
   # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
   prev_sample <- sqrt(alpha_prod_t_prev) * pred_original_sample + pred_sample_direction
-  
-  
+
   if (eta > 0) {
     if (!is.null(variance_noise) && !is.null(generator)) {
       stop("Provide either `generator` or `variance_noise`, not both.")
     }
     if (is.null(variance_noise)) {
       variance_noise <- torch::torch_randn(model_output$shape,
-                                           generator = generator,
-                                           device = torch::torch_device(device),
-                                           dtype = dtype)
+        generator = generator,
+        device = torch::torch_device(device),
+        dtype = dtype)
     }
     variance <- std_dev_t * eta * variance_noise
     prev_sample <- prev_sample + variance
   }
-  
+
   prev_sample
 }
 
 #' Add noise to latents using DDIM scheduler
-#' 
+#'
 #' This function adds noise to the original latents according to the DDIM
 #' scheduler's diffusion process. It computes the noisy latents based on the
 #' original latents, noise, and the current timestep.
-#' 
+#'
 #' @param original_latents A torch tensor representing the original latents.
-#' 
+#'
 #' @param noise A torch tensor representing the noise to be added.
-#' 
+#'
 #' @param timestep An integer representing the current timestep in the diffusion
 #' process.
-#' 
+#'
 #' @param scheduler_obj A list containing the DDIM scheduler parameters, including
 #' alphas_cumprod and timesteps. The alphas_cumprod represents how much of the
 #' original signal remains at each timestep of the diffusion process.
-#' 
-#' @return A torch tensor containing the noised latents, which represents the 
+#'
+#' @return A torch tensor containing the noised latents, which represents the
 #' original latents with the appropriate amount of noise added for the given
 #' timestep.
-#' 
-#' @details 
+#'
+#' @details
 #' The noise is added according to the standard diffusion forward process formula:
 #' noised_latents = sqrt(alpha_cumprod) * original_latents + sqrt(1-alpha_cumprod) * noise
-#' 
-#' Where alpha_cumprod is the cumulative product of (1-beta) values up to the 
+#'
+#' Where alpha_cumprod is the cumulative product of (1-beta) values up to the
 #' specified timestep, with beta being the noise schedule.
-#' 
+#'
 #' @examples
 #' \dontrun{
 #' # Assuming we have latents, noise, and a scheduler
@@ -330,29 +332,29 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
 #'   scheduler_obj = scheduler
 #' )
 #' }
-#' 
+#'
 #' @export
 scheduler_add_noise <- function(original_latents, noise, timestep, scheduler_obj) {
   # Get the alpha_cumprod value for this timestep
-  # In DDIM/DDPM schedulers, alphas_cumprod represents 
+  # In DDIM/DDPM schedulers, alphas_cumprod represents
   # how much of the original signal remains at each timestep
-  
+
   timestep_index <- timestep + 1
   # Get alpha_cumprod for this timestep
   alpha_cumprod <- scheduler_obj$alphas_cumprod[timestep_index]
-  
+
   # Calculate the noise scaling factors
   sqrt_alpha_prod <- torch::torch_sqrt(torch::torch_tensor(alpha_cumprod,
-                                                           device = original_latents$device))
+      device = original_latents$device))
   sqrt_one_minus_alpha_prod <- torch::torch_sqrt(
     torch::torch_tensor(1 - alpha_cumprod, device = original_latents$device)
   )
-  
+
   # Add noise to the original latents according to the diffusion formula:
   # noisy = sqrt(alpha) * original + sqrt(1-alpha) * noise
   noised_latents <- sqrt_alpha_prod * original_latents +
-                      sqrt_one_minus_alpha_prod * noise
-  
+  sqrt_one_minus_alpha_prod * noise
+
   return(noised_latents)
 }
 
@@ -364,18 +366,19 @@ rescale_zero_terminal_snr <- function(betas) {
   # Store old values.
   alphas_bar_sqrt_0 <- alphas_bar_sqrt[1]
   alphas_bar_sqrt_T <- alphas_bar_sqrt[length(alphas_bar_sqrt)]
-  
+
   # Shift so the last timestep is zero.
   alphas_bar_sqrt <- alphas_bar_sqrt - alphas_bar_sqrt_T
-  
+
   # Scale so the first timestep is back to the old value.
   alphas_bar_sqrt <- alphas_bar_sqrt * alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
-  
+
   # Convert alphas_bar_sqrt to betas
-  alphas_bar <- alphas_bar_sqrt ^ 2  # Revert sqrt
-  alphas = alphas_bar[-1] / alphas_bar[-length(alphas_bar)]  # Revert cumprod
+  alphas_bar <- alphas_bar_sqrt ^ 2# Revert sqrt
+  alphas = alphas_bar[- 1] / alphas_bar[- length(alphas_bar)]# Revert cumprod
   alphas = c(alphas_bar[1], alphas)
   betas = 1 - alphas
-  
+
   return(betas)
 }
+

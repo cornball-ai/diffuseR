@@ -1,6 +1,6 @@
 #' Download TorchScript model component for Stable Diffusion
 #'
-#' Downloads the required model file (e.g., UNet, decoder, text encoder, and tokenizer) 
+#' Downloads the required model file (e.g., UNet, decoder, text encoder, and tokenizer)
 #' for a given Stable Diffusion model into a local user-specific data directory.
 #'
 #' The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
@@ -26,56 +26,69 @@
 #' \dontrun{
 #' model_dir <- download_model("sd21")
 #' }
-download_component <- function(model_name = "sd21",
-                               component,
-                               device = "cpu",
-                               overwrite = FALSE,
-                               show_progress = TRUE) {
+download_component <- function(
+  model_name = "sd21",
+  component,
+  device = "cpu",
+  overwrite = FALSE,
+  show_progress = TRUE
+) {
   # Use "data" instead of "cache" for persistent storage
   base_dir <- tools::R_user_dir("diffuseR", "data")
-  
+
   # Create model-specific subdirectory
   model_dir <- file.path(base_dir, model_name)
-  dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
-  
+
   # Define all required model files
   model_file <- paste0(model_name, "-", device, ".pt")
-  
-  # Define the remote source
-  repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
-  
-  # Download file
   dest_path <- file.path(model_dir, component)
 
   # Check if file exists and should be overwritten
   if (!file.exists(dest_path) || overwrite) {
+    # Interactive consent before downloading (CRAN policy)
+    if (interactive()) {
+      ans <- utils::askYesNo(
+        paste0("Download '", component, "' component for '", model_name, "'?"),
+        default = TRUE
+      )
+      if (!isTRUE(ans)) {
+        stop("Download cancelled.", call. = FALSE)
+      }
+    }
+
+    # Only create directory when actually downloading (CRAN policy)
+    dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
+
+    # Define the remote source
+    repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
     url <- paste0(repo_url, model_file)
-    
+
     message("Downloading ", model_file, " for ", model_name, "...")
-    
+
     # Handle possible download errors
     tryCatch({
-      utils::download.file(
-        url = url, 
-        destfile = dest_path, 
-        mode = "wb",
-        quiet = !show_progress
-      )
-    }, error = function(e) {
-      warning("Failed to download ", model_file, ": ", e$message)
-      # If file was partially downloaded, remove it
-      if (file.exists(dest_path)) {
-        unlink(dest_path)
-      }
-    })
+        utils::download.file(
+          url = url,
+          destfile = dest_path,
+          mode = "wb",
+          quiet = !show_progress
+        )
+      }, error = function(e) {
+        warning("Failed to download ", model_file, ": ", e$message)
+        # If file was partially downloaded, remove it
+        if (file.exists(dest_path)) {
+          unlink(dest_path)
+        }
+      })
   }
-  
+
   # Check if all required files were downloaded successfully
   missing_files <- model_file[!file.exists(file.path(model_dir, model_file))]
   if (length(missing_files) > 0) {
-    warning("Model file could not be downloaded: ", 
-            paste(missing_files, collapse = ", "))
+    warning("Model file could not be downloaded: ",
+      paste(missing_files, collapse = ", "))
   }
-  
+
   list(model_dir = model_dir, model_file = model_file)
 }
+

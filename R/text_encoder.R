@@ -17,7 +17,11 @@ quick_gelu <- function(x) {
 CLIPMLP <- torch::nn_module(
   "CLIPMLP",
 
-  initialize = function(in_dim, hidden_dim, gelu_type = "tanh") {
+  initialize = function(
+    in_dim,
+    hidden_dim,
+    gelu_type = "tanh"
+  ) {
     self$fc1 <- torch::nn_linear(in_dim, hidden_dim)
     self$fc2 <- torch::nn_linear(hidden_dim, in_dim)
     self$gelu_type <- gelu_type
@@ -46,11 +50,14 @@ CLIPMLP <- torch::nn_module(
 CLIPAttention <- torch::nn_module(
   "CLIPAttention",
 
-  initialize = function(embed_dim, num_heads) {
+  initialize = function(
+    embed_dim,
+    num_heads
+  ) {
     self$embed_dim <- embed_dim
     self$num_heads <- num_heads
     self$head_dim <- embed_dim %/% num_heads
-    self$scale <- self$head_dim^(-0.5)
+    self$scale <- self$head_dim ^ (- 0.5)
 
     # Separate Q/K/V projections (HuggingFace CLIPTextModel style)
     self$q_proj <- torch::nn_linear(embed_dim, embed_dim)
@@ -59,7 +66,10 @@ CLIPAttention <- torch::nn_module(
     self$out_proj <- torch::nn_linear(embed_dim, embed_dim)
   },
 
-  forward = function(x, causal_mask = TRUE) {
+  forward = function(
+    x,
+    causal_mask = TRUE
+  ) {
     batch_size <- x$shape[1]
     seq_len <- x$shape[2]
 
@@ -69,24 +79,24 @@ CLIPAttention <- torch::nn_module(
     v <- self$v_proj(x)
 
     # Reshape for multi-head attention
-    q <- q$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
-    k <- k$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
-    v <- v$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
+    q <- q$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
+    k <- k$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
+    v <- v$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
 
     # Scaled dot-product attention
     attn_weights <- torch::torch_matmul(q, k$transpose(3, 4)) * self$scale
 
     # Apply causal mask
     if (causal_mask) {
-      mask <- torch::torch_ones(seq_len, seq_len, device = x$device)$triu(diagonal = 1)$bool()
-      attn_weights <- attn_weights$masked_fill(mask, -Inf)
+      mask <- torch::torch_ones(seq_len, seq_len, device = x$device) $triu(diagonal = 1) $bool()
+      attn_weights <- attn_weights$masked_fill(mask, - Inf)
     }
 
-    attn_weights <- torch::nnf_softmax(attn_weights, dim = -1)
+    attn_weights <- torch::nnf_softmax(attn_weights, dim = - 1)
     attn_output <- torch::torch_matmul(attn_weights, v)
 
     # Reshape back
-    attn_output <- attn_output$transpose(2, 3)$contiguous()$view(c(batch_size, seq_len, self$embed_dim))
+    attn_output <- attn_output$transpose(2, 3) $contiguous() $view(c(batch_size, seq_len, self$embed_dim))
     attn_output <- self$out_proj(attn_output)
 
     attn_output
@@ -104,7 +114,12 @@ CLIPAttention <- torch::nn_module(
 CLIPTransformerBlock <- torch::nn_module(
   "CLIPTransformerBlock",
 
-  initialize = function(embed_dim, num_heads, mlp_dim, gelu_type = "tanh") {
+  initialize = function(
+    embed_dim,
+    num_heads,
+    mlp_dim,
+    gelu_type = "tanh"
+  ) {
     self$attention <- CLIPAttention(embed_dim, num_heads)
     self$layernorm_1 <- torch::nn_layer_norm(embed_dim)
     self$mlp <- CLIPMLP(embed_dim, mlp_dim, gelu_type)
@@ -145,10 +160,15 @@ CLIPTransformerBlock <- torch::nn_module(
 text_encoder_native <- torch::nn_module(
   "TextEncoderNative",
 
-  initialize = function(vocab_size = 49408, context_length = 77,
-                        embed_dim = 768, num_layers = 12,
-                        num_heads = 12, mlp_dim = 3072,
-                        apply_final_ln = TRUE) {
+  initialize = function(
+    vocab_size = 49408,
+    context_length = 77,
+    embed_dim = 768,
+    num_layers = 12,
+    num_heads = 12,
+    mlp_dim = 3072,
+    apply_final_ln = TRUE
+  ) {
     self$context_length <- context_length
     self$embed_dim <- embed_dim
     self$num_layers <- num_layers
@@ -182,7 +202,7 @@ text_encoder_native <- torch::nn_module(
     # Token + position embeddings
     # Add 1 because R torch is 1-indexed but tokens are 0-indexed (Python convention)
     token_embeds <- self$token_embedding(input_ids + 1L)
-    pos_embeds <- self$position_embedding[1:seq_length, ]$unsqueeze(1)$expand(c(batch_size, -1, -1))
+    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1) $expand(c(batch_size, - 1, - 1))
     hidden_states <- token_embeds + pos_embeds
 
     # Transformer layers
@@ -239,10 +259,10 @@ detect_text_encoder_architecture <- function(torchscript_path) {
   # Detect if final layer norm is applied in TorchScript output
   # by checking output range with test input
   tokens <- torch::torch_tensor(matrix(c(49406, 320, 4380, 49407, rep(49407, 73)), nrow = 1),
-                                 dtype = torch::torch_long())
+    dtype = torch::torch_long())
   torch::with_no_grad({
-    test_out <- ts_encoder(tokens)
-  })
+      test_out <- ts_encoder(tokens)
+    })
   # Handle both single tensor (text_encoder) and list output (text_encoder2)
   if (is.list(test_out)) {
     hidden_states <- test_out[[1]]
@@ -273,7 +293,11 @@ detect_text_encoder_architecture <- function(torchscript_path) {
 #'
 #' @return The native encoder with loaded weights (invisibly)
 #' @export
-load_text_encoder_weights <- function(native_encoder, torchscript_path, verbose = TRUE) {
+load_text_encoder_weights <- function(
+  native_encoder,
+  torchscript_path,
+  verbose = TRUE
+) {
   ts_encoder <- torch::jit_load(torchscript_path)
   ts_params <- ts_encoder$parameters
   param_names <- names(ts_params)
@@ -321,28 +345,28 @@ load_text_encoder_weights <- function(native_encoder, torchscript_path, verbose 
   unmapped <- character(0)
 
   torch::with_no_grad({
-    for (ts_name in names(ts_params)) {
-      native_name <- remap_key(ts_name)
+      for (ts_name in names(ts_params)) {
+        native_name <- remap_key(ts_name)
 
-      if (native_name %in% names(native_encoder$parameters)) {
-        ts_tensor <- ts_params[[ts_name]]
-        native_tensor <- native_encoder$parameters[[native_name]]
+        if (native_name %in% names(native_encoder$parameters)) {
+          ts_tensor <- ts_params[[ts_name]]
+          native_tensor <- native_encoder$parameters[[native_name]]
 
-        if (all(ts_tensor$shape == native_tensor$shape)) {
-          native_tensor$copy_(ts_tensor)
-          loaded <- loaded + 1
-        } else if (verbose) {
-          message("Shape mismatch: ", native_name,
-                  " (", paste(as.integer(ts_tensor$shape), collapse="x"), " vs ",
-                  paste(as.integer(native_tensor$shape), collapse="x"), ")")
+          if (all(ts_tensor$shape == native_tensor$shape)) {
+            native_tensor$copy_(ts_tensor)
+            loaded <- loaded + 1
+          } else if (verbose) {
+            message("Shape mismatch: ", native_name,
+              " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
+              paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+            skipped <- skipped + 1
+          }
+        } else {
           skipped <- skipped + 1
+          unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
         }
-      } else {
-        skipped <- skipped + 1
-        unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
       }
-    }
-  })
+    })
 
   if (verbose) {
     if (length(unmapped) > 0 && length(unmapped) <= 10) {
@@ -375,9 +399,14 @@ load_text_encoder_weights <- function(native_encoder, torchscript_path, verbose 
 text_encoder2_native <- torch::nn_module(
   "TextEncoder2Native",
 
-  initialize = function(vocab_size = 49408, context_length = 77,
-                        embed_dim = 1280, num_layers = 32,
-                        num_heads = 20, mlp_dim = 5120) {
+  initialize = function(
+    vocab_size = 49408,
+    context_length = 77,
+    embed_dim = 1280,
+    num_layers = 32,
+    num_heads = 20,
+    mlp_dim = 5120
+  ) {
     self$context_length <- context_length
     self$embed_dim <- embed_dim
     self$num_layers <- num_layers
@@ -413,7 +442,7 @@ text_encoder2_native <- torch::nn_module(
     # Token + position embeddings
     # Add 1 because R torch is 1-indexed but tokens are 0-indexed (Python convention)
     token_embeds <- self$token_embedding(input_ids + 1L)
-    pos_embeds <- self$position_embedding[1:seq_length, ]$unsqueeze(1)$expand(c(batch_size, -1, -1))
+    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1) $expand(c(batch_size, - 1, - 1))
     hidden_states <- token_embeds + pos_embeds
 
     # Transformer layers
@@ -431,8 +460,8 @@ text_encoder2_native <- torch::nn_module(
     eos_indices <- torch::torch_argmax(input_ids, dim = 2L, keepdim = TRUE)
     pooled_output <- hidden_states_normalized$gather(
       dim = 2L,
-      index = eos_indices$unsqueeze(-1L)$expand(c(-1L, -1L, self$embed_dim))
-    )$squeeze(2L)
+      index = eos_indices$unsqueeze(- 1L) $expand(c(- 1L, - 1L, self$embed_dim))
+    ) $squeeze(2L)
 
     # Apply text projection
     pooled_output <- self$text_projection(pooled_output)
@@ -450,7 +479,11 @@ text_encoder2_native <- torch::nn_module(
 #'
 #' @return The native encoder with loaded weights (invisibly)
 #' @export
-load_text_encoder2_weights <- function(native_encoder, torchscript_path, verbose = TRUE) {
+load_text_encoder2_weights <- function(
+  native_encoder,
+  torchscript_path,
+  verbose = TRUE
+) {
   ts_encoder <- torch::jit_load(torchscript_path)
   ts_params <- ts_encoder$parameters
 
@@ -498,28 +531,28 @@ load_text_encoder2_weights <- function(native_encoder, torchscript_path, verbose
   unmapped <- character(0)
 
   torch::with_no_grad({
-    for (ts_name in names(ts_params)) {
-      native_name <- remap_key(ts_name)
+      for (ts_name in names(ts_params)) {
+        native_name <- remap_key(ts_name)
 
-      if (native_name %in% names(native_encoder$parameters)) {
-        ts_tensor <- ts_params[[ts_name]]
-        native_tensor <- native_encoder$parameters[[native_name]]
+        if (native_name %in% names(native_encoder$parameters)) {
+          ts_tensor <- ts_params[[ts_name]]
+          native_tensor <- native_encoder$parameters[[native_name]]
 
-        if (all(ts_tensor$shape == native_tensor$shape)) {
-          native_tensor$copy_(ts_tensor)
-          loaded <- loaded + 1
-        } else if (verbose) {
-          message("Shape mismatch: ", native_name,
-                  " (", paste(as.integer(ts_tensor$shape), collapse="x"), " vs ",
-                  paste(as.integer(native_tensor$shape), collapse="x"), ")")
+          if (all(ts_tensor$shape == native_tensor$shape)) {
+            native_tensor$copy_(ts_tensor)
+            loaded <- loaded + 1
+          } else if (verbose) {
+            message("Shape mismatch: ", native_name,
+              " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
+              paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+            skipped <- skipped + 1
+          }
+        } else {
           skipped <- skipped + 1
+          unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
         }
-      } else {
-        skipped <- skipped + 1
-        unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
       }
-    }
-  })
+    })
 
   if (verbose) {
     if (length(unmapped) > 0 && length(unmapped) <= 10) {
@@ -534,3 +567,4 @@ load_text_encoder2_weights <- function(native_encoder, torchscript_path, verbose
 
   invisible(native_encoder)
 }
+

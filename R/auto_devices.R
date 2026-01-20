@@ -38,11 +38,14 @@
 #' # Force CPU-only
 #' devices <- auto_devices("sdxl", strategy = "cpu_only")
 #' }
-auto_devices <- function(model = "sdxl", strategy = "auto") {
+auto_devices <- function(
+  model = "sdxl",
+  strategy = "auto"
+) {
   # If gpuctl is available, use it
 
-if (requireNamespace("gpuctl", quietly = TRUE)) {
-    return(gpuctl::recommended_devices(model = model, strategy = strategy))
+  if (requireNamespace("gpu.ctl", quietly = TRUE)) {
+    return(gpu.ctl::recommended_devices(model = model, strategy = strategy))
   }
 
   # Fallback when gpuctl not available
@@ -62,7 +65,10 @@ if (requireNamespace("gpuctl", quietly = TRUE)) {
 #' @param strategy Character. Memory strategy.
 #' @return Named list of device assignments.
 #' @keywords internal
-.build_fallback_devices <- function(model, strategy) {
+.build_fallback_devices <- function(
+  model,
+  strategy
+) {
   # Components by model
   components <- list(
     sd21 = c("unet", "decoder", "text_encoder", "encoder"),
@@ -90,3 +96,4 @@ if (requireNamespace("gpuctl", quietly = TRUE)) {
 
   devices
 }
+

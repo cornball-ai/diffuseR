@@ -6,12 +6,12 @@
 \usage{
 ltx2_text_connectors(
   caption_channels = 3840L,
-  text_proj_in_factor = 1L,
+  text_proj_in_factor = 49L,
   video_connector_num_attention_heads = 30L,
   video_connector_attention_head_dim = 128L,
   video_connector_num_layers = 2L,
   video_connector_num_learnable_registers = NULL,
-  audio_connector_num_attention_heads = 16L,
+  audio_connector_num_attention_heads = 30L,
   audio_connector_attention_head_dim = 128L,
   audio_connector_num_layers = 2L,
   audio_connector_num_learnable_registers = NULL,
@@ -19,7 +19,7 @@ ltx2_text_connectors(
   rope_theta = 10000,
   rope_double_precision = TRUE,
   causal_temporal_positioning = FALSE,
-  rope_type = "interleaved"
+  rope_type = "split"
 )
 }
 \arguments{

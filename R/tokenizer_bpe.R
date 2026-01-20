@@ -109,7 +109,10 @@ bpe_tokenizer <- function(tokenizer_path) {
 #' @param x A bpe_tokenizer object.
 #' @param ... Additional arguments (ignored).
 #' @export
-print.bpe_tokenizer <- function(x, ...) {
+print.bpe_tokenizer <- function(
+  x,
+  ...
+) {
   cat("BPE Tokenizer\n")
   cat("  Vocabulary size:", x$vocab_size, "\n")
   cat("  Merge rules:", length(x$merges), "\n")
@@ -133,9 +136,15 @@ print.bpe_tokenizer <- function(x, ...) {
 #' @param return_tensors Character. Return type: "list" or "pt" (torch tensors).
 #' @return List with input_ids and attention_mask.
 #' @export
-encode_bpe <- function(tokenizer, text, add_special_tokens = TRUE,
-                        max_length = NULL, padding = "none",
-                        truncation = FALSE, return_tensors = "list") {
+encode_bpe <- function(
+  tokenizer,
+  text,
+  add_special_tokens = TRUE,
+  max_length = NULL,
+  padding = "none",
+  truncation = FALSE,
+  return_tensors = "list"
+) {
   if (!inherits(tokenizer, "bpe_tokenizer")) {
     stop("tokenizer must be a bpe_tokenizer object")
   }
@@ -147,8 +156,8 @@ encode_bpe <- function(tokenizer, text, add_special_tokens = TRUE,
 
   # Encode each text
   encoded <- lapply(text, function(t) {
-    encode_single(tokenizer, t, add_special_tokens = add_special_tokens)
-  })
+      encode_single(tokenizer, t, add_special_tokens = add_special_tokens)
+    })
 
   # Get lengths
   lengths <- vapply(encoded, length, integer(1))
@@ -158,8 +167,8 @@ encode_bpe <- function(tokenizer, text, add_special_tokens = TRUE,
   if (!is.null(max_length)) {
     if (truncation) {
       encoded <- lapply(encoded, function(ids) {
-        if (length(ids) > max_length) ids[1:max_length] else ids
-      })
+          if (length(ids) > max_length) ids[1:max_length] else ids
+        })
     }
     if (padding == "max_length") {
       max_len <- max_length
@@ -170,20 +179,20 @@ encode_bpe <- function(tokenizer, text, add_special_tokens = TRUE,
   if (padding != "none") {
     pad_id <- get_pad_id(tokenizer)
     encoded <- lapply(encoded, function(ids) {
-      if (length(ids) < max_len) {
-        # Left padding (Gemma style)
-        c(rep(pad_id, max_len - length(ids)), ids)
-      } else {
-        ids
-      }
-    })
+        if (length(ids) < max_len) {
+          # Left padding (Gemma style)
+          c(rep(pad_id, max_len - length(ids)), ids)
+        } else {
+          ids
+        }
+      })
   }
 
   # Create attention mask
   attention_mask <- lapply(encoded, function(ids) {
-    pad_id <- get_pad_id(tokenizer)
-    as.integer(ids != pad_id)
-  })
+      pad_id <- get_pad_id(tokenizer)
+      as.integer(ids != pad_id)
+    })
 
   # Convert to matrix
   input_ids <- do.call(rbind, encoded)
@@ -203,7 +212,11 @@ encode_bpe <- function(tokenizer, text, add_special_tokens = TRUE,
 
 #' Encode a single text string
 #' @keywords internal
-encode_single <- function(tokenizer, text, add_special_tokens = TRUE) {
+encode_single <- function(
+  tokenizer,
+  text,
+  add_special_tokens = TRUE
+) {
   # Add prefix space if configured (Gemma style)
   if (tokenizer$add_prefix_space && !startsWith(text, " ")) {
     text <- paste0(" ", text)
@@ -211,7 +224,7 @@ encode_single <- function(tokenizer, text, add_special_tokens = TRUE) {
 
   # Pre-tokenize: split on whitespace while keeping track of spaces
   # Replace spaces with special character (SentencePiece style)
-  text <- gsub(" ", "\u2581", text)  # LOWER ONE EIGHTH BLOCK
+  text <- gsub(" ", "\u2581", text) # LOWER ONE EIGHTH BLOCK
 
   # Check for special tokens first
   for (tok_name in names(tokenizer$special_tokens)) {
@@ -237,7 +250,12 @@ encode_single <- function(tokenizer, text, add_special_tokens = TRUE) {
 
 #' Greedy longest match tokenization
 #' @keywords internal
-greedy_tokenize <- function(text, vocab, byte_fallback = FALSE, unk_token = NULL) {
+greedy_tokenize <- function(
+  text,
+  vocab,
+  byte_fallback = FALSE,
+  unk_token = NULL
+) {
   ids <- integer(0)
   i <- 1
   n <- nchar(text)
@@ -248,7 +266,7 @@ greedy_tokenize <- function(text, vocab, byte_fallback = FALSE, unk_token = NULL
     matched <- FALSE
 
     # Try decreasing lengths
-    for (len in min(n - i + 1, 50):1) {  # Cap at 50 chars max
+    for (len in min(n - i + 1, 50) :1) { # Cap at 50 chars max
       candidate <- substr(text, i, i + len - 1)
 
       if (candidate %in% vocab_names) {
@@ -276,14 +294,14 @@ greedy_tokenize <- function(text, vocab, byte_fallback = FALSE, unk_token = NULL
             } else if (!is.null(unk_token) && unk_token %in% vocab_names) {
               ids <- c(ids, vocab[[unk_token]])
             } else {
-              ids <- c(ids, 3L)  # Default UNK
+              ids <- c(ids, 3L) # Default UNK
             }
           }
         }
       } else if (!is.null(unk_token) && unk_token %in% vocab_names) {
         ids <- c(ids, vocab[[unk_token]])
       } else {
-        ids <- c(ids, 3L)  # Default UNK
+        ids <- c(ids, 3L) # Default UNK
       }
       i <- i + 1
     }
@@ -294,7 +312,11 @@ greedy_tokenize <- function(text, vocab, byte_fallback = FALSE, unk_token = NULL
 
 #' Apply BPE merge rules
 #' @keywords internal
-apply_bpe_merges <- function(tokens, merge_priority, vocab) {
+apply_bpe_merges <- function(
+  tokens,
+  merge_priority,
+  vocab
+) {
   if (length(tokens) <= 1) {
     return(tokens)
   }
@@ -326,7 +348,7 @@ apply_bpe_merges <- function(tokens, merge_priority, vocab) {
         tokens <- c(
           if (best_idx > 1) tokens[1:(best_idx - 1)] else character(0),
           merged,
-          if (best_idx + 2 <= length(tokens)) tokens[(best_idx + 2):length(tokens)] else character(0)
+          if (best_idx + 2 <= length(tokens)) tokens[(best_idx + 2) :length(tokens)] else character(0)
         )
         changed <- TRUE
       }
@@ -347,7 +369,11 @@ apply_bpe_merges <- function(tokens, merge_priority, vocab) {
 #' @param skip_special_tokens Logical. Skip special tokens in output.
 #' @return Character string or vector.
 #' @export
-decode_bpe <- function(tokenizer, ids, skip_special_tokens = TRUE) {
+decode_bpe <- function(
+  tokenizer,
+  ids,
+  skip_special_tokens = TRUE
+) {
   if (!inherits(tokenizer, "bpe_tokenizer")) {
     stop("tokenizer must be a bpe_tokenizer object")
   }
@@ -355,13 +381,13 @@ decode_bpe <- function(tokenizer, ids, skip_special_tokens = TRUE) {
   # Handle matrix input
   if (is.matrix(ids)) {
     return(apply(ids, 1, function(row) {
-      decode_bpe(tokenizer, row, skip_special_tokens = skip_special_tokens)
-    }))
+          decode_bpe(tokenizer, row, skip_special_tokens = skip_special_tokens)
+        }))
   }
 
   # Handle torch tensor
   if (inherits(ids, "torch_tensor")) {
-    ids <- as.integer(ids$cpu()$numpy())
+    ids <- as.integer(ids$cpu() $numpy())
   }
 
   # Get special token IDs to skip
@@ -372,17 +398,17 @@ decode_bpe <- function(tokenizer, ids, skip_special_tokens = TRUE) {
 
   # Convert IDs to tokens
   tokens <- vapply(ids, function(id) {
-    if (id %in% special_ids) {
-      ""
-    } else {
-      id_str <- as.character(id)
-      if (id_str %in% names(tokenizer$id_to_token)) {
-        tokenizer$id_to_token[[id_str]]
-      } else {
+      if (id %in% special_ids) {
         ""
+      } else {
+        id_str <- as.character(id)
+        if (id_str %in% names(tokenizer$id_to_token)) {
+          tokenizer$id_to_token[[id_str]]
+        } else {
+          ""
+        }
       }
-    }
-  }, character(1))
+    }, character(1))
 
   # Join tokens and decode
   text <- paste(tokens, collapse = "")
@@ -461,5 +487,9 @@ vocab_size <- function(tokenizer) {
 
 # Null-coalescing operator
 if (!exists("%||%", mode = "function")) {
-  `%||%` <- function(x, y) if (is.null(x)) y else x
+  `%||%` <- function(
+    x,
+    y
+  ) if (is.null(x)) y else x
 }
+

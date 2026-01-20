@@ -16,18 +16,24 @@ NULL
 #' @export
 per_channel_rms_norm <- torch::nn_module(
 
-"PerChannelRMSNorm",
+  "PerChannelRMSNorm",
 
-  initialize = function(channel_dim = 2L, eps = 1e-8) {
+  initialize = function(
+    channel_dim = 2L,
+    eps = 1e-8
+  ) {
     self$channel_dim <- channel_dim
     self$eps <- eps
   },
 
-  forward = function(x, channel_dim = NULL) {
+  forward = function(
+    x,
+    channel_dim = NULL
+  ) {
     if (is.null(channel_dim)) {
       channel_dim <- self$channel_dim
     }
-    mean_sq <- torch::torch_mean(x^2, dim = channel_dim, keepdim = TRUE)
+    mean_sq <- torch::torch_mean(x ^ 2, dim = channel_dim, keepdim = TRUE)
     rms <- torch::torch_sqrt(mean_sq + self$eps)
     x / rms
   }
@@ -96,20 +102,23 @@ ltx2_video_causal_conv3d <- torch::nn_module(
     )
   },
 
-  forward = function(hidden_states, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    causal = TRUE
+  ) {
     time_kernel_size <- self$kernel_size[1]
 
     if (causal) {
       # Causal: pad by repeating first frame on left
-      pad_left <- hidden_states[, , 1:1, , ]$`repeat`(c(1L, 1L, time_kernel_size - 1L, 1L, 1L))
+      pad_left <- hidden_states[,, 1:1,,]$`repeat`(c(1L, 1L, time_kernel_size - 1L, 1L, 1L))
       hidden_states <- torch::torch_cat(list(pad_left, hidden_states), dim = 3)
     } else {
       # Non-causal: pad by repeating first/last frames symmetrically
       pad_amount <- (time_kernel_size - 1L) %/% 2L
       if (pad_amount > 0) {
-        pad_left <- hidden_states[, , 1:1, , ]$`repeat`(c(1L, 1L, pad_amount, 1L, 1L))
+        pad_left <- hidden_states[,, 1:1,,]$`repeat`(c(1L, 1L, pad_amount, 1L, 1L))
         n_frames <- hidden_states$shape[3]
-        pad_right <- hidden_states[, , n_frames:n_frames, , ]$`repeat`(c(1L, 1L, pad_amount, 1L, 1L))
+        pad_right <- hidden_states[,, n_frames:n_frames,,]$`repeat`(c(1L, 1L, pad_amount, 1L, 1L))
         hidden_states <- torch::torch_cat(list(pad_left, hidden_states, pad_right), dim = 3)
       }
     }
@@ -206,7 +215,12 @@ ltx2_video_resnet_block3d <- torch::nn_module(
     self$out_channels <- out_channels
   },
 
-  forward = function(inputs, temb = NULL, generator = NULL, causal = TRUE) {
+  forward = function(
+    inputs,
+    temb = NULL,
+    generator = NULL,
+    causal = TRUE
+  ) {
     hidden_states <- inputs
 
     hidden_states <- self$norm1(hidden_states)
@@ -218,7 +232,7 @@ ltx2_video_resnet_block3d <- torch::nn_module(
     scale_2 <- NULL
     if (!is.null(self$scale_shift_table) && !is.null(temb)) {
       # temb shape: [B, C*4, 1, 1, 1] -> unflatten to [B, 4, C, 1, 1, 1]
-      temb <- temb$unflatten(2, c(4, -1)) + self$scale_shift_table[NULL, .., NULL, NULL, NULL]
+      temb <- temb$unflatten(2, c(4, - 1)) + self$scale_shift_table[NULL, .., NULL, NULL, NULL]
       splits <- temb$unbind(dim = 2)
       shift_1 <- splits[[1]]
       scale_1 <- splits[[2]]
@@ -235,8 +249,8 @@ ltx2_video_resnet_block3d <- torch::nn_module(
       h <- hidden_states$shape[4]
       w <- hidden_states$shape[5]
       spatial_noise <- torch::torch_randn(c(h, w), device = hidden_states$device,
-                                          dtype = hidden_states$dtype)$unsqueeze(1)
-      hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale1)[NULL, , NULL, , ]
+        dtype = hidden_states$dtype) $unsqueeze(1)
+      hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale1)[NULL,, NULL,,]
     }
 
     hidden_states <- self$norm2(hidden_states)
@@ -255,16 +269,16 @@ ltx2_video_resnet_block3d <- torch::nn_module(
       h <- hidden_states$shape[4]
       w <- hidden_states$shape[5]
       spatial_noise <- torch::torch_randn(c(h, w), device = hidden_states$device,
-                                          dtype = hidden_states$dtype)$unsqueeze(1)
-      hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale2)[NULL, , NULL, , ]
+        dtype = hidden_states$dtype) $unsqueeze(1)
+      hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale2)[NULL,, NULL,,]
     }
 
     # Shortcut connection
     if (!is.null(self$norm3)) {
       # LayerNorm expects last dim to be features, so move channels to last
-      inputs <- inputs$movedim(2, -1)
+      inputs <- inputs$movedim(2, - 1)
       inputs <- self$norm3(inputs)
-      inputs <- inputs$movedim(-1, 2)
+      inputs <- inputs$movedim(- 1, 2)
     }
 
     if (!is.null(self$conv_shortcut)) {
@@ -316,33 +330,36 @@ ltx_video_downsampler3d <- torch::nn_module(
     )
   },
 
-  forward = function(hidden_states, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    causal = TRUE
+  ) {
     # Pad temporal dimension to handle stride
     # cat with first (stride[1]-1) frames repeated
     if (self$stride[1] > 1) {
-      pad_frames <- hidden_states[, , 1:(self$stride[1] - 1), , ]
+      pad_frames <- hidden_states[,, 1:(self$stride[1] - 1),,]
       hidden_states <- torch::torch_cat(list(pad_frames, hidden_states), dim = 3)
     }
 
     # Compute residual via pixel unshuffle pattern
     # unflatten spatial dims, permute, flatten to channel-like
-    residual <- hidden_states$unflatten(5, c(-1, self$stride[3]))  # width
-    residual <- residual$unflatten(4, c(-1, self$stride[2]))       # height
-    residual <- residual$unflatten(3, c(-1, self$stride[1]))       # frames
+    residual <- hidden_states$unflatten(5, c(- 1, self$stride[3])) # width
+    residual <- residual$unflatten(4, c(- 1, self$stride[2])) # height
+    residual <- residual$unflatten(3, c(- 1, self$stride[1])) # frames
 
     # Permute: [B, C, F//s, s, H//s, s, W//s, s] -> [B, C, s, s, s, F//s, H//s, W//s]
     residual <- residual$permute(c(1, 2, 4, 6, 8, 3, 5, 7))
-    residual <- residual$flatten(start_dim = 2, end_dim = 5)       # [B, C*s^3, F', H', W']
-    residual <- residual$unflatten(2, c(-1, self$group_size))      # [B, out_c, group_size, F', H', W']
-    residual <- residual$mean(dim = 3)                             # Average over groups
+    residual <- residual$flatten(start_dim = 2, end_dim = 5) # [B, C*s^3, F', H', W']
+    residual <- residual$unflatten(2, c(- 1, self$group_size)) # [B, out_c, group_size, F', H', W']
+    residual <- residual$mean(dim = 3) # Average over groups
 
     # Convolution path
     hidden_states <- self$conv(hidden_states, causal = causal)
 
     # Same pixel unshuffle for conv output
-    hidden_states <- hidden_states$unflatten(5, c(-1, self$stride[3]))
-    hidden_states <- hidden_states$unflatten(4, c(-1, self$stride[2]))
-    hidden_states <- hidden_states$unflatten(3, c(-1, self$stride[1]))
+    hidden_states <- hidden_states$unflatten(5, c(- 1, self$stride[3]))
+    hidden_states <- hidden_states$unflatten(4, c(- 1, self$stride[2]))
+    hidden_states <- hidden_states$unflatten(3, c(- 1, self$stride[1]))
     hidden_states <- hidden_states$permute(c(1, 2, 4, 6, 8, 3, 5, 7))
     hidden_states <- hidden_states$flatten(start_dim = 2, end_dim = 5)
 
@@ -391,7 +408,10 @@ ltx_video_upsampler3d <- torch::nn_module(
     )
   },
 
-  forward = function(hidden_states, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    causal = TRUE
+  ) {
     batch_size <- hidden_states$shape[1]
     num_channels <- hidden_states$shape[2]
     num_frames <- hidden_states$shape[3]
@@ -405,23 +425,23 @@ ltx_video_upsampler3d <- torch::nn_module(
     if (self$residual) {
       # Reshape for pixel shuffle: [B, C, F, H, W] -> [B, C//s^3, s, s, s, F, H, W]
       residual_out <- hidden_states$reshape(c(
-        batch_size,
-        -1,
-        self$stride[1], self$stride[2], self$stride[3],
-        num_frames, height, width
-      ))
+          batch_size,
+          - 1,
+          self$stride[1], self$stride[2], self$stride[3],
+          num_frames, height, width
+        ))
       # Permute: [B, C', s_t, s_h, s_w, F, H, W] -> [B, C', F, s_t, H, s_h, W, s_w]
       residual_out <- residual_out$permute(c(1, 2, 6, 3, 7, 4, 8, 5))
       # Flatten spatial dims
-      residual_out <- residual_out$flatten(start_dim = 7, end_dim = 8)  # W * s_w
-      residual_out <- residual_out$flatten(start_dim = 5, end_dim = 6)  # H * s_h
-      residual_out <- residual_out$flatten(start_dim = 3, end_dim = 4)  # F * s_t
+      residual_out <- residual_out$flatten(start_dim = 7, end_dim = 8) # W * s_w
+      residual_out <- residual_out$flatten(start_dim = 5, end_dim = 6) # H * s_h
+      residual_out <- residual_out$flatten(start_dim = 3, end_dim = 4) # F * s_t
 
       # Repeat channels for upscale factor
       repeats <- stride_prod %/% self$upscale_factor
       residual_out <- residual_out$`repeat`(c(1L, repeats, 1L, 1L, 1L))
       # Remove first (stride[1]-1) frames
-      residual_out <- residual_out[, , self$stride[1]:N, , ]
+      residual_out <- residual_out[,, self$stride[1]:N,,]
     }
 
     # Convolution path
@@ -429,17 +449,17 @@ ltx_video_upsampler3d <- torch::nn_module(
 
     # Pixel shuffle
     hidden_states <- hidden_states$reshape(c(
-      batch_size,
-      -1,
-      self$stride[1], self$stride[2], self$stride[3],
-      num_frames, height, width
-    ))
+        batch_size,
+        - 1,
+        self$stride[1], self$stride[2], self$stride[3],
+        num_frames, height, width
+      ))
     hidden_states <- hidden_states$permute(c(1, 2, 6, 3, 7, 4, 8, 5))
     hidden_states <- hidden_states$flatten(start_dim = 7, end_dim = 8)
     hidden_states <- hidden_states$flatten(start_dim = 5, end_dim = 6)
     hidden_states <- hidden_states$flatten(start_dim = 3, end_dim = 4)
     # Remove first (stride[1]-1) frames
-    hidden_states <- hidden_states[, , self$stride[1]:N, , ]
+    hidden_states <- hidden_states[,, self$stride[1]:N,,]
 
     if (self$residual && !is.null(residual_out)) {
       hidden_states <- hidden_states + residual_out
@@ -484,7 +504,7 @@ ltx2_video_down_block3d <- torch::nn_module(
     for (i in seq_len(num_layers)) {
       resnets[[i]] <- ltx2_video_resnet_block3d(
         in_channels = in_channels,
-        out_channels = in_channels,  # Note: same channels within block
+        out_channels = in_channels, # Note: same channels within block
         dropout = dropout,
         eps = resnet_eps,
         non_linearity = resnet_act_fn,
@@ -498,46 +518,51 @@ ltx2_video_down_block3d <- torch::nn_module(
     if (spatio_temporal_scale) {
       if (downsample_type == "conv") {
         self$downsamplers <- torch::nn_module_list(list(
-          ltx2_video_causal_conv3d(
-            in_channels = in_channels,
-            out_channels = in_channels,
-            kernel_size = 3L,
-            stride = c(2L, 2L, 2L),
-            spatial_padding_mode = spatial_padding_mode
-          )
-        ))
+            ltx2_video_causal_conv3d(
+              in_channels = in_channels,
+              out_channels = in_channels,
+              kernel_size = 3L,
+              stride = c(2L, 2L, 2L),
+              spatial_padding_mode = spatial_padding_mode
+            )
+          ))
       } else if (downsample_type == "spatial") {
         self$downsamplers <- torch::nn_module_list(list(
-          ltx_video_downsampler3d(
-            in_channels = in_channels,
-            out_channels = out_channels,
-            stride = c(1L, 2L, 2L),
-            spatial_padding_mode = spatial_padding_mode
-          )
-        ))
+            ltx_video_downsampler3d(
+              in_channels = in_channels,
+              out_channels = out_channels,
+              stride = c(1L, 2L, 2L),
+              spatial_padding_mode = spatial_padding_mode
+            )
+          ))
       } else if (downsample_type == "temporal") {
         self$downsamplers <- torch::nn_module_list(list(
-          ltx_video_downsampler3d(
-            in_channels = in_channels,
-            out_channels = out_channels,
-            stride = c(2L, 1L, 1L),
-            spatial_padding_mode = spatial_padding_mode
-          )
-        ))
+            ltx_video_downsampler3d(
+              in_channels = in_channels,
+              out_channels = out_channels,
+              stride = c(2L, 1L, 1L),
+              spatial_padding_mode = spatial_padding_mode
+            )
+          ))
       } else if (downsample_type == "spatiotemporal") {
         self$downsamplers <- torch::nn_module_list(list(
-          ltx_video_downsampler3d(
-            in_channels = in_channels,
-            out_channels = out_channels,
-            stride = c(2L, 2L, 2L),
-            spatial_padding_mode = spatial_padding_mode
-          )
-        ))
+            ltx_video_downsampler3d(
+              in_channels = in_channels,
+              out_channels = out_channels,
+              stride = c(2L, 2L, 2L),
+              spatial_padding_mode = spatial_padding_mode
+            )
+          ))
       }
     }
   },
 
-  forward = function(hidden_states, temb = NULL, generator = NULL, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    temb = NULL,
+    generator = NULL,
+    causal = TRUE
+  ) {
     for (i in seq_along(self$resnets)) {
       hidden_states <- self$resnets[[i]](hidden_states, temb, generator, causal = causal)
     }
@@ -597,7 +622,12 @@ ltx2_video_mid_block3d <- torch::nn_module(
     self$resnets <- torch::nn_module_list(resnets)
   },
 
-  forward = function(hidden_states, temb = NULL, generator = NULL, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    temb = NULL,
+    generator = NULL,
+    causal = TRUE
+  ) {
     for (i in seq_along(self$resnets)) {
       hidden_states <- self$resnets[[i]](hidden_states, temb, generator, causal = causal)
     }
@@ -663,14 +693,14 @@ ltx2_video_up_block3d <- torch::nn_module(
     self$upsamplers <- NULL
     if (spatio_temporal_scale) {
       self$upsamplers <- torch::nn_module_list(list(
-        ltx_video_upsampler3d(
-          in_channels = out_channels * upscale_factor,
-          stride = c(2L, 2L, 2L),
-          residual = upsample_residual,
-          upscale_factor = upscale_factor,
-          spatial_padding_mode = spatial_padding_mode
-        )
-      ))
+          ltx_video_upsampler3d(
+            in_channels = out_channels * upscale_factor,
+            stride = c(2L, 2L, 2L),
+            residual = upsample_residual,
+            upscale_factor = upscale_factor,
+            spatial_padding_mode = spatial_padding_mode
+          )
+        ))
     }
 
     # ResNet layers
@@ -690,7 +720,12 @@ ltx2_video_up_block3d <- torch::nn_module(
     self$resnets <- torch::nn_module_list(resnets)
   },
 
-  forward = function(hidden_states, temb = NULL, generator = NULL, causal = TRUE) {
+  forward = function(
+    hidden_states,
+    temb = NULL,
+    generator = NULL,
+    causal = TRUE
+  ) {
     if (!is.null(self$conv_in)) {
       hidden_states <- self$conv_in(hidden_states, temb, generator, causal = causal)
     }
@@ -708,3 +743,4 @@ ltx2_video_up_block3d <- torch::nn_module(
     hidden_states
   }
 )
+

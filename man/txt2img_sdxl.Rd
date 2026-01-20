@@ -24,8 +24,7 @@ txt2img_sdxl(
   metadata_path,
   use_native_decoder,
   use_native_text_encoder,
-  use_native_unet,
-  verbose
+  use_native_unet
 )
 }
 \arguments{

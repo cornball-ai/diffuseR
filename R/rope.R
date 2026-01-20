@@ -34,18 +34,18 @@ NULL
 #' @return A list containing RoPE configuration and methods.
 #' @export
 rope_embedder_create <- function(
-    dim,
-    patch_size = 1L,
-    patch_size_t = 1L,
-    base_num_frames = 20L,
-    base_height = 2048L,
-    base_width = 2048L,
-    scale_factors = c(8, 32, 32),
-    theta = 10000.0,
-    causal_offset = 1L,
-    double_precision = TRUE,
-    rope_type = c("interleaved", "split"),
-    num_attention_heads = 32L
+  dim,
+  patch_size = 1L,
+  patch_size_t = 1L,
+  base_num_frames = 20L,
+  base_height = 2048L,
+  base_width = 2048L,
+  scale_factors = c(8, 32, 32),
+  theta = 10000.0,
+  causal_offset = 1L,
+  double_precision = TRUE,
+  rope_type = c("interleaved", "split"),
+  num_attention_heads = 32L
 ) {
   rope_type <- match.arg(rope_type)
 
@@ -82,13 +82,13 @@ rope_embedder_create <- function(
 #' @return torch tensor of shape (batch_size, 3, num_patches, 2).
 #' @export
 rope_prepare_video_coords <- function(
-    embedder,
-    batch_size,
-    num_frames,
-    height,
-    width,
-    device = "cpu",
-    fps = 24.0
+  embedder,
+  batch_size,
+  num_frames,
+  height,
+  width,
+  device = "cpu",
+  fps = 24.0
 ) {
   patch_size <- embedder$patch_size
   patch_size_t <- embedder$patch_size_t
@@ -112,39 +112,39 @@ rope_prepare_video_coords <- function(
 
   # Create meshgrid (ij indexing keeps order as frames, height, width)
   grid <- torch::torch_meshgrid(list(grid_f, grid_h, grid_w), indexing = "ij")
-  grid <- torch::torch_stack(grid, dim = 1)  # [3, N_F, N_H, N_W]
+  grid <- torch::torch_stack(grid, dim = 1) # [3, N_F, N_H, N_W]
 
   # 2. Get patch boundaries with respect to latent grid
   patch_size_vec <- c(patch_size_t, patch_size, patch_size)
   patch_size_delta <- torch::torch_tensor(
     patch_size_vec, dtype = torch::torch_float32(), device = device
-  )$view(c(3, 1, 1, 1))
+  ) $view(c(3, 1, 1, 1))
 
   patch_ends <- grid + patch_size_delta
 
   # Combine start and end coordinates [3, N_F, N_H, N_W, 2]
-  latent_coords <- torch::torch_stack(list(grid, patch_ends), dim = -1)
+  latent_coords <- torch::torch_stack(list(grid, patch_ends), dim = - 1)
 
   # Reshape to (1, 3, num_patches, 2)
-  latent_coords <- torch::torch_flatten(latent_coords, start_dim = 2, end_dim = 4)  # [3, num_patches, 2]
-  latent_coords <- latent_coords$unsqueeze(1)   # [1, 3, num_patches, 2]
+  latent_coords <- torch::torch_flatten(latent_coords, start_dim = 2, end_dim = 4) # [3, num_patches, 2]
+  latent_coords <- latent_coords$unsqueeze(1) # [1, 3, num_patches, 2]
   latent_coords <- latent_coords$`repeat`(c(batch_size, 1, 1, 1))
 
   # 3. Convert to pixel space using VAE scale factors
   scale_tensor <- torch::torch_tensor(
     scale_factors, dtype = torch::torch_float32(), device = device
-  )$view(c(1, 3, 1, 1))
+  ) $view(c(1, 3, 1, 1))
 
   pixel_coords <- latent_coords * scale_tensor
 
   # Handle causal offset for first frame
   # Frame coordinates need special handling for causal VAE
-  frame_coords <- pixel_coords[, 1, , ]
-  frame_coords <- (frame_coords + causal_offset - scale_factors[1])$clamp(min = 0)
-  pixel_coords[, 1, , ] <- frame_coords
+  frame_coords <- pixel_coords[, 1,,]
+  frame_coords <- (frame_coords + causal_offset - scale_factors[1]) $clamp(min = 0)
+  pixel_coords[, 1,,] <- frame_coords
 
   # Scale temporal coordinates by FPS (convert to seconds)
-  pixel_coords[, 1, , ] <- pixel_coords[, 1, , ] / fps
+  pixel_coords[, 1,,] <- pixel_coords[, 1,,] / fps
 
   pixel_coords
 }
@@ -164,7 +164,11 @@ rope_prepare_video_coords <- function(
 #'     \item{sin_freqs}{Sine frequencies tensor}
 #'   }
 #' @export
-rope_forward <- function(embedder, coords, device = NULL) {
+rope_forward <- function(
+  embedder,
+  coords,
+  device = NULL
+) {
   if (is.null(device)) {
     device <- coords$device
   }
@@ -184,11 +188,11 @@ rope_forward <- function(embedder, coords, device = NULL) {
   # 1. If coords are patch boundaries [start, end), use midpoint
   if (length(coords$shape) == 4) {
     # Split into start and end
-    coords_split <- coords$chunk(2, dim = -1)
+    coords_split <- coords$chunk(2, dim = - 1)
     coords_start <- coords_split[[1]]
     coords_end <- coords_split[[2]]
     coords <- (coords_start + coords_end) / 2.0
-    coords <- coords$squeeze(-1)  # [B, num_pos_dims, num_patches]
+    coords <- coords$squeeze(- 1) # [B, num_pos_dims, num_patches]
   }
 
   # 2. Get coordinates as fraction of base shape
@@ -197,15 +201,19 @@ rope_forward <- function(embedder, coords, device = NULL) {
   # Create grid tensor [B, num_patches, num_pos_dims]
   grid_list <- list()
   for (i in seq_len(num_pos_dims)) {
-    grid_list[[i]] <- coords[, i, ] / max_positions[i]
+    grid_list[[i]] <- coords[, i,] / max_positions[i]
   }
-  grid <- torch::torch_stack(grid_list, dim = -1)$to(device = device)
+  grid <- torch::torch_stack(grid_list, dim = - 1) $to(device = device)
 
   # Number of RoPE elements (3 dims * 2 for cos/sin)
   num_rope_elems <- num_pos_dims * 2L
 
   # 3. Create 1D grid of frequencies
-  freqs_dtype <- if (double_precision) torch::torch_float64() else torch::torch_float32()
+  if (double_precision) {
+    freqs_dtype <- torch::torch_float64()
+  } else {
+    freqs_dtype <- torch::torch_float32()
+  }
 
   pow_indices <- torch::torch_pow(
     theta,
@@ -215,27 +223,27 @@ rope_forward <- function(embedder, coords, device = NULL) {
       dtype = freqs_dtype, device = device
     )
   )
-  freqs <- (pow_indices * pi / 2.0)$to(dtype = torch::torch_float32())
+  freqs <- (pow_indices * pi / 2.0) $to(dtype = torch::torch_float32())
 
   # 4. Compute position-specific frequencies
   # [B, num_patches, num_pos_dims, dim // num_rope_elems]
-  freqs <- (grid$unsqueeze(-1) * 2 - 1) * freqs
+  freqs <- (grid$unsqueeze(- 1) * 2 - 1) * freqs
 
   # Transpose and flatten [B, num_patches, dim // 2]
-  freqs <- freqs$transpose(-1, -2)$flatten(start_dim = 3)
+  freqs <- freqs$transpose(- 1, - 2) $flatten(start_dim = 3)
 
   # 5. Get interleaved (cos, sin) frequencies
   if (rope_type == "interleaved") {
-    cos_freqs <- freqs$cos()$repeat_interleave(2L, dim = -1L)
-    sin_freqs <- freqs$sin()$repeat_interleave(2L, dim = -1L)
+    cos_freqs <- freqs$cos() $repeat_interleave(2L, dim = - 1L)
+    sin_freqs <- freqs$sin() $repeat_interleave(2L, dim = - 1L)
 
     # Handle padding if dim not divisible by num_rope_elems
     if (dim %% num_rope_elems != 0) {
       pad_size <- dim %% num_rope_elems
-      cos_padding <- torch::torch_ones_like(cos_freqs[, , 1:pad_size])
-      sin_padding <- torch::torch_zeros_like(sin_freqs[, , 1:pad_size])
-      cos_freqs <- torch::torch_cat(list(cos_padding, cos_freqs), dim = -1)
-      sin_freqs <- torch::torch_cat(list(sin_padding, sin_freqs), dim = -1)
+      cos_padding <- torch::torch_ones_like(cos_freqs[,, 1:pad_size])
+      sin_padding <- torch::torch_zeros_like(sin_freqs[,, 1:pad_size])
+      cos_freqs <- torch::torch_cat(list(cos_padding, cos_freqs), dim = - 1)
+      sin_freqs <- torch::torch_cat(list(sin_padding, sin_freqs), dim = - 1)
     }
   } else if (rope_type == "split") {
     expected_freqs <- dim %/% 2L
@@ -246,21 +254,21 @@ rope_forward <- function(embedder, coords, device = NULL) {
     sin_freq <- freqs$sin()
 
     if (pad_size > 0) {
-      cos_padding <- torch::torch_ones_like(cos_freq[, , 1:pad_size])
-      sin_padding <- torch::torch_zeros_like(sin_freq[, , 1:pad_size])
-      cos_freq <- torch::torch_cat(list(cos_padding, cos_freq), dim = -1)
-      sin_freq <- torch::torch_cat(list(sin_padding, sin_freq), dim = -1)
+      cos_padding <- torch::torch_ones_like(cos_freq[,, 1:pad_size])
+      sin_padding <- torch::torch_zeros_like(sin_freq[,, 1:pad_size])
+      cos_freq <- torch::torch_cat(list(cos_padding, cos_freq), dim = - 1)
+      sin_freq <- torch::torch_cat(list(sin_padding, sin_freq), dim = - 1)
     }
 
     # Reshape for multi-head attention
     b <- as.numeric(cos_freq$shape[1])
     t <- as.numeric(cos_freq$shape[2])
 
-    cos_freq <- cos_freq$reshape(c(b, t, num_attention_heads, -1))
-    sin_freq <- sin_freq$reshape(c(b, t, num_attention_heads, -1))
+    cos_freq <- cos_freq$reshape(c(b, t, num_attention_heads, - 1))
+    sin_freq <- sin_freq$reshape(c(b, t, num_attention_heads, - 1))
 
-    cos_freqs <- cos_freq$swapaxes(2, 3)  # (B, H, T, D//2)
-    sin_freqs <- sin_freq$swapaxes(2, 3)  # (B, H, T, D//2)
+    cos_freqs <- cos_freq$swapaxes(2, 3) # (B, H, T, D//2)
+    sin_freqs <- sin_freq$swapaxes(2, 3) # (B, H, T, D//2)
   }
 
   list(cos_freqs = cos_freqs, sin_freqs = sin_freqs)
@@ -276,23 +284,26 @@ rope_forward <- function(embedder, coords, device = NULL) {
 #'
 #' @return torch tensor. Rotated tensor with same shape as input.
 #' @export
-apply_interleaved_rotary_emb <- function(x, freqs) {
+apply_interleaved_rotary_emb <- function(
+  x,
+  freqs
+) {
   cos_freqs <- freqs$cos_freqs
   sin_freqs <- freqs$sin_freqs
 
   # Split x into interleaved real/imaginary pairs
   # x has shape [B, S, C], unflatten to [B, S, C//2, 2]
-  x_unflat <- x$unflatten(3, c(-1, 2))
-  x_split <- x_unflat$unbind(-1)
-  x_real <- x_split[[1]]  # [B, S, C // 2]
-  x_imag <- x_split[[2]]  # [B, S, C // 2]
+  x_unflat <- x$unflatten(3, c(- 1, 2))
+  x_split <- x_unflat$unbind(- 1)
+  x_real <- x_split[[1]]# [B, S, C // 2]
+  x_imag <- x_split[[2]]# [B, S, C // 2]
 
   # Rotate: stack [-x_imag, x_real] and flatten back
-  x_rotated <- torch::torch_stack(list(-x_imag, x_real), dim = -1)$flatten(start_dim = 3)
+  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1) $flatten(start_dim = 3)
 
   # Apply rotation formula: x * cos + rotate(x) * sin
   out <- (x$to(dtype = torch::torch_float32()) * cos_freqs +
-            x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)
+    x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)
   out <- out$to(dtype = x$dtype)
 
   out
@@ -308,7 +319,10 @@ apply_interleaved_rotary_emb <- function(x, freqs) {
 #'
 #' @return torch tensor. Rotated tensor with same shape as input.
 #' @export
-apply_split_rotary_emb <- function(x, freqs) {
+apply_split_rotary_emb <- function(
+  x,
+  freqs
+) {
   cos_freqs <- freqs$cos_freqs
   sin_freqs <- freqs$sin_freqs
 
@@ -321,25 +335,26 @@ apply_split_rotary_emb <- function(x, freqs) {
     cos_shape <- as.numeric(cos_freqs$shape)
     h <- cos_shape[2]
     t <- cos_shape[3]
-    x <- x$reshape(c(b, t, h, -1))$swapaxes(2, 3)
+    x <- x$reshape(c(b, t, h, - 1)) $swapaxes(2, 3)
     needs_reshape <- TRUE
   }
 
   # Split into real and imaginary halves
   half_dim <- as.numeric(x$shape[length(x$shape)]) %/% 2L
-  x_real <- x[, , , 1:half_dim]
-  x_imag <- x[, , , (half_dim + 1):(half_dim * 2)]
+  x_real <- x[,,, 1:half_dim]
+  x_imag <- x[,,, (half_dim + 1) :(half_dim * 2)]
 
   # Rotate: [-x_imag, x_real]
-  x_rotated <- torch::torch_cat(list(-x_imag, x_real), dim = -1)
+  x_rotated <- torch::torch_cat(list(- x_imag, x_real), dim = - 1)
 
   # Apply rotation
   out <- (x$to(dtype = torch::torch_float32()) * cos_freqs +
-            x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)
+    x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)
 
   if (needs_reshape) {
-    out <- out$swapaxes(2, 3)$flatten(start_dim = 2, end_dim = 3)
+    out <- out$swapaxes(2, 3) $flatten(start_dim = 2, end_dim = 3)
   }
 
   out$to(dtype = x_dtype)
 }
+

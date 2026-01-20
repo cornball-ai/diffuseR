@@ -4,20 +4,28 @@
 \alias{ltx2_memory_profile}
 \title{Get LTX-2 Memory Profile}
 \usage{
-ltx2_memory_profile(vram_gb = NULL, model = "ltx2-2b")
+ltx2_memory_profile(vram_gb = NULL, model = "ltx2-19b-fp4")
 }
 \arguments{
 \item{vram_gb}{Numeric. Available VRAM in GB, or NULL for auto-detection.}
 
-\item{model}{Character. Model variant: "ltx2-2b" (default) or "ltx2-2b-distilled".}
+\item{model}{Character. Model variant: "ltx2-19b-fp4" (default), "ltx2-19b-fp8", or
+"ltx2-19b-distilled".}
 }
 \details{
-Memory profiles for LTX-2:
+LTX-2 is a 19B parameter model. Even with FP4 quantization (~10GB weights),
+it requires careful memory management. The GPU-poor approach:
+
+1. Text encoding runs on CPU (cached)
+2. DiT loaded in chunks, processed layer-by-layer, unloaded
+3. VAE loaded after DiT unload, decode with tiling, unload
+
+Memory profiles:
 \describe{
-  \item{high}{16GB+ - DiT and VAE on GPU, text via API}
-  \item{medium}{12GB - DiT on GPU, VAE tiled, text via API}
-  \item{low}{8GB - DiT offloaded layer-by-layer, VAE tiled small, text via API}
-  \item{very_low}{6GB - Maximum offloading, minimum tiles}
+  \item{high}{16GB+ - FP4 DiT with chunk loading, VAE on GPU}
+  \item{medium}{12GB - FP4 DiT chunk loading, VAE tiled}
+  \item{low}{8GB - FP4 DiT layer-by-layer, VAE tiled small}
+  \item{very_low}{6GB - FP4 layer-by-layer, VAE on CPU}
   \item{cpu_only}{All on CPU}
 }
 }

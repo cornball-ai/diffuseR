@@ -33,26 +33,28 @@
 #' \dontrun{
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
-txt2img_sd21 <- function(prompt,
-                         negative_prompt = NULL,
-                         img_dim = 768,
-                         pipeline = NULL,
-                         devices = "auto",
-                         unet_dtype_str = NULL,
-                         download_models = FALSE,
-                         scheduler = "ddim",
-                         timesteps = NULL,
-                         initial_latents = NULL,
-                         num_inference_steps = 50,
-                         guidance_scale = 7.5,
-                         seed = NULL,
-                         save_file = TRUE,
-                         filename = NULL,
-                         metadata_path = NULL,
-                         use_native_decoder = FALSE,
-                         use_native_text_encoder = FALSE,
-                         use_native_unet = FALSE,
-                         ...) {
+txt2img_sd21 <- function(
+  prompt,
+  negative_prompt = NULL,
+  img_dim = 768,
+  pipeline = NULL,
+  devices = "auto",
+  unet_dtype_str = NULL,
+  download_models = FALSE,
+  scheduler = "ddim",
+  timesteps = NULL,
+  initial_latents = NULL,
+  num_inference_steps = 50,
+  guidance_scale = 7.5,
+  seed = NULL,
+  save_file = TRUE,
+  filename = NULL,
+  metadata_path = NULL,
+  use_native_decoder = FALSE,
+  use_native_text_encoder = FALSE,
+  use_native_unet = FALSE,
+  ...
+) {
   model_name = "sd21"
 
   # Handle "auto" devices
@@ -61,8 +63,8 @@ txt2img_sd21 <- function(prompt,
   }
 
   m2d <- models2devices(model_name = model_name, devices = devices,
-                        unet_dtype_str = unet_dtype_str,
-                        download_models = download_models)
+    unet_dtype_str = unet_dtype_str,
+    download_models = download_models)
   model_dir <- m2d$model_dir
   model_files <- m2d$model_files
   devices <- m2d$devices
@@ -70,17 +72,17 @@ txt2img_sd21 <- function(prompt,
   device_cpu <- m2d$device_cpu
   device_cuda <- m2d$device_cuda
 
-  if(is.null(pipeline)){
+  if (is.null(pipeline)) {
     pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-                              unet_dtype_str = unet_dtype_str,
-                              use_native_decoder = use_native_decoder,
-                              use_native_text_encoder = use_native_text_encoder,
-                              use_native_unet = use_native_unet)
+      unet_dtype_str = unet_dtype_str,
+      use_native_decoder = use_native_decoder,
+      use_native_text_encoder = use_native_text_encoder,
+      use_native_unet = use_native_unet)
   }
-  
+
   # Start timing
   start_time <- proc.time()
-  
+
   # Process text prompt
   message("Processing prompt...")
   ## Tokenizer
@@ -94,88 +96,88 @@ txt2img_sd21 <- function(prompt,
     empty_tokens <- CLIPTokenizer(negative_prompt)
   }
   empty_prompt_embed <- pipeline$text_encoder(empty_tokens)
-  
+
   empty_prompt_embed <- empty_prompt_embed$to(dtype = unet_dtype,
-                                              device = torch::torch_device(devices$unet))
-  prompt_embed       <- prompt_embed$to(dtype = unet_dtype,
-                                        device = torch::torch_device(devices$unet))
+    device = torch::torch_device(devices$unet))
+  prompt_embed <- prompt_embed$to(dtype = unet_dtype,
+    device = torch::torch_device(devices$unet))
 
   message("Creating schedule...")
   # Load scheduler
   schedule <- ddim_scheduler_create(num_inference_steps = num_inference_steps,
-                                         beta_schedule = "scaled_linear",
-                                         device = torch::torch_device(devices$unet))
-  if(is.null(timesteps)){
+    beta_schedule = "scaled_linear",
+    device = torch::torch_device(devices$unet))
+  if (is.null(timesteps)) {
     timesteps <- schedule$timesteps
   }
 
   # Run diffusion process
   message("Generating image...")
-  if(!is.null(seed)){
+  if (!is.null(seed)) {
     set.seed(seed)
     torch::torch_manual_seed(seed = seed)
   }
-  
+
   latent_dim <- img_dim / 8
-  if(!is.null(initial_latents)){
+  if (!is.null(initial_latents)) {
     latents <- initial_latents
     latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
   } else {
     # Create random latents
     latents <- torch::torch_randn(c(1, 4, latent_dim, latent_dim),
-                                  dtype = unet_dtype,
-                                  device = torch::torch_device(devices$unet))
+      dtype = unet_dtype,
+      device = torch::torch_device(devices$unet))
   }
   # Denoising loop (no gradients needed for inference)
   pb <- utils::txtProgressBar(min = 0, max = length(timesteps), style = 3)
   torch::with_no_grad({
-    for (i in seq_along(timesteps)){
-      timestep <- torch::torch_tensor(timesteps[i],
-                                      dtype = torch::torch_long(),
-                                      device = torch::torch_device(devices$unet))
+      for (i in seq_along(timesteps)) {
+        timestep <- torch::torch_tensor(timesteps[i],
+          dtype = torch::torch_long(),
+          device = torch::torch_device(devices$unet))
 
-      # Get both conditional and unconditional predictions
-      noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed)
-      noise_pred_cond   <- pipeline$unet(latents, timestep, prompt_embed)
+        # Get both conditional and unconditional predictions
+        noise_pred_uncond <- pipeline$unet(latents, timestep, empty_prompt_embed)
+        noise_pred_cond <- pipeline$unet(latents, timestep, prompt_embed)
 
-      # CFG step
-      noise_pred <- noise_pred_uncond + guidance_scale *
-                      (noise_pred_cond - noise_pred_uncond)
+        # CFG step
+        noise_pred <- noise_pred_uncond + guidance_scale *
+        (noise_pred_cond - noise_pred_uncond)
 
-      # Calculating latent
-      latents <- ddim_scheduler_step(model_output = noise_pred,
-                                     timestep = timestep,
-                                     sample = latents,
-                                     schedule = schedule,
-                                     prediction_type = "v_prediction",
-                                   device = devices$unet)
-      latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
-      utils::setTxtProgressBar(pb, i)
-    }
-  })
+        # Calculating latent
+        latents <- ddim_scheduler_step(model_output = noise_pred,
+          timestep = timestep,
+          sample = latents,
+          schedule = schedule,
+          prediction_type = "v_prediction",
+          device = devices$unet)
+        latents <- latents$to(dtype = unet_dtype, device = torch::torch_device(devices$unet))
+        utils::setTxtProgressBar(pb, i)
+      }
+    })
   close(pb)
-  
+
   # Decode latents to image
   scaled_latent <- latents / 0.18215
   scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
-                                    device = torch::torch_device(devices$decoder))
+    device = torch::torch_device(devices$decoder))
   message("Decoding image...")
   decoded_output <- pipeline$decoder(scaled_latent)
   # Ensure tensor is on CPU
   img <- decoded_output$cpu()
-  
+
   # Remove batch dimension if present
   if (length(img$shape) == 4) {
     img <- img$squeeze(1)
   }
-  
+
   # Reorder channels: [3, H, W] → [H, W, 3]
   img <- img$permute(c(2, 3, 1))
-  
+
   # Normalize if needed
-  img <- (img + 1) / 2  # scale from [-1, 1] → [0, 1]
+  img <- (img + 1) / 2# scale from [-1, 1] → [0, 1]
   img <- torch::torch_clamp(img, min = 0, max = 1)
-  
+
   # Convert to R array
   img_array <- as.array(img)
   # Save if requested
@@ -211,10 +213,11 @@ txt2img_sd21 <- function(prompt,
   # Report timing
   elapsed <- proc.time() - start_time
   message(sprintf("Image generated in %.2f seconds", elapsed[3]))
-  
+
   # Return the generated image and metadata
   return(list(
-    image = img_array,
-    metadata = metadata
-  ))
+      image = img_array,
+      metadata = metadata
+    ))
 }
+

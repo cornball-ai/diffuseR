@@ -2,16 +2,27 @@
 % Please edit documentation in R/gpu_poor.R
 \name{dit_offloaded_forward}
 \alias{dit_offloaded_forward}
-\title{DiT Layer-by-Layer Forward Pass}
+\title{DiT Chunk-based Forward Pass}
 \usage{
-dit_offloaded_forward(hidden_states, layers, device = "cuda", ...)
+dit_offloaded_forward(
+  hidden_states,
+  layers,
+  chunk_size = 1L,
+  device = "cuda",
+  verbose = FALSE,
+  ...
+)
 }
 \arguments{
 \item{hidden_states}{Input tensor.}
 
 \item{layers}{List of transformer layers (on CPU).}
 
+\item{chunk_size}{Integer. Number of layers to load at once (default 1).}
+
 \item{device}{Target device for computation.}
+
+\item{verbose}{Logical. Print progress.}
 
 \item{...}{Additional arguments passed to each layer.}
 }
@@ -19,18 +30,25 @@ dit_offloaded_forward(hidden_states, layers, device = "cuda", ...)
 Output tensor (on CPU).
 }
 \description{
-Runs transformer layers one at a time, moving each to GPU before
-computation and back to CPU after. For extreme memory-constrained
-scenarios.
+Runs transformer layers in chunks, moving each chunk to GPU before
+computation and back to CPU after. Balances memory usage with speed.
 }
 \examples{
 \dontrun{
-# During low-VRAM inference
+# Layer-by-layer for 8GB VRAM
 output <- dit_offloaded_forward(
   hidden_states,
   model$transformer_blocks,
-  device = "cuda",
-  encoder_hidden_states = text_embeds
+  chunk_size = 1,
+  device = "cuda"
+)
+
+# Chunk-based for 16GB VRAM
+output <- dit_offloaded_forward(
+  hidden_states,
+  model$transformer_blocks,
+  chunk_size = 12,  # 12 layers at a time
+  device = "cuda"
 )
 }
 }

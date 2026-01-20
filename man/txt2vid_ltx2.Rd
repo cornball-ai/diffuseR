@@ -14,7 +14,8 @@ txt2vid_ltx2(
   num_inference_steps = 8L,
   guidance_scale = 4,
   memory_profile = "auto",
-  text_backend = "api",
+  text_backend = "gemma3",
+  text_model_path = NULL,
   text_api_url = NULL,
   vae = NULL,
   dit = NULL,
@@ -46,7 +47,11 @@ txt2vid_ltx2(
 \item{memory_profile}{Character or list. Memory profile: "auto" for auto-detection, or a
 profile from `ltx2_memory_profile()`.}
 
-\item{text_backend}{Character. Text encoding backend: "api", "precomputed", or "random".}
+\item{text_backend}{Character. Text encoding backend: "gemma3" (native), "api",
+"precomputed", or "random".}
+
+\item{text_model_path}{Character. Path to Gemma3 model (for "gemma3" backend). Supports glob
+patterns.}
 
 \item{text_api_url}{Character. URL for text encoding API (if backend = "api").}
 

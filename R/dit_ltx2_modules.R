@@ -7,8 +7,14 @@
 
 #' Get timestep embedding (sinusoidal)
 #' @keywords internal
-get_timestep_embedding <- function(timesteps, embedding_dim, flip_sin_to_cos = FALSE,
-                                    downscale_freq_shift = 1, scale = 1, max_period = 10000) {
+get_timestep_embedding <- function(
+  timesteps,
+  embedding_dim,
+  flip_sin_to_cos = FALSE,
+  downscale_freq_shift = 1,
+  scale = 1,
+  max_period = 10000
+) {
   # Ensure timesteps is 1D
   if (timesteps$ndim > 1L) {
     timesteps <- timesteps$flatten()
@@ -20,25 +26,25 @@ get_timestep_embedding <- function(timesteps, embedding_dim, flip_sin_to_cos = F
   half_dim <- embedding_dim %/% 2L
 
   # Compute in float32 for numerical precision
-  exponent <- -log(max_period) * torch::torch_arange(
+  exponent <- - log(max_period) * torch::torch_arange(
     start = 0, end = half_dim - 1L, dtype = torch::torch_float32(), device = timesteps$device
   )
   exponent <- exponent / (half_dim - downscale_freq_shift)
 
   emb <- torch::torch_exp(exponent)
   # timesteps: [N], emb: [half_dim] -> result: [N, half_dim]
-  emb <- timesteps$unsqueeze(-1L)$to(dtype = torch::torch_float32()) * emb$unsqueeze(1L)
+  emb <- timesteps$unsqueeze(- 1L) $to(dtype = torch::torch_float32()) * emb$unsqueeze(1L)
   emb <- scale * emb
 
   # Concat sine and cosine -> [N, embedding_dim]
-  emb <- torch::torch_cat(list(torch::torch_sin(emb), torch::torch_cos(emb)), dim = -1L)
+  emb <- torch::torch_cat(list(torch::torch_sin(emb), torch::torch_cos(emb)), dim = - 1L)
 
   # Flip if needed (2D tensor: [N, dim])
   if (flip_sin_to_cos) {
     emb <- torch::torch_cat(list(
-      emb[, (half_dim + 1L):embedding_dim],
-      emb[, 1L:half_dim]
-    ), dim = -1L)
+        emb[, (half_dim + 1L) :embedding_dim],
+        emb[, 1L:half_dim]
+      ), dim = - 1L)
   }
 
   # Zero pad if odd
@@ -56,7 +62,12 @@ get_timestep_embedding <- function(timesteps, embedding_dim, flip_sin_to_cos = F
 #' @keywords internal
 timesteps_module <- torch::nn_module(
   "Timesteps",
-  initialize = function(num_channels, flip_sin_to_cos = TRUE, downscale_freq_shift = 0, scale = 1L) {
+  initialize = function(
+    num_channels,
+    flip_sin_to_cos = TRUE,
+    downscale_freq_shift = 0,
+    scale = 1L
+  ) {
     self$num_channels <- num_channels
     self$flip_sin_to_cos <- flip_sin_to_cos
     self$downscale_freq_shift <- downscale_freq_shift
@@ -77,8 +88,13 @@ timesteps_module <- torch::nn_module(
 #' @keywords internal
 timestep_embedding_module <- torch::nn_module(
   "TimestepEmbedding",
-  initialize = function(in_channels, time_embed_dim, act_fn = "silu", out_dim = NULL) {
-    self$linear_1 <- torch::nn_linear(in_channels, time_embed_dim)
+  initialize = function(
+    in_channels,
+    time_embed_dim,
+    act_fn = "silu",
+    out_dim = NULL
+  ) {
+    self$linear_1 <- make_linear(in_channels, time_embed_dim)
 
     if (act_fn == "silu") {
       self$act <- torch::nn_silu()
@@ -88,8 +104,12 @@ timestep_embedding_module <- torch::nn_module(
       self$act <- torch::nn_silu()
     }
 
-    time_embed_dim_out <- if (!is.null(out_dim)) out_dim else time_embed_dim
-    self$linear_2 <- torch::nn_linear(time_embed_dim, time_embed_dim_out)
+    if (!is.null(out_dim)) {
+      time_embed_dim_out <- out_dim
+    } else {
+      time_embed_dim_out <- time_embed_dim
+    }
+    self$linear_2 <- make_linear(time_embed_dim, time_embed_dim_out)
   },
   forward = function(sample) {
     sample <- self$linear_1(sample)
@@ -103,7 +123,11 @@ timestep_embedding_module <- torch::nn_module(
 #' @keywords internal
 pixart_alpha_combined_timestep_size_embeddings <- torch::nn_module(
   "PixArtAlphaCombinedTimestepSizeEmbeddings",
-  initialize = function(embedding_dim, size_emb_dim, use_additional_conditions = FALSE) {
+  initialize = function(
+    embedding_dim,
+    size_emb_dim,
+    use_additional_conditions = FALSE
+  ) {
     self$outdim <- size_emb_dim
     self$time_proj <- timesteps_module(num_channels = 256L, flip_sin_to_cos = TRUE, downscale_freq_shift = 0)
     self$timestep_embedder <- timestep_embedding_module(in_channels = 256L, time_embed_dim = embedding_dim)
@@ -115,7 +139,13 @@ pixart_alpha_combined_timestep_size_embeddings <- torch::nn_module(
       self$aspect_ratio_embedder <- timestep_embedding_module(in_channels = 256L, time_embed_dim = size_emb_dim)
     }
   },
-  forward = function(timestep, resolution = NULL, aspect_ratio = NULL, batch_size = NULL, hidden_dtype = NULL) {
+  forward = function(
+    timestep,
+    resolution = NULL,
+    aspect_ratio = NULL,
+    batch_size = NULL,
+    hidden_dtype = NULL
+  ) {
     timesteps_proj <- self$time_proj(timestep)
     if (!is.null(hidden_dtype)) {
       timesteps_proj <- timesteps_proj$to(dtype = hidden_dtype)
@@ -127,13 +157,13 @@ pixart_alpha_combined_timestep_size_embeddings <- torch::nn_module(
       if (!is.null(hidden_dtype)) {
         resolution_emb <- resolution_emb$to(dtype = hidden_dtype)
       }
-      resolution_emb <- self$resolution_embedder(resolution_emb)$reshape(c(batch_size, -1L))
+      resolution_emb <- self$resolution_embedder(resolution_emb) $reshape(c(batch_size, - 1L))
 
       aspect_ratio_emb <- self$additional_condition_proj(aspect_ratio$flatten())
       if (!is.null(hidden_dtype)) {
         aspect_ratio_emb <- aspect_ratio_emb$to(dtype = hidden_dtype)
       }
-      aspect_ratio_emb <- self$aspect_ratio_embedder(aspect_ratio_emb)$reshape(c(batch_size, -1L))
+      aspect_ratio_emb <- self$aspect_ratio_embedder(aspect_ratio_emb) $reshape(c(batch_size, - 1L))
 
       conditioning <- timesteps_emb + torch::torch_cat(list(resolution_emb, aspect_ratio_emb), dim = 2L)
     } else {
@@ -148,10 +178,15 @@ pixart_alpha_combined_timestep_size_embeddings <- torch::nn_module(
 #' @keywords internal
 pixart_alpha_text_projection <- torch::nn_module(
   "PixArtAlphaTextProjection",
-  initialize = function(in_features, hidden_size, out_features = NULL, act_fn = "gelu_tanh") {
+  initialize = function(
+    in_features,
+    hidden_size,
+    out_features = NULL,
+    act_fn = "gelu_tanh"
+  ) {
     if (is.null(out_features)) out_features <- hidden_size
 
-    self$linear_1 <- torch::nn_linear(in_features, hidden_size)
+    self$linear_1 <- make_linear(in_features, hidden_size)
 
     if (act_fn == "gelu_tanh") {
       self$act_1 <- torch::nn_gelu(approximate = "tanh")
@@ -161,7 +196,7 @@ pixart_alpha_text_projection <- torch::nn_module(
       self$act_1 <- torch::nn_gelu(approximate = "tanh")
     }
 
-    self$linear_2 <- torch::nn_linear(hidden_size, out_features)
+    self$linear_2 <- make_linear(hidden_size, out_features)
   },
   forward = function(caption) {
     hidden_states <- self$linear_1(caption)
@@ -179,8 +214,13 @@ pixart_alpha_text_projection <- torch::nn_module(
 #' @keywords internal
 gelu_activation <- torch::nn_module(
   "GELU",
-  initialize = function(dim_in, dim_out, approximate = "none", bias = TRUE) {
-    self$proj <- torch::nn_linear(dim_in, dim_out, bias = bias)
+  initialize = function(
+    dim_in,
+    dim_out,
+    approximate = "none",
+    bias = TRUE
+  ) {
+    self$proj <- make_linear(dim_in, dim_out, bias = bias)
     self$approximate <- approximate
   },
   forward = function(hidden_states) {
@@ -194,8 +234,15 @@ gelu_activation <- torch::nn_module(
 #' @keywords internal
 feed_forward <- torch::nn_module(
   "FeedForward",
-  initialize = function(dim, dim_out = NULL, mult = 4L, dropout = 0.0,
-                        activation_fn = "gelu-approximate", inner_dim = NULL, bias = TRUE) {
+  initialize = function(
+    dim,
+    dim_out = NULL,
+    mult = 4L,
+    dropout = 0.0,
+    activation_fn = "gelu-approximate",
+    inner_dim = NULL,
+    bias = TRUE
+  ) {
     if (is.null(inner_dim)) inner_dim <- as.integer(dim * mult)
     if (is.null(dim_out)) dim_out <- dim
 
@@ -209,7 +256,7 @@ feed_forward <- torch::nn_module(
     }
 
     self$dropout <- torch::nn_dropout(p = dropout)
-    self$proj_out <- torch::nn_linear(inner_dim, dim_out, bias = bias)
+    self$proj_out <- make_linear(inner_dim, dim_out, bias = bias)
   },
   forward = function(hidden_states) {
     hidden_states <- self$act_fn(hidden_states)
@@ -227,7 +274,11 @@ feed_forward <- torch::nn_module(
 #' @keywords internal
 rms_norm <- torch::nn_module(
   "RMSNorm",
-  initialize = function(dim, eps = 1e-6, elementwise_affine = TRUE) {
+  initialize = function(
+    dim,
+    eps = 1e-6,
+    elementwise_affine = TRUE
+  ) {
     self$eps <- eps
     self$elementwise_affine <- elementwise_affine
     if (elementwise_affine) {
@@ -237,7 +288,7 @@ rms_norm <- torch::nn_module(
   forward = function(hidden_states) {
     input_dtype <- hidden_states$dtype
     hidden_states <- hidden_states$to(dtype = torch::torch_float32())
-    variance <- hidden_states$pow(2)$mean(dim = -1L, keepdim = TRUE)
+    variance <- hidden_states$pow(2) $mean(dim = - 1L, keepdim = TRUE)
     hidden_states <- hidden_states * torch::torch_rsqrt(variance + self$eps)
     if (self$elementwise_affine) {
       hidden_states <- hidden_states * self$weight
@@ -254,7 +305,11 @@ rms_norm <- torch::nn_module(
 #' @keywords internal
 ltx2_ada_layer_norm_single <- torch::nn_module(
   "LTX2AdaLayerNormSingle",
-  initialize = function(embedding_dim, num_mod_params = 6L, use_additional_conditions = FALSE) {
+  initialize = function(
+    embedding_dim,
+    num_mod_params = 6L,
+    use_additional_conditions = FALSE
+  ) {
     self$num_mod_params <- num_mod_params
 
     self$emb <- pixart_alpha_combined_timestep_size_embeddings(
@@ -264,9 +319,14 @@ ltx2_ada_layer_norm_single <- torch::nn_module(
     )
 
     self$silu <- torch::nn_silu()
-    self$linear <- torch::nn_linear(embedding_dim, num_mod_params * embedding_dim)
+    self$linear <- make_linear(embedding_dim, num_mod_params * embedding_dim)
   },
-  forward = function(timestep, added_cond_kwargs = NULL, batch_size = NULL, hidden_dtype = NULL) {
+  forward = function(
+    timestep,
+    added_cond_kwargs = NULL,
+    batch_size = NULL,
+    hidden_dtype = NULL
+  ) {
     if (is.null(added_cond_kwargs)) {
       added_cond_kwargs <- list(resolution = NULL, aspect_ratio = NULL)
     }
@@ -290,23 +350,26 @@ ltx2_ada_layer_norm_single <- torch::nn_module(
 
 #' Apply interleaved rotary embedding
 #' @keywords internal
-apply_interleaved_rotary_emb_list <- function(x, freqs) {
+apply_interleaved_rotary_emb_list <- function(
+  x,
+  freqs
+) {
   cos_freqs <- freqs[[1]]
   sin_freqs <- freqs[[2]]
 
   # x: [B, S, C]
   # Split into real and imaginary parts
   x_shape <- x$shape
-  x_reshaped <- x$unflatten(3, c(-1L, 2L))  # [B, S, C//2, 2]
-  x_real <- x_reshaped[, , , 1]
-  x_imag <- x_reshaped[, , , 2]
+  x_reshaped <- x$unflatten(3, c(- 1L, 2L)) # [B, S, C//2, 2]
+  x_real <- x_reshaped[,,, 1]
+  x_imag <- x_reshaped[,,, 2]
 
   # Rotate: [-x_imag, x_real]
-  x_rotated <- torch::torch_stack(list(-x_imag, x_real), dim = -1L)$flatten(start_dim = 3L)
+  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1L) $flatten(start_dim = 3L)
 
   # Apply rotation
   out <- (x$to(dtype = torch::torch_float32()) * cos_freqs +
-          x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)$to(dtype = x$dtype)
+    x_rotated$to(dtype = torch::torch_float32()) * sin_freqs) $to(dtype = x$dtype)
 
   out
 }
@@ -315,17 +378,34 @@ apply_interleaved_rotary_emb_list <- function(x, freqs) {
 #' @keywords internal
 ltx2_attention <- torch::nn_module(
   "LTX2Attention",
-  initialize = function(query_dim, heads = 8L, kv_heads = 8L, dim_head = 64L,
-                        dropout = 0.0, bias = TRUE, cross_attention_dim = NULL,
-                        out_bias = TRUE, qk_norm = "rms_norm_across_heads",
-                        norm_eps = 1e-6, norm_elementwise_affine = TRUE,
-                        rope_type = "interleaved") {
+  initialize = function(
+    query_dim,
+    heads = 8L,
+    kv_heads = 8L,
+    dim_head = 64L,
+    dropout = 0.0,
+    bias = TRUE,
+    cross_attention_dim = NULL,
+    out_bias = TRUE,
+    qk_norm = "rms_norm_across_heads",
+    norm_eps = 1e-6,
+    norm_elementwise_affine = TRUE,
+    rope_type = "interleaved"
+  ) {
 
     self$head_dim <- dim_head
     self$inner_dim <- dim_head * heads
-    self$inner_kv_dim <- if (is.null(kv_heads)) self$inner_dim else dim_head * kv_heads
+    if (is.null(kv_heads)) {
+      self$inner_kv_dim <- self$inner_dim
+    } else {
+      self$inner_kv_dim <- dim_head * kv_heads
+    }
     self$query_dim <- query_dim
-    self$cross_attention_dim <- if (!is.null(cross_attention_dim)) cross_attention_dim else query_dim
+    if (!is.null(cross_attention_dim)) {
+      self$cross_attention_dim <- cross_attention_dim
+    } else {
+      self$cross_attention_dim <- query_dim
+    }
     self$use_bias <- bias
     self$dropout_p <- dropout
     self$out_dim <- query_dim
@@ -334,22 +414,31 @@ ltx2_attention <- torch::nn_module(
 
     # QK normalization
     self$norm_q <- rms_norm(dim_head * heads, eps = norm_eps, elementwise_affine = norm_elementwise_affine)
-    self$norm_k <- rms_norm(dim_head * (if (is.null(kv_heads)) heads else kv_heads),
-                           eps = norm_eps, elementwise_affine = norm_elementwise_affine)
+    if (is.null(kv_heads)) {
+      self$norm_k <- heads
+    } else {
+      self$norm_k <- kv_heads),
+    }
+      eps = norm_eps, elementwise_affine = norm_elementwise_affine)
 
     # Projections
-    self$to_q <- torch::nn_linear(query_dim, self$inner_dim, bias = bias)
-    self$to_k <- torch::nn_linear(self$cross_attention_dim, self$inner_kv_dim, bias = bias)
-    self$to_v <- torch::nn_linear(self$cross_attention_dim, self$inner_kv_dim, bias = bias)
+    self$to_q <- make_linear(query_dim, self$inner_dim, bias = bias)
+    self$to_k <- make_linear(self$cross_attention_dim, self$inner_kv_dim, bias = bias)
+    self$to_v <- make_linear(self$cross_attention_dim, self$inner_kv_dim, bias = bias)
 
     # Output projection
     self$to_out <- torch::nn_sequential(
-      torch::nn_linear(self$inner_dim, self$out_dim, bias = out_bias),
+      make_linear(self$inner_dim, self$out_dim, bias = out_bias),
       torch::nn_dropout(p = dropout)
     )
   },
-  forward = function(hidden_states, encoder_hidden_states = NULL, attention_mask = NULL,
-                     query_rotary_emb = NULL, key_rotary_emb = NULL) {
+  forward = function(
+    hidden_states,
+    encoder_hidden_states = NULL,
+    attention_mask = NULL,
+    query_rotary_emb = NULL,
+    key_rotary_emb = NULL
+  ) {
     batch_size <- hidden_states$shape[1]
 
     if (is.null(encoder_hidden_states)) {
@@ -375,9 +464,9 @@ ltx2_attention <- torch::nn_module(
     }
 
     # Reshape for multi-head attention [B, S, H, D]
-    query <- query$unflatten(3, c(self$heads, -1L))
-    key <- key$unflatten(3, c(self$heads, -1L))
-    value <- value$unflatten(3, c(self$heads, -1L))
+    query <- query$unflatten(3, c(self$heads, - 1L))
+    key <- key$unflatten(3, c(self$heads, - 1L))
+    value <- value$unflatten(3, c(self$heads, - 1L))
 
     # Transpose to [B, H, S, D]
     query <- query$transpose(2L, 3L)
@@ -386,19 +475,19 @@ ltx2_attention <- torch::nn_module(
 
     # Scaled dot-product attention (manual implementation)
     scale <- 1.0 / sqrt(self$head_dim)
-    attn_weights <- torch::torch_matmul(query, key$transpose(-2L, -1L)) * scale
+    attn_weights <- torch::torch_matmul(query, key$transpose(- 2L, - 1L)) * scale
 
     if (!is.null(attention_mask)) {
       # Expand attention mask to [B, 1, 1, S] for broadcasting with [B, H, S, S]
       if (attention_mask$ndim == 2L) {
-        attention_mask <- attention_mask$unsqueeze(2L)$unsqueeze(2L)  # [B, S] -> [B, 1, 1, S]
+        attention_mask <- attention_mask$unsqueeze(2L) $unsqueeze(2L) # [B, S] -> [B, 1, 1, S]
       } else if (attention_mask$ndim == 3L) {
-        attention_mask <- attention_mask$unsqueeze(2L)  # [B, 1, S] -> [B, 1, 1, S]
+        attention_mask <- attention_mask$unsqueeze(2L) # [B, 1, S] -> [B, 1, 1, S]
       }
       attn_weights <- attn_weights + attention_mask
     }
 
-    attn_weights <- torch::nnf_softmax(attn_weights, dim = -1L)
+    attn_weights <- torch::nnf_softmax(attn_weights, dim = - 1L)
 
     if (self$training && self$dropout_p > 0) {
       attn_weights <- torch::nnf_dropout(attn_weights, p = self$dropout_p)
@@ -407,7 +496,7 @@ ltx2_attention <- torch::nn_module(
     hidden_states <- torch::torch_matmul(attn_weights, value)
 
     # Reshape back [B, H, S, D] -> [B, S, H*D]
-    hidden_states <- hidden_states$transpose(2L, 3L)$flatten(start_dim = 3L)
+    hidden_states <- hidden_states$transpose(2L, 3L) $flatten(start_dim = 3L)
     hidden_states <- hidden_states$to(dtype = query$dtype)
 
     # Output projection
@@ -425,12 +514,23 @@ ltx2_attention <- torch::nn_module(
 #' @keywords internal
 ltx2_video_transformer_block <- torch::nn_module(
   "LTX2VideoTransformerBlock",
-  initialize = function(dim, num_attention_heads, attention_head_dim, cross_attention_dim,
-                        audio_dim, audio_num_attention_heads, audio_attention_head_dim,
-                        audio_cross_attention_dim, qk_norm = "rms_norm_across_heads",
-                        activation_fn = "gelu-approximate", attention_bias = TRUE,
-                        attention_out_bias = TRUE, eps = 1e-6, elementwise_affine = FALSE,
-                        rope_type = "interleaved") {
+  initialize = function(
+    dim,
+    num_attention_heads,
+    attention_head_dim,
+    cross_attention_dim,
+    audio_dim,
+    audio_num_attention_heads,
+    audio_attention_head_dim,
+    audio_cross_attention_dim,
+    qk_norm = "rms_norm_across_heads",
+    activation_fn = "gelu-approximate",
+    attention_bias = TRUE,
+    attention_out_bias = TRUE,
+    eps = 1e-6,
+    elementwise_affine = FALSE,
+    rope_type = "interleaved"
+  ) {
 
     # 1. Video Self-Attention
     self$norm1 <- rms_norm(dim, eps = eps, elementwise_affine = elementwise_affine)
@@ -535,14 +635,26 @@ ltx2_video_transformer_block <- torch::nn_module(
     self$video_a2v_cross_attn_scale_shift_table <- torch::nn_parameter(torch::torch_randn(5L, dim))
     self$audio_a2v_cross_attn_scale_shift_table <- torch::nn_parameter(torch::torch_randn(5L, audio_dim))
   },
-  forward = function(hidden_states, audio_hidden_states, encoder_hidden_states,
-                     audio_encoder_hidden_states, temb, temb_audio,
-                     temb_ca_scale_shift, temb_ca_audio_scale_shift,
-                     temb_ca_gate, temb_ca_audio_gate,
-                     video_rotary_emb = NULL, audio_rotary_emb = NULL,
-                     ca_video_rotary_emb = NULL, ca_audio_rotary_emb = NULL,
-                     encoder_attention_mask = NULL, audio_encoder_attention_mask = NULL,
-                     a2v_cross_attention_mask = NULL, v2a_cross_attention_mask = NULL) {
+  forward = function(
+    hidden_states,
+    audio_hidden_states,
+    encoder_hidden_states,
+    audio_encoder_hidden_states,
+    temb,
+    temb_audio,
+    temb_ca_scale_shift,
+    temb_ca_audio_scale_shift,
+    temb_ca_gate,
+    temb_ca_audio_gate,
+    video_rotary_emb = NULL,
+    audio_rotary_emb = NULL,
+    ca_video_rotary_emb = NULL,
+    ca_audio_rotary_emb = NULL,
+    encoder_attention_mask = NULL,
+    audio_encoder_attention_mask = NULL,
+    a2v_cross_attention_mask = NULL,
+    v2a_cross_attention_mask = NULL
+  ) {
 
     batch_size <- hidden_states$shape[1]
 
@@ -551,15 +663,15 @@ ltx2_video_transformer_block <- torch::nn_module(
 
     # Ada values for video
     num_ada_params <- self$scale_shift_table$shape[1]
-    ada_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb$device, dtype = temb$dtype) +
-      temb$reshape(c(batch_size, temb$shape[2], num_ada_params, -1L))
+    ada_values <- self$scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(device = temb$device, dtype = temb$dtype) +
+    temb$reshape(c(batch_size, temb$shape[2], num_ada_params, - 1L))
 
-    shift_msa <- ada_values[, , 1, ]
-    scale_msa <- ada_values[, , 2, ]
-    gate_msa <- ada_values[, , 3, ]
-    shift_mlp <- ada_values[, , 4, ]
-    scale_mlp <- ada_values[, , 5, ]
-    gate_mlp <- ada_values[, , 6, ]
+    shift_msa <- ada_values[,, 1,]
+    scale_msa <- ada_values[,, 2,]
+    gate_msa <- ada_values[,, 3,]
+    shift_mlp <- ada_values[,, 4,]
+    scale_mlp <- ada_values[,, 5,]
+    gate_mlp <- ada_values[,, 6,]
 
     norm_hidden_states <- norm_hidden_states * scale_msa$add(1) + shift_msa
 
@@ -574,15 +686,15 @@ ltx2_video_transformer_block <- torch::nn_module(
     norm_audio_hidden_states <- self$audio_norm1(audio_hidden_states)
 
     num_audio_ada_params <- self$audio_scale_shift_table$shape[1]
-    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb_audio$device, dtype = temb_audio$dtype) +
-      temb_audio$reshape(c(batch_size, temb_audio$shape[2], num_audio_ada_params, -1L))
+    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(device = temb_audio$device, dtype = temb_audio$dtype) +
+    temb_audio$reshape(c(batch_size, temb_audio$shape[2], num_audio_ada_params, - 1L))
 
-    audio_shift_msa <- audio_ada_values[, , 1, ]
-    audio_scale_msa <- audio_ada_values[, , 2, ]
-    audio_gate_msa <- audio_ada_values[, , 3, ]
-    audio_shift_mlp <- audio_ada_values[, , 4, ]
-    audio_scale_mlp <- audio_ada_values[, , 5, ]
-    audio_gate_mlp <- audio_ada_values[, , 6, ]
+    audio_shift_msa <- audio_ada_values[,, 1,]
+    audio_scale_msa <- audio_ada_values[,, 2,]
+    audio_gate_msa <- audio_ada_values[,, 3,]
+    audio_shift_mlp <- audio_ada_values[,, 4,]
+    audio_scale_mlp <- audio_ada_values[,, 5,]
+    audio_gate_mlp <- audio_ada_values[,, 6,]
 
     norm_audio_hidden_states <- norm_audio_hidden_states * audio_scale_msa$add(1) + audio_shift_msa
 
@@ -617,34 +729,34 @@ ltx2_video_transformer_block <- torch::nn_module(
     norm_audio_hidden_states <- self$video_to_audio_norm(audio_hidden_states)
 
     # Video cross-attention modulation
-    video_per_layer_ca_scale_shift <- self$video_a2v_cross_attn_scale_shift_table[1:4, ]
-    video_per_layer_ca_gate <- self$video_a2v_cross_attn_scale_shift_table[5:5, ]
+    video_per_layer_ca_scale_shift <- self$video_a2v_cross_attn_scale_shift_table[1:4,]
+    video_per_layer_ca_gate <- self$video_a2v_cross_attn_scale_shift_table[5:5,]
 
-    video_ca_scale_shift_table <- video_per_layer_ca_scale_shift$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_scale_shift$dtype) +
-      temb_ca_scale_shift$reshape(c(batch_size, temb_ca_scale_shift$shape[2], 4L, -1L))
-    video_ca_gate <- video_per_layer_ca_gate$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_gate$dtype) +
-      temb_ca_gate$reshape(c(batch_size, temb_ca_gate$shape[2], 1L, -1L))
+    video_ca_scale_shift_table <- video_per_layer_ca_scale_shift$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_scale_shift$dtype) +
+    temb_ca_scale_shift$reshape(c(batch_size, temb_ca_scale_shift$shape[2], 4L, - 1L))
+    video_ca_gate <- video_per_layer_ca_gate$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_gate$dtype) +
+    temb_ca_gate$reshape(c(batch_size, temb_ca_gate$shape[2], 1L, - 1L))
 
-    video_a2v_ca_scale <- video_ca_scale_shift_table[, , 1, ]
-    video_a2v_ca_shift <- video_ca_scale_shift_table[, , 2, ]
-    video_v2a_ca_scale <- video_ca_scale_shift_table[, , 3, ]
-    video_v2a_ca_shift <- video_ca_scale_shift_table[, , 4, ]
-    a2v_gate <- video_ca_gate[, , 1, ]
+    video_a2v_ca_scale <- video_ca_scale_shift_table[,, 1,]
+    video_a2v_ca_shift <- video_ca_scale_shift_table[,, 2,]
+    video_v2a_ca_scale <- video_ca_scale_shift_table[,, 3,]
+    video_v2a_ca_shift <- video_ca_scale_shift_table[,, 4,]
+    a2v_gate <- video_ca_gate[,, 1,]
 
     # Audio cross-attention modulation
-    audio_per_layer_ca_scale_shift <- self$audio_a2v_cross_attn_scale_shift_table[1:4, ]
-    audio_per_layer_ca_gate <- self$audio_a2v_cross_attn_scale_shift_table[5:5, ]
+    audio_per_layer_ca_scale_shift <- self$audio_a2v_cross_attn_scale_shift_table[1:4,]
+    audio_per_layer_ca_gate <- self$audio_a2v_cross_attn_scale_shift_table[5:5,]
 
-    audio_ca_scale_shift_table <- audio_per_layer_ca_scale_shift$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_audio_scale_shift$dtype) +
-      temb_ca_audio_scale_shift$reshape(c(batch_size, temb_ca_audio_scale_shift$shape[2], 4L, -1L))
-    audio_ca_gate <- audio_per_layer_ca_gate$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_audio_gate$dtype) +
-      temb_ca_audio_gate$reshape(c(batch_size, temb_ca_audio_gate$shape[2], 1L, -1L))
+    audio_ca_scale_shift_table <- audio_per_layer_ca_scale_shift$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_audio_scale_shift$dtype) +
+    temb_ca_audio_scale_shift$reshape(c(batch_size, temb_ca_audio_scale_shift$shape[2], 4L, - 1L))
+    audio_ca_gate <- audio_per_layer_ca_gate$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_audio_gate$dtype) +
+    temb_ca_audio_gate$reshape(c(batch_size, temb_ca_audio_gate$shape[2], 1L, - 1L))
 
-    audio_a2v_ca_scale <- audio_ca_scale_shift_table[, , 1, ]
-    audio_a2v_ca_shift <- audio_ca_scale_shift_table[, , 2, ]
-    audio_v2a_ca_scale <- audio_ca_scale_shift_table[, , 3, ]
-    audio_v2a_ca_shift <- audio_ca_scale_shift_table[, , 4, ]
-    v2a_gate <- audio_ca_gate[, , 1, ]
+    audio_a2v_ca_scale <- audio_ca_scale_shift_table[,, 1,]
+    audio_a2v_ca_shift <- audio_ca_scale_shift_table[,, 2,]
+    audio_v2a_ca_scale <- audio_ca_scale_shift_table[,, 3,]
+    audio_v2a_ca_shift <- audio_ca_scale_shift_table[,, 4,]
+    v2a_gate <- audio_ca_gate[,, 1,]
 
     # Audio-to-Video Cross Attention
     mod_norm_hidden_states <- norm_hidden_states * video_a2v_ca_scale$add(1) + video_a2v_ca_shift
@@ -684,3 +796,4 @@ ltx2_video_transformer_block <- torch::nn_module(
     list(hidden_states, audio_hidden_states)
   }
 )
+

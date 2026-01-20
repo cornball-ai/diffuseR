@@ -24,21 +24,7 @@ ltx2_video_transformer_3d_model(
   audio_patch_size_t,
   audio_num_attention_heads,
   audio_attention_head_dim,
-  audio_cross_attention_dim,
-  audio_scale_factor,
-  audio_pos_embed_max_pos,
-  audio_sampling_rate,
-  audio_hop_length,
-  num_layers,
-  activation_fn,
-  qk_norm,
-  norm_elementwise_affine,
-  norm_eps,
-  caption_channels,
-  attention_bias,
-  attention_out_bias,
-  rope_theta,
-  rope_double_precision
+  audio_cross_attention_dim
 )
 }
 \arguments{

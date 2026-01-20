@@ -21,7 +21,7 @@ the original signal remains at each timestep of the diffusion process.}
 The noise is added according to the standard diffusion forward process formula:
 noised_latents = sqrt(alpha_cumprod) * original_latents + sqrt(1-alpha_cumprod) * noise
 
-Where alpha_cumprod is the cumulative product of (1-beta) values up to the 
+Where alpha_cumprod is the cumulative product of (1-beta) values up to the
 specified timestep, with beta being the noise schedule.
 }
 \value{

@@ -56,16 +56,16 @@
 #' }
 #' @export
 flowmatch_scheduler_create <- function(
-    num_train_timesteps = 1000L,
-    shift = 1.0,
-    use_dynamic_shifting = FALSE,
-    base_shift = 0.5,
-    max_shift = 1.15,
-    base_seq_len = 256L,
-    max_seq_len = 4096L,
-    invert_sigmas = FALSE,
-    shift_terminal = NULL,
-    time_shift_type = c("exponential", "linear")
+  num_train_timesteps = 1000L,
+  shift = 1.0,
+  use_dynamic_shifting = FALSE,
+  base_shift = 0.5,
+  max_shift = 1.15,
+  base_seq_len = 256L,
+  max_seq_len = 4096L,
+  invert_sigmas = FALSE,
+  shift_terminal = NULL,
+  time_shift_type = c("exponential", "linear")
 ) {
   time_shift_type <- match.arg(time_shift_type)
 
@@ -118,11 +118,11 @@ flowmatch_scheduler_create <- function(
 #' @return Numeric. The computed shift value (mu).
 #' @export
 flowmatch_calculate_shift <- function(
-    seq_len,
-    base_seq_len = 256L,
-    max_seq_len = 4096L,
-    base_shift = 0.5,
-    max_shift = 1.15
+  seq_len,
+  base_seq_len = 256L,
+  max_seq_len = 4096L,
+  base_shift = 0.5,
+  max_shift = 1.15
 ) {
   m <- (max_shift - base_shift) / (max_seq_len - base_seq_len)
   b <- base_shift - m * base_seq_len
@@ -146,12 +146,12 @@ flowmatch_calculate_shift <- function(
 #' @return Updated scheduler with configured timesteps and sigmas.
 #' @export
 flowmatch_set_timesteps <- function(
-    schedule,
-    num_inference_steps = 50L,
-    device = "cpu",
-    mu = NULL,
-    sigmas = NULL,
-    timesteps = NULL
+  schedule,
+  num_inference_steps = 50L,
+  device = "cpu",
+  mu = NULL,
+  sigmas = NULL,
+  timesteps = NULL
 ) {
   config <- schedule$config
 
@@ -248,11 +248,11 @@ flowmatch_set_timesteps <- function(
 #'
 #' @export
 flowmatch_scheduler_step <- function(
-    model_output,
-    timestep,
-    sample,
-    schedule,
-    generator = NULL
+  model_output,
+  timestep,
+  sample,
+  schedule,
+  generator = NULL
 ) {
   # Initialize step index if needed
   if (is.null(schedule$step_index)) {
@@ -297,7 +297,12 @@ flowmatch_scheduler_step <- function(
 #'
 #' @return torch tensor. The noisy sample at timestep t.
 #' @export
-flowmatch_scale_noise <- function(sample, timestep, noise, schedule) {
+flowmatch_scale_noise <- function(
+  sample,
+  timestep,
+  noise,
+  schedule
+) {
   # Get sigma for this timestep
   sigmas <- schedule$sigmas$to(device = sample$device, dtype = sample$dtype)
 
@@ -306,7 +311,7 @@ flowmatch_scale_noise <- function(sample, timestep, noise, schedule) {
 
   # Expand sigma dimensions to match sample
   while (length(sigma$shape) < length(sample$shape)) {
-    sigma <- sigma$unsqueeze(-1)
+    sigma <- sigma$unsqueeze(- 1)
   }
 
   # Flow matching interpolation: x_t = (1 - sigma) * x_0 + sigma * noise
@@ -317,29 +322,43 @@ flowmatch_scale_noise <- function(sample, timestep, noise, schedule) {
 
 # Internal helper functions
 
-.flowmatch_time_shift <- function(mu, sigma, t, shift_type) {
+.flowmatch_time_shift <- function(
+  mu,
+  sigma,
+  t,
+  shift_type
+) {
   if (shift_type == "exponential") {
-    exp(mu) / (exp(mu) + (1 / t - 1)^sigma)
+    exp(mu) / (exp(mu) + (1 / t - 1) ^ sigma)
   } else {
     # linear
-    mu / (mu + (1 / t - 1)^sigma)
+    mu / (mu + (1 / t - 1) ^ sigma)
   }
 }
 
-.flowmatch_stretch_shift_to_terminal <- function(t, shift_terminal) {
+.flowmatch_stretch_shift_to_terminal <- function(
+  t,
+  shift_terminal
+) {
   one_minus_z <- 1 - t
   scale_factor <- one_minus_z[length(one_minus_z)] / (1 - shift_terminal)
   stretched_t <- 1 - (one_minus_z / scale_factor)
   stretched_t
 }
 
-.flowmatch_init_step_index <- function(timestep, schedule) {
+.flowmatch_init_step_index <- function(
+  timestep,
+  schedule
+) {
   # Find index for this timestep
   idx <- .flowmatch_index_for_timestep(timestep, schedule)
   idx
 }
 
-.flowmatch_index_for_timestep <- function(timestep, schedule) {
+.flowmatch_index_for_timestep <- function(
+  timestep,
+  schedule
+) {
   timesteps <- schedule$timesteps
 
   if (inherits(timestep, "torch_tensor")) {
@@ -361,3 +380,4 @@ flowmatch_scale_noise <- function(sample, timestep, noise, schedule) {
     indices[1]
   }
 }
+

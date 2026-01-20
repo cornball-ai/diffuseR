@@ -21,21 +21,25 @@ group_norm_32 <- function(channels) {
 #'   SD21 uses 1. With 0: exponent = log(10000) / half_dim. With 1: exponent = log(10000) / (half_dim - 1).
 #' @return Tensor (batch_size, dim)
 #' @keywords internal
-timestep_embedding <- function(timesteps, dim, flip_sin_to_cos = TRUE,
-                                downscale_freq_shift = 0L) {
+timestep_embedding <- function(
+  timesteps,
+  dim,
+  flip_sin_to_cos = TRUE,
+  downscale_freq_shift = 0L
+) {
   half_dim <- dim %/% 2L
 
   # SDXL uses downscale_freq_shift=0, SD21 uses downscale_freq_shift=1
   emb_scale <- log(10000) / (half_dim - downscale_freq_shift)
 
   # Create frequency bands: [0, 1, ..., half_dim-1]
-  freqs <- torch::torch_exp(torch::torch_arange(0, half_dim - 1L) * -emb_scale)
+  freqs <- torch::torch_exp(torch::torch_arange(0, half_dim - 1L) * - emb_scale)
   freqs <- freqs$to(device = timesteps$device, dtype = torch::torch_float32())
 
   # Expand and compute embeddings
   # timesteps: [batch] -> [batch, 1]
   # freqs: [half_dim] -> [1, half_dim]
-  timesteps_float <- timesteps$to(dtype = torch::torch_float32())$unsqueeze(2L)
+  timesteps_float <- timesteps$to(dtype = torch::torch_float32()) $unsqueeze(2L)
   args <- timesteps_float * freqs$unsqueeze(1L)
 
   # SDXL uses flip_sin_to_cos=True -> [cos, sin]
@@ -60,7 +64,11 @@ timestep_embedding <- function(timesteps, dim, flip_sin_to_cos = TRUE,
 UNetResBlock <- torch::nn_module(
   "UNetResBlock",
 
-  initialize = function(in_channels, out_channels, time_embed_dim) {
+  initialize = function(
+    in_channels,
+    out_channels,
+    time_embed_dim
+  ) {
     self$in_channels <- in_channels
     self$out_channels <- out_channels
 
@@ -83,7 +91,10 @@ UNetResBlock <- torch::nn_module(
     }
   },
 
-  forward = function(x, temb) {
+  forward = function(
+    x,
+    temb
+  ) {
     h <- x
 
     # First block
@@ -95,7 +106,7 @@ UNetResBlock <- torch::nn_module(
     temb_out <- torch::nnf_silu(temb)
     temb_out <- self$time_emb_proj(temb_out)
     # Expand to spatial dimensions: (B, C) -> (B, C, 1, 1)
-    temb_out <- temb_out$unsqueeze(-1L)$unsqueeze(-1L)
+    temb_out <- temb_out$unsqueeze(- 1L) $unsqueeze(- 1L)
     h <- h + temb_out
 
     # Second block
@@ -147,13 +158,18 @@ Upsample2D <- torch::nn_module(
 UNetCrossAttention <- torch::nn_module(
   "UNetCrossAttention",
 
-  initialize = function(query_dim, context_dim = NULL, heads = 8L, dim_head = 64L) {
+  initialize = function(
+    query_dim,
+    context_dim = NULL,
+    heads = 8L,
+    dim_head = 64L
+  ) {
     self$heads <- heads
     self$dim_head <- dim_head
     inner_dim <- heads * dim_head
     context_dim <- context_dim %||% query_dim
 
-    self$scale <- dim_head^(-0.5)
+    self$scale <- dim_head ^ (- 0.5)
 
     # Query, Key, Value projections
     self$to_q <- torch::nn_linear(query_dim, inner_dim, bias = FALSE)
@@ -167,7 +183,10 @@ UNetCrossAttention <- torch::nn_module(
     )
   },
 
-  forward = function(x, context = NULL) {
+  forward = function(
+    x,
+    context = NULL
+  ) {
     if (is.null(context)) context <- x
 
     b <- x$shape[1]
@@ -181,19 +200,19 @@ UNetCrossAttention <- torch::nn_module(
     v <- self$to_v(context)
 
     # Reshape for multi-head attention: (B, S, H*D) -> (B, H, S, D)
-    q <- q$view(c(b, seq_len, h, self$dim_head))$transpose(2L, 3L)
-    k <- k$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
-    v <- v$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
+    q <- q$view(c(b, seq_len, h, self$dim_head)) $transpose(2L, 3L)
+    k <- k$view(c(b, context_len, h, self$dim_head)) $transpose(2L, 3L)
+    v <- v$view(c(b, context_len, h, self$dim_head)) $transpose(2L, 3L)
 
     # Scaled dot-product attention
     attn <- torch::torch_matmul(q, k$transpose(3L, 4L)) * self$scale
-    attn <- torch::nnf_softmax(attn, dim = -1L)
+    attn <- torch::nnf_softmax(attn, dim = - 1L)
 
     # Apply attention to values
     out <- torch::torch_matmul(attn, v)
 
     # Reshape back: (B, H, S, D) -> (B, S, H*D)
-    out <- out$transpose(2L, 3L)$contiguous()$view(c(b, seq_len, -1L))
+    out <- out$transpose(2L, 3L) $contiguous() $view(c(b, seq_len, - 1L))
 
     self$to_out(out)
   }
@@ -204,13 +223,16 @@ UNetCrossAttention <- torch::nn_module(
 GEGLU <- torch::nn_module(
   "GEGLU",
 
-  initialize = function(dim_in, dim_out) {
+  initialize = function(
+    dim_in,
+    dim_out
+  ) {
     self$proj <- torch::nn_linear(dim_in, dim_out * 2L)
   },
 
   forward = function(x) {
     x_proj <- self$proj(x)
-    chunks <- torch::torch_chunk(x_proj, 2L, dim = -1L)
+    chunks <- torch::torch_chunk(x_proj, 2L, dim = - 1L)
     chunks[[1]] * torch::nnf_gelu(chunks[[2]])
   }
 )
@@ -220,7 +242,10 @@ GEGLU <- torch::nn_module(
 FeedForward <- torch::nn_module(
   "FeedForward",
 
-  initialize = function(dim, mult = 4L) {
+  initialize = function(
+    dim,
+    mult = 4L
+  ) {
     inner_dim <- dim * mult
     self$net <- torch::nn_sequential(
       GEGLU(dim, inner_dim),
@@ -239,13 +264,18 @@ FeedForward <- torch::nn_module(
 BasicTransformerBlock <- torch::nn_module(
   "BasicTransformerBlock",
 
-  initialize = function(dim, n_heads, d_head, context_dim = NULL) {
+  initialize = function(
+    dim,
+    n_heads,
+    d_head,
+    context_dim = NULL
+  ) {
     # Self-attention
     self$attn1 <- UNetCrossAttention(dim, heads = n_heads, dim_head = d_head)
 
     # Cross-attention
     self$attn2 <- UNetCrossAttention(dim, context_dim = context_dim,
-                                      heads = n_heads, dim_head = d_head)
+      heads = n_heads, dim_head = d_head)
 
     # Feedforward
     self$ff <- FeedForward(dim)
@@ -256,7 +286,10 @@ BasicTransformerBlock <- torch::nn_module(
     self$norm3 <- torch::nn_layer_norm(dim)
   },
 
-  forward = function(x, context = NULL) {
+  forward = function(
+    x,
+    context = NULL
+  ) {
     # Self-attention
     x <- x + self$attn1(self$norm1(x))
 
@@ -275,7 +308,13 @@ BasicTransformerBlock <- torch::nn_module(
 SpatialTransformer <- torch::nn_module(
   "SpatialTransformer",
 
-  initialize = function(in_channels, n_heads, d_head, depth = 1L, context_dim = NULL) {
+  initialize = function(
+    in_channels,
+    n_heads,
+    d_head,
+    depth = 1L,
+    context_dim = NULL
+  ) {
     inner_dim <- n_heads * d_head
     self$in_channels <- in_channels
 
@@ -295,7 +334,10 @@ SpatialTransformer <- torch::nn_module(
     }
   },
 
-  forward = function(x, context = NULL) {
+  forward = function(
+    x,
+    context = NULL
+  ) {
     b <- x$shape[1]
     c <- x$shape[2]
     h <- x$shape[3]
@@ -307,7 +349,7 @@ SpatialTransformer <- torch::nn_module(
     x <- self$norm(x)
 
     # Reshape to sequence: (B, C, H, W) -> (B, H*W, C)
-    x <- x$permute(c(1L, 3L, 4L, 2L))$reshape(c(b, h * w, c))
+    x <- x$permute(c(1L, 3L, 4L, 2L)) $reshape(c(b, h * w, c))
 
     # Project in
     x <- self$proj_in(x)
@@ -321,9 +363,10 @@ SpatialTransformer <- torch::nn_module(
     x <- self$proj_out(x)
 
     # Reshape back: (B, H*W, C) -> (B, C, H, W)
-    x <- x$reshape(c(b, h, w, c))$permute(c(1L, 4L, 2L, 3L))
+    x <- x$reshape(c(b, h, w, c)) $permute(c(1L, 4L, 2L, 3L))
 
     # Residual
     x + x_in
   }
 )
+

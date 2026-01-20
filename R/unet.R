@@ -15,12 +15,14 @@
 unet_native <- torch::nn_module(
   "UNetNative",
 
-  initialize = function(in_channels = 4L,
-                        out_channels = 4L,
-                        block_out_channels = c(320L, 640L, 1280L, 1280L),
-                        layers_per_block = 2L,
-                        cross_attention_dim = 1024L,
-                        attention_head_dim = 64L) {
+  initialize = function(
+    in_channels = 4L,
+    out_channels = 4L,
+    block_out_channels = c(320L, 640L, 1280L, 1280L),
+    layers_per_block = 2L,
+    cross_attention_dim = 1024L,
+    attention_head_dim = 64L
+  ) {
 
     self$in_channels <- in_channels
     self$out_channels <- out_channels
@@ -28,7 +30,7 @@ unet_native <- torch::nn_module(
     self$layers_per_block <- layers_per_block
 
     # Time embedding dimension
-    time_embed_dim <- block_out_channels[1] * 4L  # 320 * 4 = 1280
+    time_embed_dim <- block_out_channels[1] * 4L# 320 * 4 = 1280
 
     # Input convolution
     self$conv_in <- torch::nn_conv2d(in_channels, block_out_channels[1], 3L, padding = 1L)
@@ -76,16 +78,16 @@ unet_native <- torch::nn_module(
     # down0: [in, r0, r1, ds], down1: [r0, r1, ds], down2: [r0, r1, ds], down3: [r0, r1]
     # This gives us: [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280]
     skip_channels <- c(
-      block_out_channels[1],  # conv_in
-      rep(block_out_channels[1], layers_per_block),  # down0 resnets
-      block_out_channels[1],  # down0 downsample
-      rep(block_out_channels[2], layers_per_block),  # down1 resnets
-      block_out_channels[2],  # down1 downsample
-      rep(block_out_channels[3], layers_per_block),  # down2 resnets
-      block_out_channels[3],  # down2 downsample
-      rep(block_out_channels[4], layers_per_block)   # down3 resnets (no downsample)
+      block_out_channels[1], # conv_in
+      rep(block_out_channels[1], layers_per_block), # down0 resnets
+      block_out_channels[1], # down0 downsample
+      rep(block_out_channels[2], layers_per_block), # down1 resnets
+      block_out_channels[2], # down1 downsample
+      rep(block_out_channels[3], layers_per_block), # down2 resnets
+      block_out_channels[3], # down2 downsample
+      rep(block_out_channels[4], layers_per_block) # down3 resnets (no downsample)
     )
-    self$skip_channels <- rev(skip_channels)  # Reverse for popping order
+    self$skip_channels <- rev(skip_channels) # Reverse for popping order
 
     for (i in seq_along(reversed_channels)) {
       output_channel <- reversed_channels[i]
@@ -121,10 +123,16 @@ unet_native <- torch::nn_module(
     self$conv_out <- torch::nn_conv2d(block_out_channels[1], out_channels, 3L, padding = 1L)
   },
 
-  create_down_block = function(in_channels, out_channels, time_embed_dim,
-                                cross_attention_dim, attention_head_dim,
-                                num_layers, add_downsample = TRUE,
-                                add_attention = TRUE) {
+  create_down_block = function(
+    in_channels,
+    out_channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim,
+    num_layers,
+    add_downsample = TRUE,
+    add_attention = TRUE
+  ) {
     # Create block as a simple nn_module
     DownBlock <- torch::nn_module(
       "DownBlock",
@@ -132,7 +140,11 @@ unet_native <- torch::nn_module(
         # ResNets
         self$resnets <- torch::nn_module_list()
         for (i in seq_len(num_layers)) {
-          in_ch <- if (i == 1) in_channels else out_channels
+          if (i == 1) {
+            in_ch <- in_channels
+          } else {
+            in_ch <- out_channels
+          }
           self$resnets$append(UNetResBlock(in_ch, out_channels, time_embed_dim))
         }
 
@@ -144,7 +156,7 @@ unet_native <- torch::nn_module(
           for (i in seq_len(num_layers)) {
             self$attentions$append(
               SpatialTransformer(out_channels, n_heads, attention_head_dim,
-                                 depth = 1L, context_dim = cross_attention_dim)
+                depth = 1L, context_dim = cross_attention_dim)
             )
           }
         }
@@ -160,7 +172,12 @@ unet_native <- torch::nn_module(
     DownBlock()
   },
 
-  create_mid_block = function(channels, time_embed_dim, cross_attention_dim, attention_head_dim) {
+  create_mid_block = function(
+    channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim
+  ) {
     MidBlock <- torch::nn_module(
       "MidBlock",
       initialize = function() {
@@ -174,16 +191,23 @@ unet_native <- torch::nn_module(
         self$attentions <- torch::nn_module_list()
         self$attentions$append(
           SpatialTransformer(channels, n_heads, attention_head_dim,
-                             depth = 1L, context_dim = cross_attention_dim)
+            depth = 1L, context_dim = cross_attention_dim)
         )
       }
     )
     MidBlock()
   },
 
-  create_up_block_v2 = function(in_channels, out_channels, resnet_skip_channels, time_embed_dim,
-                                 cross_attention_dim, attention_head_dim,
-                                 add_upsample = TRUE, add_attention = TRUE) {
+  create_up_block_v2 = function(
+    in_channels,
+    out_channels,
+    resnet_skip_channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim,
+    add_upsample = TRUE,
+    add_attention = TRUE
+  ) {
     # resnet_skip_channels is a vector with one entry per resnet
     num_resnets <- length(resnet_skip_channels)
 
@@ -210,7 +234,7 @@ unet_native <- torch::nn_module(
           for (i in seq_len(num_resnets)) {
             self$attentions$append(
               SpatialTransformer(out_channels, n_heads, attention_head_dim,
-                                 depth = 1L, context_dim = cross_attention_dim)
+                depth = 1L, context_dim = cross_attention_dim)
             )
           }
         }
@@ -226,14 +250,18 @@ unet_native <- torch::nn_module(
     UpBlock()
   },
 
-  forward = function(sample, timestep, encoder_hidden_states) {
+  forward = function(
+    sample,
+    timestep,
+    encoder_hidden_states
+  ) {
     # Get model dtype from weights
     model_dtype <- self$time_embedding_linear_1$weight$dtype
 
     # Time embedding (computed in float32, then cast to model dtype)
     # SD21 uses flip_sin_to_cos=FALSE, downscale_freq_shift=1
     t_emb <- timestep_embedding(timestep, self$block_out_channels[1],
-                                 flip_sin_to_cos = FALSE, downscale_freq_shift = 1L)
+      flip_sin_to_cos = FALSE, downscale_freq_shift = 1L)
     t_emb <- t_emb$to(dtype = model_dtype)
     t_emb <- self$time_embedding_linear_1(t_emb)
     t_emb <- torch::nnf_silu(t_emb)
@@ -275,7 +303,7 @@ unet_native <- torch::nn_module(
       for (j in seq_along(block$resnets)) {
         # Pop skip connection
         res_sample <- down_block_res_samples[[length(down_block_res_samples)]]
-        down_block_res_samples <- down_block_res_samples[-length(down_block_res_samples)]
+        down_block_res_samples <- down_block_res_samples[- length(down_block_res_samples)]
 
         # Concatenate
         sample <- torch::torch_cat(list(sample, res_sample), dim = 2L)
@@ -347,7 +375,10 @@ detect_unet_architecture <- function(torchscript_path) {
 #'
 #' @return A native UNet module with loaded weights
 #' @export
-unet_native_from_torchscript <- function(torchscript_path, verbose = TRUE) {
+unet_native_from_torchscript <- function(
+  torchscript_path,
+  verbose = TRUE
+) {
   # Detect architecture
   arch <- detect_unet_architecture(torchscript_path)
 
@@ -382,7 +413,11 @@ unet_native_from_torchscript <- function(torchscript_path, verbose = TRUE) {
 #'
 #' @return The native UNet with loaded weights (invisibly)
 #' @export
-load_unet_weights <- function(native_unet, torchscript_path, verbose = TRUE) {
+load_unet_weights <- function(
+  native_unet,
+  torchscript_path,
+  verbose = TRUE
+) {
   ts_unet <- torch::jit_load(torchscript_path)
   ts_params <- ts_unet$parameters
 
@@ -406,28 +441,28 @@ load_unet_weights <- function(native_unet, torchscript_path, verbose = TRUE) {
   unmapped <- character(0)
 
   torch::with_no_grad({
-    for (ts_name in names(ts_params)) {
-      native_name <- remap_key(ts_name)
+      for (ts_name in names(ts_params)) {
+        native_name <- remap_key(ts_name)
 
-      if (native_name %in% names(native_unet$parameters)) {
-        ts_tensor <- ts_params[[ts_name]]
-        native_tensor <- native_unet$parameters[[native_name]]
+        if (native_name %in% names(native_unet$parameters)) {
+          ts_tensor <- ts_params[[ts_name]]
+          native_tensor <- native_unet$parameters[[native_name]]
 
-        if (all(ts_tensor$shape == native_tensor$shape)) {
-          native_tensor$copy_(ts_tensor)
-          loaded <- loaded + 1
-        } else if (verbose) {
-          message("Shape mismatch: ", native_name,
-                  " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
-                  paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          if (all(ts_tensor$shape == native_tensor$shape)) {
+            native_tensor$copy_(ts_tensor)
+            loaded <- loaded + 1
+          } else if (verbose) {
+            message("Shape mismatch: ", native_name,
+              " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
+              paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+            skipped <- skipped + 1
+          }
+        } else {
           skipped <- skipped + 1
+          unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
         }
-      } else {
-        skipped <- skipped + 1
-        unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
       }
-    }
-  })
+    })
 
   if (verbose) {
     if (length(unmapped) > 0 && length(unmapped) <= 10) {
@@ -466,15 +501,17 @@ load_unet_weights <- function(native_unet, torchscript_path, verbose = TRUE) {
 unet_sdxl_native <- torch::nn_module(
   "UNetSDXLNative",
 
-  initialize = function(in_channels = 4L,
-                        out_channels = 4L,
-                        block_out_channels = c(320L, 640L, 1280L),
-                        layers_per_block = 2L,
-                        transformer_layers_per_block = c(0L, 2L, 10L),
-                        cross_attention_dim = 2048L,
-                        attention_head_dim = 64L,
-                        addition_embed_dim = 1280L,
-                        addition_time_embed_dim = 256L) {
+  initialize = function(
+    in_channels = 4L,
+    out_channels = 4L,
+    block_out_channels = c(320L, 640L, 1280L),
+    layers_per_block = 2L,
+    transformer_layers_per_block = c(0L, 2L, 10L),
+    cross_attention_dim = 2048L,
+    attention_head_dim = 64L,
+    addition_embed_dim = 1280L,
+    addition_time_embed_dim = 256L
+  ) {
 
     self$in_channels <- in_channels
     self$out_channels <- out_channels
@@ -483,7 +520,7 @@ unet_sdxl_native <- torch::nn_module(
     self$transformer_layers_per_block <- transformer_layers_per_block
 
     # Time embedding dimension (same as SD21)
-    time_embed_dim <- block_out_channels[1] * 4L  # 320 * 4 = 1280
+    time_embed_dim <- block_out_channels[1] * 4L# 320 * 4 = 1280
 
     # Input convolution
     self$conv_in <- torch::nn_conv2d(in_channels, block_out_channels[1], 3L, padding = 1L)
@@ -537,12 +574,12 @@ unet_sdxl_native <- torch::nn_module(
     # Calculate skip channels for SDXL (3 blocks)
     # down0: [in, r0, r1, ds], down1: [r0, r1, ds], down2: [r0, r1]
     skip_channels <- c(
-      block_out_channels[1],  # conv_in
-      rep(block_out_channels[1], layers_per_block),  # down0 resnets
-      block_out_channels[1],  # down0 downsample
-      rep(block_out_channels[2], layers_per_block),  # down1 resnets
-      block_out_channels[2],  # down1 downsample
-      rep(block_out_channels[3], layers_per_block)   # down2 resnets (no downsample)
+      block_out_channels[1], # conv_in
+      rep(block_out_channels[1], layers_per_block), # down0 resnets
+      block_out_channels[1], # down0 downsample
+      rep(block_out_channels[2], layers_per_block), # down1 resnets
+      block_out_channels[2], # down1 downsample
+      rep(block_out_channels[3], layers_per_block) # down2 resnets (no downsample)
     )
     self$skip_channels <- rev(skip_channels)
 
@@ -578,17 +615,27 @@ unet_sdxl_native <- torch::nn_module(
     self$conv_out <- torch::nn_conv2d(block_out_channels[1], out_channels, 3L, padding = 1L)
   },
 
-  create_down_block_sdxl = function(in_channels, out_channels, time_embed_dim,
-                                     cross_attention_dim, attention_head_dim,
-                                     num_layers, transformer_depth,
-                                     add_downsample = TRUE) {
+  create_down_block_sdxl = function(
+    in_channels,
+    out_channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim,
+    num_layers,
+    transformer_depth,
+    add_downsample = TRUE
+  ) {
     DownBlock <- torch::nn_module(
       "DownBlockSDXL",
       initialize = function() {
         # ResNets
         self$resnets <- torch::nn_module_list()
         for (i in seq_len(num_layers)) {
-          in_ch <- if (i == 1) in_channels else out_channels
+          if (i == 1) {
+            in_ch <- in_channels
+          } else {
+            in_ch <- out_channels
+          }
           self$resnets$append(UNetResBlock(in_ch, out_channels, time_embed_dim))
         }
 
@@ -600,7 +647,7 @@ unet_sdxl_native <- torch::nn_module(
           for (i in seq_len(num_layers)) {
             self$attentions$append(
               SpatialTransformer(out_channels, n_heads, attention_head_dim,
-                                 depth = transformer_depth, context_dim = cross_attention_dim)
+                depth = transformer_depth, context_dim = cross_attention_dim)
             )
           }
         }
@@ -616,8 +663,13 @@ unet_sdxl_native <- torch::nn_module(
     DownBlock()
   },
 
-  create_mid_block_sdxl = function(channels, time_embed_dim, cross_attention_dim,
-                                    attention_head_dim, transformer_depth) {
+  create_mid_block_sdxl = function(
+    channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim,
+    transformer_depth
+  ) {
     MidBlock <- torch::nn_module(
       "MidBlockSDXL",
       initialize = function() {
@@ -629,17 +681,23 @@ unet_sdxl_native <- torch::nn_module(
         self$attentions <- torch::nn_module_list()
         self$attentions$append(
           SpatialTransformer(channels, n_heads, attention_head_dim,
-                             depth = transformer_depth, context_dim = cross_attention_dim)
+            depth = transformer_depth, context_dim = cross_attention_dim)
         )
       }
     )
     MidBlock()
   },
 
-  create_up_block_sdxl = function(in_channels, out_channels, resnet_skip_channels,
-                                   time_embed_dim, cross_attention_dim,
-                                   attention_head_dim, transformer_depth,
-                                   add_upsample = TRUE) {
+  create_up_block_sdxl = function(
+    in_channels,
+    out_channels,
+    resnet_skip_channels,
+    time_embed_dim,
+    cross_attention_dim,
+    attention_head_dim,
+    transformer_depth,
+    add_upsample = TRUE
+  ) {
     num_resnets <- length(resnet_skip_channels)
 
     UpBlock <- torch::nn_module(
@@ -663,7 +721,7 @@ unet_sdxl_native <- torch::nn_module(
           for (i in seq_len(num_resnets)) {
             self$attentions$append(
               SpatialTransformer(out_channels, n_heads, attention_head_dim,
-                                 depth = transformer_depth, context_dim = cross_attention_dim)
+                depth = transformer_depth, context_dim = cross_attention_dim)
             )
           }
         }
@@ -679,7 +737,13 @@ unet_sdxl_native <- torch::nn_module(
     UpBlock()
   },
 
-  forward = function(sample, timestep, encoder_hidden_states, text_embeds, time_ids) {
+  forward = function(
+    sample,
+    timestep,
+    encoder_hidden_states,
+    text_embeds,
+    time_ids
+  ) {
     # Accepts same signature as TorchScript:
     # unet(sample, timestep, encoder_hidden_states, text_embeds, time_ids)
 
@@ -698,7 +762,7 @@ unet_sdxl_native <- torch::nn_module(
     # Uses same defaults as main time embedding
     time_ids_emb <- timestep_embedding(time_ids$flatten(), self$add_time_proj_dim)
     time_ids_emb <- time_ids_emb$to(dtype = model_dtype)
-    time_ids_emb <- time_ids_emb$reshape(c(text_embeds$shape[1], -1L))
+    time_ids_emb <- time_ids_emb$reshape(c(text_embeds$shape[1], - 1L))
     add_embeds <- torch::torch_cat(list(text_embeds, time_ids_emb), dim = 2L)
     add_emb <- self$add_embedding_linear_1(add_embeds)
     add_emb <- torch::nnf_silu(add_emb)
@@ -743,7 +807,7 @@ unet_sdxl_native <- torch::nn_module(
       for (j in seq_along(block$resnets)) {
         # Pop skip connection
         res_sample <- down_block_res_samples[[length(down_block_res_samples)]]
-        down_block_res_samples <- down_block_res_samples[-length(down_block_res_samples)]
+        down_block_res_samples <- down_block_res_samples[- length(down_block_res_samples)]
 
         # Concatenate
         sample <- torch::torch_cat(list(sample, res_sample), dim = 2L)
@@ -780,7 +844,7 @@ detect_unet_sdxl_architecture <- function(torchscript_path) {
 
   # Get block_out_channels from down_blocks resnets
   block_channels <- integer(0)
-  for (i in 0:2) {  # SDXL has 3 blocks
+  for (i in 0:2) { # SDXL has 3 blocks
     key <- sprintf("unet.down_blocks.%d.resnets.0.norm2.weight", i)
     if (key %in% param_names) {
       block_channels <- c(block_channels, as.integer(ts_params[[key]]$shape[1]))
@@ -828,7 +892,10 @@ detect_unet_sdxl_architecture <- function(torchscript_path) {
 #'
 #' @return A native SDXL UNet module with loaded weights
 #' @export
-unet_sdxl_native_from_torchscript <- function(torchscript_path, verbose = TRUE) {
+unet_sdxl_native_from_torchscript <- function(
+  torchscript_path,
+  verbose = TRUE
+) {
   arch <- detect_unet_sdxl_architecture(torchscript_path)
 
   if (verbose) {
@@ -863,7 +930,11 @@ unet_sdxl_native_from_torchscript <- function(torchscript_path, verbose = TRUE) 
 #'
 #' @return The native UNet with loaded weights (invisibly)
 #' @export
-load_unet_sdxl_weights <- function(native_unet, torchscript_path, verbose = TRUE) {
+load_unet_sdxl_weights <- function(
+  native_unet,
+  torchscript_path,
+  verbose = TRUE
+) {
   ts_unet <- torch::jit_load(torchscript_path, device = "cpu")
   ts_params <- ts_unet$parameters
 
@@ -887,28 +958,28 @@ load_unet_sdxl_weights <- function(native_unet, torchscript_path, verbose = TRUE
   unmapped <- character(0)
 
   torch::with_no_grad({
-    for (ts_name in names(ts_params)) {
-      native_name <- remap_key(ts_name)
+      for (ts_name in names(ts_params)) {
+        native_name <- remap_key(ts_name)
 
-      if (native_name %in% names(native_unet$parameters)) {
-        ts_tensor <- ts_params[[ts_name]]
-        native_tensor <- native_unet$parameters[[native_name]]
+        if (native_name %in% names(native_unet$parameters)) {
+          ts_tensor <- ts_params[[ts_name]]
+          native_tensor <- native_unet$parameters[[native_name]]
 
-        if (all(ts_tensor$shape == native_tensor$shape)) {
-          native_tensor$copy_(ts_tensor)
-          loaded <- loaded + 1
-        } else if (verbose) {
-          message("Shape mismatch: ", native_name,
-                  " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
-                  paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+          if (all(ts_tensor$shape == native_tensor$shape)) {
+            native_tensor$copy_(ts_tensor)
+            loaded <- loaded + 1
+          } else if (verbose) {
+            message("Shape mismatch: ", native_name,
+              " (", paste(as.integer(ts_tensor$shape), collapse = "x"), " vs ",
+              paste(as.integer(native_tensor$shape), collapse = "x"), ")")
+            skipped <- skipped + 1
+          }
+        } else {
           skipped <- skipped + 1
+          unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
         }
-      } else {
-        skipped <- skipped + 1
-        unmapped <- c(unmapped, paste0(ts_name, " -> ", native_name))
       }
-    }
-  })
+    })
 
   if (verbose) {
     if (length(unmapped) > 0 && length(unmapped) <= 10) {
@@ -923,3 +994,4 @@ load_unet_sdxl_weights <- function(native_unet, torchscript_path, verbose = TRUE
 
   invisible(native_unet)
 }
+

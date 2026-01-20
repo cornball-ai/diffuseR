@@ -10,12 +10,15 @@
 #' filename_from_prompt("A beautiful sunset over the mountains")
 #' filename_from_prompt("A beautiful sunset over the mountains", datetime = FALSE)
 #' @export
-filename_from_prompt <- function(prompt, datetime = TRUE) {
+filename_from_prompt <- function(
+  prompt,
+  datetime = TRUE
+) {
   # Remove all non-alphanumeric characters from the prompt
   prompt_strs <- gsub("[^a-zA-Z0-9]", "_", prompt)
   # limit prompt length to 50 characters
   prompt_strs <- substr(prompt_strs, 1, 50)
-  if(datetime == FALSE) {
+  if (datetime == FALSE) {
     # Create a filename using the modified prompt
     file_name <- paste0("prompt_", prompt_strs, ".png")
   } else {
@@ -25,3 +28,4 @@ filename_from_prompt <- function(prompt, datetime = TRUE) {
   }
   return(file_name)
 }
+

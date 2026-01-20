@@ -27,8 +27,15 @@
 #' # Save as individual frames
 #' save_video(video_array, "frames/", format = "frames")
 #' }
-save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
-                       quality = 85, verbose = TRUE) {
+save_video <- function(
+  video,
+  file,
+  fps = 24,
+  format = NULL,
+  backend = "auto",
+  quality = 85,
+  verbose = TRUE
+) {
   # Validate input
   if (!is.array(video)) {
     stop("video must be an array")
@@ -55,7 +62,7 @@ save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
       "gif" = "gif",
       "webm" = "webm",
       "png" = "frames",
-      "frames"  # default to frames for directories
+      "frames"# default to frames for directories
     )
     if (ext == "" && dir.exists(dirname(file))) {
       format <- "frames"
@@ -72,7 +79,7 @@ save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
     # Try ffmpeg first, fall back to av
     if (.ffmpeg_available()) {
       save_video_ffmpeg(video, file, fps = fps, format = format,
-                        quality = quality, verbose = verbose)
+        quality = quality, verbose = verbose)
     } else if (requireNamespace("av", quietly = TRUE)) {
       save_video_av(video, file, fps = fps, verbose = verbose)
     } else {
@@ -80,7 +87,7 @@ save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
     }
   } else if (backend == "ffmpeg") {
     save_video_ffmpeg(video, file, fps = fps, format = format,
-                      quality = quality, verbose = verbose)
+      quality = quality, verbose = verbose)
   } else if (backend == "av") {
     save_video_av(video, file, fps = fps, verbose = verbose)
   } else {
@@ -89,7 +96,6 @@ save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
 
   invisible(file)
 }
-
 
 #' Save Video Frames as Individual Images
 #'
@@ -102,8 +108,13 @@ save_video <- function(video, file, fps = 24, format = NULL, backend = "auto",
 #' @return Invisibly returns vector of saved file paths.
 #'
 #' @export
-save_frames <- function(video, dir, prefix = "frame_", format = "png",
-                        verbose = TRUE) {
+save_frames <- function(
+  video,
+  dir,
+  prefix = "frame_",
+  format = "png",
+  verbose = TRUE
+) {
   # Create directory if needed
   if (!dir.exists(dir)) {
     dir.create(dir, recursive = TRUE)
@@ -113,7 +124,7 @@ save_frames <- function(video, dir, prefix = "frame_", format = "png",
   files <- character(num_frames)
 
   for (i in seq_len(num_frames)) {
-    frame <- video[i, , , ]
+    frame <- video[i,,,]
     filename <- file.path(dir, sprintf("%s%04d.%s", prefix, i, format))
 
     # Convert to 8-bit integer array
@@ -137,7 +148,6 @@ save_frames <- function(video, dir, prefix = "frame_", format = "png",
   invisible(files)
 }
 
-
 #' Save Video using FFmpeg
 #'
 #' @param video Array of video frames [T, H, W, C].
@@ -148,8 +158,14 @@ save_frames <- function(video, dir, prefix = "frame_", format = "png",
 #' @param verbose Logical.
 #'
 #' @keywords internal
-save_video_ffmpeg <- function(video, file, fps = 24, format = "mp4",
-                               quality = 85, verbose = TRUE) {
+save_video_ffmpeg <- function(
+  video,
+  file,
+  fps = 24,
+  format = "mp4",
+  quality = 85,
+  verbose = TRUE
+) {
   if (!.ffmpeg_available()) {
     stop("ffmpeg not found in PATH")
   }
@@ -164,7 +180,7 @@ save_video_ffmpeg <- function(video, file, fps = 24, format = "mp4",
   num_frames <- dim(video)[1]
 
   for (i in seq_len(num_frames)) {
-    frame <- video[i, , , ]
+    frame <- video[i,,,]
     filename <- file.path(temp_dir, sprintf("frame_%04d.png", i))
     png::writePNG(frame, filename)
   }
@@ -213,7 +229,6 @@ save_video_ffmpeg <- function(video, file, fps = 24, format = "mp4",
   if (verbose) message(sprintf("Saved: %s", file))
 }
 
-
 #' Save Video using av Package
 #'
 #' @param video Array of video frames [T, H, W, C].
@@ -222,7 +237,12 @@ save_video_ffmpeg <- function(video, file, fps = 24, format = "mp4",
 #' @param verbose Logical.
 #'
 #' @keywords internal
-save_video_av <- function(video, file, fps = 24, verbose = TRUE) {
+save_video_av <- function(
+  video,
+  file,
+  fps = 24,
+  verbose = TRUE
+) {
   if (!requireNamespace("av", quietly = TRUE)) {
     stop("Package 'av' is required for this backend")
   }
@@ -243,7 +263,7 @@ save_video_av <- function(video, file, fps = 24, verbose = TRUE) {
 
   frame_files <- character(num_frames)
   for (i in seq_len(num_frames)) {
-    frame <- video[i, , , ]
+    frame <- video[i,,,]
     filename <- file.path(temp_dir, sprintf("frame_%04d.png", i))
     png::writePNG(frame, filename)
     frame_files[i] <- filename
@@ -260,7 +280,6 @@ save_video_av <- function(video, file, fps = 24, verbose = TRUE) {
   if (verbose) message(sprintf("Saved: %s", file))
 }
 
-
 #' Check if FFmpeg is Available
 #'
 #' @return Logical. TRUE if ffmpeg is in PATH.
@@ -272,7 +291,6 @@ save_video_av <- function(video, file, fps = 24, verbose = TRUE) {
   )
   result == 0
 }
-
 
 #' Create Video from Latents (Helper)
 #'
@@ -287,18 +305,25 @@ save_video_av <- function(video, file, fps = 24, verbose = TRUE) {
 #' @return Invisibly returns the output file path.
 #'
 #' @export
-latents_to_video <- function(latents, vae, file, fps = 24, ...) {
+latents_to_video <- function(
+  latents,
+  vae,
+  file,
+  fps = 24,
+  ...
+) {
   torch::with_no_grad({
-    # Decode latents
-    video_tensor <- vae$decode(latents)
+      # Decode latents
+      video_tensor <- vae$decode(latents)
 
-    # Convert to array [T, H, W, C]
-    video_array <- video_tensor$squeeze(1L)$permute(c(2, 3, 4, 1))$cpu()$numpy()
+      # Convert to array [T, H, W, C]
+      video_array <- video_tensor$squeeze(1L) $permute(c(2, 3, 4, 1)) $cpu() $numpy()
 
-    # Clamp to [0, 1]
-    video_array <- pmax(pmin(video_array, 1), 0)
-  })
+      # Clamp to [0, 1]
+      video_array <- pmax(pmin(video_array, 1), 0)
+    })
 
   # Save video
   save_video(video_array, file, fps = fps, ...)
 }
+
