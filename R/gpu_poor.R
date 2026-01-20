@@ -1618,15 +1618,16 @@ quantize_ltx2_transformer <- function(
     return(output_file)
   }
 
-  # Check if model is available (local or to download)
-  model_path <- tryCatch({
-      hfhub::hub_snapshot(model_id, local_files_only = TRUE,
-        allow_patterns = "transformer/*.safetensors")
+  # Check if model is available locally via transformer/config.json
+  transformer_dir <- tryCatch({
+      config_path <- hfhub::hub_download(model_id, "transformer/config.json",
+        local_files_only = TRUE)
+      dirname(config_path)
     }, error = function(e) NULL)
 
-  if (is.null(model_path)) {
+  if (is.null(transformer_dir)) {
     if (!download) {
-      stop("Model '", model_id, "' not found in HuggingFace cache.\n",
+      stop("Model '", model_id, "' transformer not found in HuggingFace cache.\n",
         "Run with download = TRUE to download, or use:\n",
         "  huggingface-cli download ", model_id)
     }
@@ -1644,11 +1645,9 @@ quantize_ltx2_transformer <- function(
 
     if (verbose) message("Downloading transformer weights from HuggingFace...")
     model_path <- hfhub::hub_snapshot(model_id,
-      allow_patterns = "transformer/*.safetensors")
+      allow_patterns = "transformer/*")
+    transformer_dir <- file.path(model_path, "transformer")
   }
-
-  # Find transformer safetensor files
-  transformer_dir <- file.path(model_path, "transformer")
   if (!dir.exists(transformer_dir)) {
     stop("Transformer directory not found: ", transformer_dir)
   }
@@ -1724,15 +1723,16 @@ quantize_ltx2_vae <- function(
     return(output_file)
   }
 
-  # Check if model is available (local or to download)
-  model_path <- tryCatch({
-      hfhub::hub_snapshot(model_id, local_files_only = TRUE,
-        allow_patterns = "vae/*.safetensors")
+  # Check if model is available locally via vae/config.json
+  vae_dir <- tryCatch({
+      config_path <- hfhub::hub_download(model_id, "vae/config.json",
+        local_files_only = TRUE)
+      dirname(config_path)
     }, error = function(e) NULL)
 
-  if (is.null(model_path)) {
+  if (is.null(vae_dir)) {
     if (!download) {
-      stop("Model '", model_id, "' not found in HuggingFace cache.\n",
+      stop("Model '", model_id, "' VAE not found in HuggingFace cache.\n",
         "Run with download = TRUE to download, or use:\n",
         "  huggingface-cli download ", model_id)
     }
@@ -1750,11 +1750,9 @@ quantize_ltx2_vae <- function(
 
     if (verbose) message("Downloading VAE weights from HuggingFace...")
     model_path <- hfhub::hub_snapshot(model_id,
-      allow_patterns = "vae/*.safetensors")
+      allow_patterns = "vae/*")
+    vae_dir <- file.path(model_path, "vae")
   }
-
-  # Find VAE safetensor files
-  vae_dir <- file.path(model_path, "vae")
   if (!dir.exists(vae_dir)) {
     stop("VAE directory not found: ", vae_dir)
   }

@@ -161,19 +161,20 @@ txt2vid_ltx2 <- function(
             stop("Gemma3 model not found at: ", text_model_path)
           }
         } else {
-          # Use hfhub to find/download model
+          # Use hfhub to find model via config.json
           if (!requireNamespace("hfhub", quietly = TRUE)) {
             stop("Package 'hfhub' is required. Install with: install.packages('hfhub')")
           }
           gemma_repo <- "google/gemma-3-12b-it"
-          resolved_model_path <- tryCatch({
-              hfhub::hub_snapshot(gemma_repo, local_files_only = TRUE)
+          config_path <- tryCatch({
+              hfhub::hub_download(gemma_repo, "config.json", local_files_only = TRUE)
             }, error = function(e) NULL)
 
-          if (is.null(resolved_model_path)) {
+          if (is.null(config_path)) {
             stop("Gemma3 model not found in HuggingFace cache.\n",
               "Download with: huggingface-cli download ", gemma_repo)
           }
+          resolved_model_path <- dirname(config_path)
         }
       }
 
