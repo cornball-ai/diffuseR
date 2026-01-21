@@ -16,8 +16,8 @@ quantize_ltx2_vae(
 \arguments{
 \item{model_id}{Character. HuggingFace model ID (default "Lightricks/LTX-2").}
 
-\item{output_dir}{Character. Directory to save quantized weights. Default uses
-`tools::R_user_dir("diffuseR", "cache")`.}
+\item{output_dir}{Character. Directory to save quantized weights.
+Default uses `tools::R_user_dir("diffuseR", "cache")`.}
 
 \item{block_size}{Integer. Block size for INT4 quantization.}
 

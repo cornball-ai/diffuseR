@@ -57,6 +57,5 @@ ltx2_text_connectors(
 nn_module for text connectors.
 }
 \description{
-Transforms packed text encoder hidden states for video and audio
-streams.
+Transforms packed text encoder hidden states for video and audio streams.
 }

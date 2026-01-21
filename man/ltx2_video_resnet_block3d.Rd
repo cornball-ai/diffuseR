@@ -33,6 +33,6 @@ ltx2_video_resnet_block3d(
 \item{spatial_padding_mode}{Character. Padding mode. Default: "zeros"}
 }
 \description{
-3D ResNet block with per-channel RMS normalization and optional noise
-injection and timestep conditioning.
+3D ResNet block with per-channel RMS normalization and optional
+noise injection and timestep conditioning.
 }

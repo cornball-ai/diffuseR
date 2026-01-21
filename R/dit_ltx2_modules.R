@@ -33,7 +33,7 @@ get_timestep_embedding <- function(
 
   emb <- torch::torch_exp(exponent)
   # timesteps: [N], emb: [half_dim] -> result: [N, half_dim]
-  emb <- timesteps$unsqueeze(- 1L) $to(dtype = torch::torch_float32()) * emb$unsqueeze(1L)
+  emb <- timesteps$unsqueeze(- 1L)$to(dtype = torch::torch_float32()) * emb$unsqueeze(1L)
   emb <- scale * emb
 
   # Concat sine and cosine -> [N, embedding_dim]
@@ -157,13 +157,13 @@ pixart_alpha_combined_timestep_size_embeddings <- torch::nn_module(
       if (!is.null(hidden_dtype)) {
         resolution_emb <- resolution_emb$to(dtype = hidden_dtype)
       }
-      resolution_emb <- self$resolution_embedder(resolution_emb) $reshape(c(batch_size, - 1L))
+      resolution_emb <- self$resolution_embedder(resolution_emb)$reshape(c(batch_size, - 1L))
 
       aspect_ratio_emb <- self$additional_condition_proj(aspect_ratio$flatten())
       if (!is.null(hidden_dtype)) {
         aspect_ratio_emb <- aspect_ratio_emb$to(dtype = hidden_dtype)
       }
-      aspect_ratio_emb <- self$aspect_ratio_embedder(aspect_ratio_emb) $reshape(c(batch_size, - 1L))
+      aspect_ratio_emb <- self$aspect_ratio_embedder(aspect_ratio_emb)$reshape(c(batch_size, - 1L))
 
       conditioning <- timesteps_emb + torch::torch_cat(list(resolution_emb, aspect_ratio_emb), dim = 2L)
     } else {
@@ -288,7 +288,7 @@ rms_norm <- torch::nn_module(
   forward = function(hidden_states) {
     input_dtype <- hidden_states$dtype
     hidden_states <- hidden_states$to(dtype = torch::torch_float32())
-    variance <- hidden_states$pow(2) $mean(dim = - 1L, keepdim = TRUE)
+    variance <- hidden_states$pow(2)$mean(dim = - 1L, keepdim = TRUE)
     hidden_states <- hidden_states * torch::torch_rsqrt(variance + self$eps)
     if (self$elementwise_affine) {
       hidden_states <- hidden_states * self$weight
@@ -365,11 +365,11 @@ apply_interleaved_rotary_emb_list <- function(
   x_imag <- x_reshaped[,,, 2]
 
   # Rotate: [-x_imag, x_real]
-  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1L) $flatten(start_dim = 3L)
+  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1L)$flatten(start_dim = 3L)
 
   # Apply rotation
   out <- (x$to(dtype = torch::torch_float32()) * cos_freqs +
-    x_rotated$to(dtype = torch::torch_float32()) * sin_freqs) $to(dtype = x$dtype)
+    x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)$to(dtype = x$dtype)
 
   out
 }
@@ -483,7 +483,7 @@ ltx2_attention <- torch::nn_module(
     if (!is.null(attention_mask)) {
       # Expand attention mask to [B, 1, 1, S] for broadcasting with [B, H, S, S]
       if (attention_mask$ndim == 2L) {
-        attention_mask <- attention_mask$unsqueeze(2L) $unsqueeze(2L) # [B, S] -> [B, 1, 1, S]
+        attention_mask <- attention_mask$unsqueeze(2L)$unsqueeze(2L) # [B, S] -> [B, 1, 1, S]
       } else if (attention_mask$ndim == 3L) {
         attention_mask <- attention_mask$unsqueeze(2L) # [B, 1, S] -> [B, 1, 1, S]
       }
@@ -499,7 +499,7 @@ ltx2_attention <- torch::nn_module(
     hidden_states <- torch::torch_matmul(attn_weights, value)
 
     # Reshape back [B, H, S, D] -> [B, S, H*D]
-    hidden_states <- hidden_states$transpose(2L, 3L) $flatten(start_dim = 3L)
+    hidden_states <- hidden_states$transpose(2L, 3L)$flatten(start_dim = 3L)
     hidden_states <- hidden_states$to(dtype = query$dtype)
 
     # Output projection
@@ -666,7 +666,7 @@ ltx2_video_transformer_block <- torch::nn_module(
 
     # Ada values for video
     num_ada_params <- self$scale_shift_table$shape[1]
-    ada_values <- self$scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(device = temb$device, dtype = temb$dtype) +
+    ada_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb$device, dtype = temb$dtype) +
     temb$reshape(c(batch_size, temb$shape[2], num_ada_params, - 1L))
 
     shift_msa <- ada_values[,, 1,]
@@ -689,7 +689,7 @@ ltx2_video_transformer_block <- torch::nn_module(
     norm_audio_hidden_states <- self$audio_norm1(audio_hidden_states)
 
     num_audio_ada_params <- self$audio_scale_shift_table$shape[1]
-    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(device = temb_audio$device, dtype = temb_audio$dtype) +
+    audio_ada_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(device = temb_audio$device, dtype = temb_audio$dtype) +
     temb_audio$reshape(c(batch_size, temb_audio$shape[2], num_audio_ada_params, - 1L))
 
     audio_shift_msa <- audio_ada_values[,, 1,]
@@ -735,9 +735,9 @@ ltx2_video_transformer_block <- torch::nn_module(
     video_per_layer_ca_scale_shift <- self$video_a2v_cross_attn_scale_shift_table[1:4,]
     video_per_layer_ca_gate <- self$video_a2v_cross_attn_scale_shift_table[5:5,]
 
-    video_ca_scale_shift_table <- video_per_layer_ca_scale_shift$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_scale_shift$dtype) +
+    video_ca_scale_shift_table <- video_per_layer_ca_scale_shift$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_scale_shift$dtype) +
     temb_ca_scale_shift$reshape(c(batch_size, temb_ca_scale_shift$shape[2], 4L, - 1L))
-    video_ca_gate <- video_per_layer_ca_gate$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_gate$dtype) +
+    video_ca_gate <- video_per_layer_ca_gate$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_gate$dtype) +
     temb_ca_gate$reshape(c(batch_size, temb_ca_gate$shape[2], 1L, - 1L))
 
     video_a2v_ca_scale <- video_ca_scale_shift_table[,, 1,]
@@ -750,9 +750,9 @@ ltx2_video_transformer_block <- torch::nn_module(
     audio_per_layer_ca_scale_shift <- self$audio_a2v_cross_attn_scale_shift_table[1:4,]
     audio_per_layer_ca_gate <- self$audio_a2v_cross_attn_scale_shift_table[5:5,]
 
-    audio_ca_scale_shift_table <- audio_per_layer_ca_scale_shift$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_audio_scale_shift$dtype) +
+    audio_ca_scale_shift_table <- audio_per_layer_ca_scale_shift$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_audio_scale_shift$dtype) +
     temb_ca_audio_scale_shift$reshape(c(batch_size, temb_ca_audio_scale_shift$shape[2], 4L, - 1L))
-    audio_ca_gate <- audio_per_layer_ca_gate$unsqueeze(1) $unsqueeze(1) $to(dtype = temb_ca_audio_gate$dtype) +
+    audio_ca_gate <- audio_per_layer_ca_gate$unsqueeze(1)$unsqueeze(1)$to(dtype = temb_ca_audio_gate$dtype) +
     temb_ca_audio_gate$reshape(c(batch_size, temb_ca_audio_gate$shape[2], 1L, - 1L))
 
     audio_a2v_ca_scale <- audio_ca_scale_shift_table[,, 1,]

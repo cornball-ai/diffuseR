@@ -4,7 +4,7 @@
 \alias{print.bpe_tokenizer}
 \title{Print BPE Tokenizer}
 \usage{
-print.bpe_tokenizer(x, ...)
+\method{print}{bpe_tokenizer}(x, ...)
 }
 \arguments{
 \item{x}{A bpe_tokenizer object.}

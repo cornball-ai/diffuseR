@@ -9,6 +9,13 @@ sdxl_memory_profile(vram_gb = NULL)
 \arguments{
 \item{vram_gb}{Numeric. Available VRAM in GB, or NULL for auto-detection.}
 }
+\value{
+A list with memory profile settings.
+}
+\description{
+Determines optimal memory configuration for SDXL image generation
+based on available VRAM.
+}
 \details{
 Memory profiles for SDXL:
 \describe{
@@ -23,13 +30,6 @@ Each profile also specifies:
 - cleanup: "none", "phase", or "step" (when to clear VRAM)
 - dtype: "float16" or "float32"
 - max_resolution: maximum image dimension
-}
-\value{
-A list with memory profile settings.
-}
-\description{
-Determines optimal memory configuration for SDXL image generation based
-on available VRAM.
 }
 \examples{
 \dontrun{

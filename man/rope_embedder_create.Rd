@@ -32,17 +32,17 @@ rope_embedder_create(
 
 \item{base_width}{Integer. Base width for normalization. Default: 2048}
 
-\item{scale_factors}{Numeric vector of length 3. VAE scale factors for (temporal, height,
-width). Default: c(8, 32, 32)}
+\item{scale_factors}{Numeric vector of length 3. VAE scale factors for
+(temporal, height, width). Default: c(8, 32, 32)}
 
 \item{theta}{Numeric. Base frequency for RoPE. Default: 10000.0}
 
 \item{causal_offset}{Integer. Offset for causal VAE modeling. Default: 1}
 
-\item{double_precision}{Logical. Whether to use float64 for frequency computation. Default: TRUE}
+\item{double_precision}{Logical. Whether to use float64 for frequency
+computation. Default: TRUE}
 
-\item{rope_type}{Character. Type of RoPE: "interleaved" or "split". Default:
-"interleaved"}
+\item{rope_type}{Character. Type of RoPE: "interleaved" or "split". Default: "interleaved"}
 
 \item{num_attention_heads}{Integer. Number of attention heads (for split RoPE). Default: 32}
 }

@@ -387,7 +387,7 @@ decode_bpe <- function(
 
   # Handle torch tensor
   if (inherits(ids, "torch_tensor")) {
-    ids <- as.integer(ids$cpu() $numpy())
+    ids <- as.integer(ids$cpu()$numpy())
   }
 
   # Get special token IDs to skip

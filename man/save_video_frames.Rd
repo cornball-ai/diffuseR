@@ -7,8 +7,8 @@
 save_video_frames(video_array, output_file, fps = 24, verbose = TRUE)
 }
 \arguments{
-\item{video_array}{Numeric array with dimensions [frames, height, width, channels]. Values
-should be in range [0, 1].}
+\item{video_array}{Numeric array with dimensions [frames, height, width, channels].
+Values should be in range [0, 1].}
 
 \item{output_file}{Character. Path to output video file.}
 
@@ -20,7 +20,6 @@ should be in range [0, 1].}
 Invisibly returns the output file path.
 }
 \description{
-Saves an array of video frames to an MP4 file using ffmpeg via the av
-package.
+Saves an array of video frames to an MP4 file using ffmpeg via the av package.
 }
 \keyword{internal}

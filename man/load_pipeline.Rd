@@ -22,15 +22,13 @@ load_pipeline(
 
 \item{i2i}{Logical indicating whether to load the encoder for img2img().}
 
-\item{unet_dtype_str}{A string representing the data type for the UNet model (e.g., "float32",
-"float16").}
+\item{unet_dtype_str}{A string representing the data type for the UNet model (e.g., "float32", "float16").}
 
 \item{use_native_decoder}{Logical; if TRUE, uses native R torch decoder instead of TorchScript.
 Native decoder has better GPU compatibility (especially Blackwell).}
 
-\item{use_native_text_encoder}{Logical; if TRUE, uses native R torch text encoder instead of
-TorchScript. Native text encoder has better GPU compatibility
-(especially Blackwell).}
+\item{use_native_text_encoder}{Logical; if TRUE, uses native R torch text encoder instead of TorchScript.
+Native text encoder has better GPU compatibility (especially Blackwell).}
 
 \item{use_native_unet}{Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 Native UNet has better GPU compatibility (especially Blackwell).}
@@ -41,9 +39,8 @@ Native UNet has better GPU compatibility (especially Blackwell).}
 An environment containing the loaded models and configuration.
 }
 \description{
-This function loads a diffusion model pipeline consisting of a UNet, VAE
-decoder, and text encoder. It initializes the models and sets up the
-environment for inference.
+This function loads a diffusion model pipeline consisting of a UNet, VAE decoder, and text encoder.
+It initializes the models and sets up the environment for inference.
 }
 \examples{
 \dontrun{

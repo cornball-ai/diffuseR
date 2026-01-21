@@ -26,3 +26,4 @@ Suggests:
     hfhub,
     safetensors,
     tinytest
+RoxygenNote: 7.3.3

@@ -15,14 +15,11 @@ download_component(
 \arguments{
 \item{model_name}{Character string, the name of the model to download (e.g., `"sd21"`).}
 
-\item{component}{Character string, the specific model component to download (e.g.,
-`"unet"`, `"decoder"`, `"text_encoder"`).}
+\item{component}{Character string, the specific model component to download (e.g., `"unet"`, `"decoder"`, `"text_encoder"`).}
 
-\item{device}{Character string, the device type for which the model is intended (e.g.,
-`"cpu"` or `"cuda"`).}
+\item{device}{Character string, the device type for which the model is intended (e.g., `"cpu"` or `"cuda"`).}
 
-\item{overwrite}{Logical; if `TRUE`, re-downloads the model files even if they already
-exist.}
+\item{overwrite}{Logical; if `TRUE`, re-downloads the model files even if they already exist.}
 
 \item{show_progress}{Logical; if `TRUE` (default), displays a progress bar during download.}
 }
@@ -30,15 +27,16 @@ exist.}
 The local file path to the specific model directory (as a string).
 }
 \description{
-Downloads the required model file (e.g., UNet, decoder, text encoder,
-and tokenizer) for a given Stable Diffusion model into a local
-user-specific data directory. The files will be stored in a persistent
-path returned by [tools::R_user_dir()], typically: \itemize{ \item
-macOS: `~/Library/Application Support/diffuseR/` \item Linux:
-`~/.local/share/R/diffuseR/` \item Windows:
-`C:/Users/<username>/AppData/Local/diffuseR/` } Each model is stored in
-its own subdirectory for better organization. If the files already
-exist, they will not be downloaded again unless `overwrite = TRUE`.
+Downloads the required model file (e.g., UNet, decoder, text encoder, and tokenizer)
+for a given Stable Diffusion model into a local user-specific data directory.
+The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
+\itemize{
+\item macOS: `~/Library/Application Support/diffuseR/`
+\item Linux: `~/.local/share/R/diffuseR/`
+\item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
+}
+Each model is stored in its own subdirectory for better organization.
+If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
 }
 \examples{
 \dontrun{

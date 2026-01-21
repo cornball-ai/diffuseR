@@ -13,6 +13,5 @@ get_required_components(model_name)
 A character vector of required components for the specified model.
 }
 \description{
-This function returns a list of required components for each supported
-model type.
+This function returns a list of required components for each supported model type.
 }

@@ -36,6 +36,5 @@ ltx2_video_down_block3d(
 \item{spatial_padding_mode}{Character. Padding mode.}
 }
 \description{
-Encoder down block with multiple ResNet layers and optional
-downsampling.
+Encoder down block with multiple ResNet layers and optional downsampling.
 }

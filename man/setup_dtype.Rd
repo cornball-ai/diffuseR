@@ -7,8 +7,7 @@
 setup_dtype(devices, unet_dtype_str)
 }
 \arguments{
-\item{devices}{A character string or a named list specifying the devices for model
-components.}
+\item{devices}{A character string or a named list specifying the devices for model components.}
 
 \item{unet_dtype_str}{A character string specifying the data type for the UNet model.}
 }

@@ -17,6 +17,6 @@ load_int4_weights_into_model(model, int4_weights, verbose = TRUE)
 Model with INT4 weights loaded (invisibly).
 }
 \description{
-Loads pre-quantized INT4 weights into a model created with
-`make_linear()` when `diffuseR.use_int4 = TRUE`.
+Loads pre-quantized INT4 weights into a model created with `make_linear()`
+when `diffuseR.use_int4 = TRUE`.
 }

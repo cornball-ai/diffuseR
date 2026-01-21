@@ -70,7 +70,7 @@ VAEAttentionBlock <- torch::nn_module(
     x <- self$group_norm(x)
 
     # Reshape to (batch, h*w, channels)
-    x <- x$permute(c(1, 3, 4, 2)) $reshape(c(batch, height * width, channels))
+    x <- x$permute(c(1, 3, 4, 2))$reshape(c(batch, height * width, channels))
 
     # QKV projections
     q <- self$to_q(x)
@@ -87,7 +87,7 @@ VAEAttentionBlock <- torch::nn_module(
     out <- self$to_out[[1]](out)
 
     # Reshape back to (batch, channels, h, w)
-    out <- out$reshape(c(batch, height, width, channels)) $permute(c(1, 4, 2, 3))
+    out <- out$reshape(c(batch, height, width, channels))$permute(c(1, 4, 2, 3))
 
     out + residual
   }

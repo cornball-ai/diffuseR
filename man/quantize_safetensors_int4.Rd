@@ -19,8 +19,8 @@ quantize_safetensors_int4(paths, output_path, block_size = 64L, verbose = TRUE)
 Invisible NULL. Writes quantized weights to output_path.
 }
 \description{
-Loads weights from safetensors file(s) and quantizes to INT4. Useful for
-quantizing large models without loading the full module.
+Loads weights from safetensors file(s) and quantizes to INT4.
+Useful for quantizing large models without loading the full module.
 }
 \examples{
 \dontrun{

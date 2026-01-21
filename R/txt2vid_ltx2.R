@@ -370,7 +370,7 @@ txt2vid_ltx2 <- function(
         }
 
         # Prepare timestep tensor
-        timestep <- torch::torch_tensor(c(as.numeric(t))) $unsqueeze(2L)
+        timestep <- torch::torch_tensor(c(as.numeric(t)))$unsqueeze(2L)
         timestep <- timestep$to(device = dit_device, dtype = latent_dtype)
 
         # CFG: conditional and unconditional pass
@@ -415,7 +415,7 @@ txt2vid_ltx2 <- function(
           noise_pred_uncond <- noise_pred_all[1,,]$unsqueeze(1L)
           noise_pred_cond <- noise_pred_all[2,,]$unsqueeze(1L)
           # CFG: use tensor method to preserve dtype
-          noise_pred <- noise_pred_uncond + (noise_pred_cond - noise_pred_uncond) $mul(guidance_scale)
+          noise_pred <- noise_pred_uncond + (noise_pred_cond - noise_pred_uncond)$mul(guidance_scale)
         }
 
         # FlowMatch step
@@ -487,7 +487,7 @@ txt2vid_ltx2 <- function(
 
       # tensors returned from with_no_grad() have corrupted method references
       # (error: "could not find function 'fn'"). See cornyverse CLAUDE.md.
-      video_cpu <- video_tensor$squeeze(1L) $permute(c(2, 3, 4, 1)) $cpu()
+      video_cpu <- video_tensor$squeeze(1L)$permute(c(2, 3, 4, 1))$cpu()
 
     }) # end with_no_grad
 

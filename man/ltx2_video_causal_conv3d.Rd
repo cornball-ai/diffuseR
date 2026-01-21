@@ -31,6 +31,6 @@ ltx2_video_causal_conv3d(
 }
 \description{
 3D convolution with runtime-selectable causal or non-causal padding.
-Causal mode pads temporally by repeating first frame. Non-causal mode
-pads temporally by repeating first and last frames.
+Causal mode pads temporally by repeating first frame.
+Non-causal mode pads temporally by repeating first and last frames.
 }

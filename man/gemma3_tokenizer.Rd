@@ -13,6 +13,6 @@ gemma3_tokenizer(tokenizer_path)
 A gemma3_tokenizer object (extends bpe_tokenizer).
 }
 \description{
-Native R tokenizer for Gemma3 using BPE. Loads from HuggingFace
-tokenizer.json format.
+Native R tokenizer for Gemma3 using BPE.
+Loads from HuggingFace tokenizer.json format.
 }

@@ -249,7 +249,7 @@ ltx2_video_resnet_block3d <- torch::nn_module(
       h <- hidden_states$shape[4]
       w <- hidden_states$shape[5]
       spatial_noise <- torch::torch_randn(c(h, w), device = hidden_states$device,
-        dtype = hidden_states$dtype) $unsqueeze(1)
+        dtype = hidden_states$dtype)$unsqueeze(1)
       hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale1)[NULL,, NULL,,]
     }
 
@@ -269,7 +269,7 @@ ltx2_video_resnet_block3d <- torch::nn_module(
       h <- hidden_states$shape[4]
       w <- hidden_states$shape[5]
       spatial_noise <- torch::torch_randn(c(h, w), device = hidden_states$device,
-        dtype = hidden_states$dtype) $unsqueeze(1)
+        dtype = hidden_states$dtype)$unsqueeze(1)
       hidden_states <- hidden_states + (spatial_noise * self$per_channel_scale2)[NULL,, NULL,,]
     }
 

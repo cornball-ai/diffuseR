@@ -79,16 +79,16 @@ CLIPAttention <- torch::nn_module(
     v <- self$v_proj(x)
 
     # Reshape for multi-head attention
-    q <- q$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
-    k <- k$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
-    v <- v$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2, 3)
+    q <- q$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
+    k <- k$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
+    v <- v$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2, 3)
 
     # Scaled dot-product attention
     attn_weights <- torch::torch_matmul(q, k$transpose(3, 4)) * self$scale
 
     # Apply causal mask
     if (causal_mask) {
-      mask <- torch::torch_ones(seq_len, seq_len, device = x$device) $triu(diagonal = 1) $bool()
+      mask <- torch::torch_ones(seq_len, seq_len, device = x$device)$triu(diagonal = 1)$bool()
       attn_weights <- attn_weights$masked_fill(mask, - Inf)
     }
 
@@ -96,7 +96,7 @@ CLIPAttention <- torch::nn_module(
     attn_output <- torch::torch_matmul(attn_weights, v)
 
     # Reshape back
-    attn_output <- attn_output$transpose(2, 3) $contiguous() $view(c(batch_size, seq_len, self$embed_dim))
+    attn_output <- attn_output$transpose(2, 3)$contiguous()$view(c(batch_size, seq_len, self$embed_dim))
     attn_output <- self$out_proj(attn_output)
 
     attn_output
@@ -202,7 +202,7 @@ text_encoder_native <- torch::nn_module(
     # Token + position embeddings
     # Add 1 because R torch is 1-indexed but tokens are 0-indexed (Python convention)
     token_embeds <- self$token_embedding(input_ids + 1L)
-    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1) $expand(c(batch_size, - 1, - 1))
+    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1)$expand(c(batch_size, - 1, - 1))
     hidden_states <- token_embeds + pos_embeds
 
     # Transformer layers
@@ -442,7 +442,7 @@ text_encoder2_native <- torch::nn_module(
     # Token + position embeddings
     # Add 1 because R torch is 1-indexed but tokens are 0-indexed (Python convention)
     token_embeds <- self$token_embedding(input_ids + 1L)
-    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1) $expand(c(batch_size, - 1, - 1))
+    pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1)$expand(c(batch_size, - 1, - 1))
     hidden_states <- token_embeds + pos_embeds
 
     # Transformer layers
@@ -460,8 +460,8 @@ text_encoder2_native <- torch::nn_module(
     eos_indices <- torch::torch_argmax(input_ids, dim = 2L, keepdim = TRUE)
     pooled_output <- hidden_states_normalized$gather(
       dim = 2L,
-      index = eos_indices$unsqueeze(- 1L) $expand(c(- 1L, - 1L, self$embed_dim))
-    ) $squeeze(2L)
+      index = eos_indices$unsqueeze(- 1L)$expand(c(- 1L, - 1L, self$embed_dim))
+    )$squeeze(2L)
 
     # Apply text projection
     pooled_output <- self$text_projection(pooled_output)

@@ -13,17 +13,16 @@ make_linear(in_features, out_features, bias = TRUE)
 
 \item{bias}{Logical. Include bias term.}
 }
+\value{
+nn_linear or int4_linear module.
+}
+\description{
+Factory function that creates either a standard nn_linear or INT4 linear layer
+based on package options. Use this instead of torch::nn_linear() in model code.
+}
 \details{
 Behavior controlled by options:
 - `diffuseR.use_int4`: If TRUE, create INT4 layer (default FALSE)
 - `diffuseR.int4_device`: Device for INT4 layers (default "cuda")
 - `diffuseR.int4_dtype`: Dtype for INT4 operations (default torch_float16())
-}
-\value{
-nn_linear or int4_linear module.
-}
-\description{
-Factory function that creates either a standard nn_linear or INT4 linear
-layer based on package options. Use this instead of torch::nn_linear()
-in model code.
 }

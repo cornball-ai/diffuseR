@@ -145,7 +145,7 @@ txt2img_sdxl <- function(
     device = torch::torch_device(devices$unet))
   time_ids = torch::torch_tensor(c(img_dim, img_dim, 0, 0, img_dim, img_dim), # zero indexed as python
     dtype = unet_dtype,
-    device = torch::torch_device(devices$unet)) $unsqueeze(1)
+    device = torch::torch_device(devices$unet))$unsqueeze(1)
   # clip-vit-large-patch14
   if (is.null(negative_prompt)) {
     empty_tokens <- CLIPTokenizer("")

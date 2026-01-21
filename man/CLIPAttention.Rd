@@ -12,7 +12,6 @@ CLIPAttention(embed_dim, num_heads)
 \item{num_heads}{Number of attention heads}
 }
 \description{
-Multi-head self-attention with separate Q/K/V projections (HuggingFace
-style)
+Multi-head self-attention with separate Q/K/V projections (HuggingFace style)
 }
 \keyword{internal}

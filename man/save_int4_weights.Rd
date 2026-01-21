@@ -17,10 +17,16 @@ save_int4_weights(
 \item{path}{Character. Base path for safetensors files. If multiple shards needed,
 files will be named `path-00001-of-NNNNN.safetensors`.}
 
-\item{max_shard_size}{Numeric. Maximum bytes per shard (default 2GB to avoid R integer
-overflow issues).}
+\item{max_shard_size}{Numeric. Maximum bytes per shard (default 2GB to avoid R
+integer overflow issues).}
 
 \item{verbose}{Logical. Print progress.}
+}
+\value{
+Invisible character vector of saved file paths.
+}
+\description{
+Saves INT4 quantized weights to disk as sharded safetensors files.
 }
 \details{
 Weights are saved in safetensors format with the following structure:
@@ -32,12 +38,6 @@ Weights are saved in safetensors format with the following structure:
 
 Large models are automatically sharded to avoid R's 2GB vector limit.
 The block size is fixed at 64 (standard for INT4 quantization).
-}
-\value{
-Invisible character vector of saved file paths.
-}
-\description{
-Saves INT4 quantized weights to disk as sharded safetensors files.
 }
 \examples{
 \dontrun{

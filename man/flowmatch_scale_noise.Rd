@@ -19,6 +19,6 @@ flowmatch_scale_noise(sample, timestep, noise, schedule)
 torch tensor. The noisy sample at timestep t.
 }
 \description{
-Applies the forward process in flow-matching: interpolates between the
-clean sample and noise.
+Applies the forward process in flow-matching: interpolates between
+the clean sample and noise.
 }

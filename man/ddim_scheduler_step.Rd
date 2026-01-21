@@ -23,43 +23,58 @@ ddim_scheduler_step(
 }
 \arguments{
 \item{model_output}{Numeric array. The output from the diffusion model, typically
-representing predicted noise or the denoised sample depending on
-`prediction_type`.}
+representing predicted noise or the denoised sample depending on `prediction_type`.}
 
 \item{timestep}{Integer. The current timestep in the diffusion process.}
 
 \item{sample}{Numeric array. The current noisy sample at timestep `t`.}
 
-\item{schedule}{List. The DDIM scheduler object containing the necessary parameters
-created from ddim_scheduler_create()}
+\item{schedule}{List. The DDIM scheduler object containing the necessary parameters created from ddim_scheduler_create()}
 
 \item{eta}{Numeric. Controls the stochasticity of the process. When eta=0, DDIM is
 deterministic. When eta=1, it's equivalent to DDPM. Default: 0}
 
-\item{use_clipped_model_output}{Logical. Whether to clip the model output before computing the sample
-update. Can improve stability. Default: FALSE}
+\item{use_clipped_model_output}{Logical. Whether to clip the model output before
+computing the sample update. Can improve stability. Default: FALSE}
 
-\item{thresholding}{Logical. Whether to apply thresholding to the output. Default: FALSE}
+\item{thresholding}{Logical. Whether to apply thresholding to the output.
+Default: FALSE}
 
-\item{generator}{An optional random number generator for reproducibility. Default: NULL}
+\item{generator}{An optional random number generator for reproducibility.
+Default: NULL}
 
-\item{variance_noise}{Optional pre-generated noise for the variance when eta > 0. If NULL and
-eta > 0, noise will be generated. Default: NULL}
+\item{variance_noise}{Optional pre-generated noise for the variance when eta > 0.
+If NULL and eta > 0, noise will be generated. Default: NULL}
 
 \item{clip_sample}{Logical. Whether to clip the sample. Default: FALSE}
 
-\item{set_alpha_to_one}{Logical. Whether to override the final alpha value to 1. Used for
-numerical stability in the final step. Default: FALSE}
+\item{set_alpha_to_one}{Logical. Whether to override the final alpha value to 1.
+Used for numerical stability in the final step. Default: FALSE}
 
-\item{prediction_type}{Character. The type of prediction the model outputs. Options are:
-\describe{ \item{"epsilon"}{The model predicts the noise}
+\item{prediction_type}{Character. The type of prediction the model outputs.
+Options are:
+\describe{
+\item{"epsilon"}{The model predicts the noise}
 \item{"sample"}{The model predicts the denoised sample directly}
-\item{"v_prediction"}{The model predicts the velocity vector (v)} }
+\item{"v_prediction"}{The model predicts the velocity vector (v)}
+}
 Default: "epsilon"}
 
 \item{dtype}{The data type to use for computations. Default is torch_float32().}
 
 \item{device}{The device to use for computations. Options are "cpu" and "cuda".}
+}
+\value{
+A list containing:
+  \describe{
+    \item{`prev_sample`}{The less noisy sample at timestep t-1}
+    \item{`pred_original_sample`}{The predicted denoised sample}
+  }
+}
+\description{
+Performs a single denoising step using the DDIM (Denoising Diffusion Implicit Models)
+algorithm. This function takes the output from a diffusion model at a specific timestep
+and computes the previous (less noisy) sample in the diffusion process.
 }
 \details{
 The DDIM step function implements the core sampling algorithm of DDIM described in
@@ -74,19 +89,6 @@ When using `prediction_type="epsilon"` (most common), the model predicts the
 noise that was added to create the current noisy sample. For `prediction_type="sample"`,
 the model predicts the clean sample directly. The `v_prediction` option implements
 the v-parameterization from Salimans & Ho (2022).
-}
-\value{
-A list containing:
-  \describe{
-    \item{`prev_sample`}{The less noisy sample at timestep t-1}
-    \item{`pred_original_sample`}{The predicted denoised sample}
-  }
-}
-\description{
-Performs a single denoising step using the DDIM (Denoising Diffusion
-Implicit Models) algorithm. This function takes the output from a
-diffusion model at a specific timestep and computes the previous (less
-noisy) sample in the diffusion process.
 }
 \references{
 Song, J., Meng, C., & Ermon, S. (2020).

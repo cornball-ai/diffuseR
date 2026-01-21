@@ -7,12 +7,11 @@
 per_channel_rms_norm(channel_dim = 2L, eps = 1e-08)
 }
 \arguments{
-\item{channel_dim}{Integer. Dimension for RMS computation (1-indexed). Default: 2
-(channels)}
+\item{channel_dim}{Integer. Dimension for RMS computation (1-indexed). Default: 2 (channels)}
 
 \item{eps}{Numeric. Small constant for numerical stability. Default: 1e-8}
 }
 \description{
-Normalizes tensor by root-mean-square along the channel dimension: y = x
-/ sqrt(mean(x^2, dim=channel_dim, keepdim=TRUE) + eps)
+Normalizes tensor by root-mean-square along the channel dimension:
+y = x / sqrt(mean(x^2, dim=channel_dim, keepdim=TRUE) + eps)
 }

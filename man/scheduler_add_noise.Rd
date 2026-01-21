@@ -11,18 +11,12 @@ scheduler_add_noise(original_latents, noise, timestep, scheduler_obj)
 
 \item{noise}{A torch tensor representing the noise to be added.}
 
-\item{timestep}{An integer representing the current timestep in the diffusion process.}
+\item{timestep}{An integer representing the current timestep in the diffusion
+process.}
 
 \item{scheduler_obj}{A list containing the DDIM scheduler parameters, including
-alphas_cumprod and timesteps. The alphas_cumprod represents how much of
-the original signal remains at each timestep of the diffusion process.}
-}
-\details{
-The noise is added according to the standard diffusion forward process formula:
-noised_latents = sqrt(alpha_cumprod) * original_latents + sqrt(1-alpha_cumprod) * noise
-
-Where alpha_cumprod is the cumulative product of (1-beta) values up to the
-specified timestep, with beta being the noise schedule.
+alphas_cumprod and timesteps. The alphas_cumprod represents how much of the
+original signal remains at each timestep of the diffusion process.}
 }
 \value{
 A torch tensor containing the noised latents, which represents the
@@ -31,8 +25,15 @@ timestep.
 }
 \description{
 This function adds noise to the original latents according to the DDIM
-scheduler's diffusion process. It computes the noisy latents based on
-the original latents, noise, and the current timestep.
+scheduler's diffusion process. It computes the noisy latents based on the
+original latents, noise, and the current timestep.
+}
+\details{
+The noise is added according to the standard diffusion forward process formula:
+noised_latents = sqrt(alpha_cumprod) * original_latents + sqrt(1-alpha_cumprod) * noise
+
+Where alpha_cumprod is the cumulative product of (1-beta) values up to the
+specified timestep, with beta being the noise schedule.
 }
 \examples{
 \dontrun{

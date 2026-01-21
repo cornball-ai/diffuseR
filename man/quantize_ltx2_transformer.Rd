@@ -16,8 +16,8 @@ quantize_ltx2_transformer(
 \arguments{
 \item{model_id}{Character. HuggingFace model ID (default "Lightricks/LTX-2").}
 
-\item{output_dir}{Character. Directory to save quantized weights. Default uses
-`tools::R_user_dir("diffuseR", "cache")`.}
+\item{output_dir}{Character. Directory to save quantized weights.
+Default uses `tools::R_user_dir("diffuseR", "cache")`.}
 
 \item{block_size}{Integer. Block size for INT4 quantization (default 64).}
 
@@ -26,6 +26,13 @@ quantize_ltx2_transformer(
 \item{download}{Logical. If TRUE, download model from HuggingFace if not cached.}
 
 \item{verbose}{Logical. Print progress.}
+}
+\value{
+Character. Path to the quantized weights file.
+}
+\description{
+Downloads (if needed) and quantizes the LTX-2 19B transformer to INT4 format.
+The quantized weights are cached for future use.
 }
 \details{
 LTX-2 is a 19B parameter model (~40GB in BF16). INT4 quantization reduces
@@ -36,13 +43,6 @@ The function:
 2. Loads each safetensor shard
 3. Quantizes all weights to INT4 (block-wise, 64 values per scale)
 4. Saves as safetensors file
-}
-\value{
-Character. Path to the quantized weights file.
-}
-\description{
-Downloads (if needed) and quantizes the LTX-2 19B transformer to INT4
-format. The quantized weights are cached for future use.
 }
 \examples{
 \dontrun{

@@ -39,7 +39,9 @@ unet_sdxl_native(
 An nn_module representing the SDXL UNet
 }
 \description{
-Native R torch implementation of SDXL UNet2DConditionModel. SDXL has a
-different architecture from SD21: - 3 down/up blocks (not 4) - Variable
-transformer depth per block - Additional conditioning via add_embedding
+Native R torch implementation of SDXL UNet2DConditionModel.
+SDXL has a different architecture from SD21:
+- 3 down/up blocks (not 4)
+- Variable transformer depth per block
+- Additional conditioning via add_embedding
 }

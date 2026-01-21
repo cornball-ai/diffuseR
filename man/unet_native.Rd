@@ -30,6 +30,6 @@ unet_native(
 An nn_module representing the UNet
 }
 \description{
-Native R torch implementation of UNet2DConditionModel. Replaces
-TorchScript for better GPU compatibility.
+Native R torch implementation of UNet2DConditionModel.
+Replaces TorchScript for better GPU compatibility.
 }

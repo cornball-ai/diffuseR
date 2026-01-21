@@ -11,11 +11,6 @@ quantize_int4(x, block_size = 64L)
 
 \item{block_size}{Integer. Number of values per scale factor (default 64).}
 }
-\details{
-INT4 range is -8 to 7. Values are scaled per block, quantized, shifted to
-unsigned (0-15), and packed two per byte. Compression is ~7x vs float32,
-~3.5x vs float16. Typical reconstruction error is 10-12\% of std.
-}
 \value{
 A list with:
   - `packed`: uint8 tensor with packed INT4 values
@@ -25,8 +20,13 @@ A list with:
   - `block_size`: block size used
 }
 \description{
-Quantizes a float tensor to 4-bit integers with block-wise scaling. Two
-INT4 values are packed per byte for 7-8x compression.
+Quantizes a float tensor to 4-bit integers with block-wise scaling.
+Two INT4 values are packed per byte for 7-8x compression.
+}
+\details{
+INT4 range is -8 to 7. Values are scaled per block, quantized, shifted to
+unsigned (0-15), and packed two per byte. Compression is ~7x vs float32,
+~3.5x vs float16. Typical reconstruction error is 10-12\% of std.
 }
 \examples{
 \dontrun{

@@ -21,6 +21,6 @@ A list with:
   }
 }
 \description{
-Converts spatiotemporal coordinates to (cos, sin) frequency tensors for
-applying rotary embeddings.
+Converts spatiotemporal coordinates to (cos, sin) frequency tensors
+for applying rotary embeddings.
 }

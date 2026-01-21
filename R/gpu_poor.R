@@ -605,7 +605,7 @@ sequential_cfg_forward <- function(
         encoder_hidden_states = negative_prompt_embeds,
         timestep = timestep,
         ...
-      ) $sample
+      )$sample
 
       # Conditional pass
       noise_pred_cond <- model(
@@ -613,7 +613,7 @@ sequential_cfg_forward <- function(
         encoder_hidden_states = prompt_embeds,
         timestep = timestep,
         ...
-      ) $sample
+      )$sample
 
       # CFG combination
       noise_pred <- noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
@@ -755,7 +755,7 @@ quantize_int4 <- function(
 ) {
   orig_shape <- x$shape
   orig_dtype <- x$dtype
-  x_flat <- x$to(dtype = torch::torch_float32()) $flatten()
+  x_flat <- x$to(dtype = torch::torch_float32())$flatten()
   n <- x_flat$shape[1]
 
   # Pad to multiple of block_size * 2 (2 values per byte)
@@ -772,19 +772,19 @@ quantize_int4 <- function(
   x_blocks <- x_flat$reshape(c(n_blocks, block_size))
 
   # Compute scale per block (absmax / 7)
-  scales <- x_blocks$abs() $max(dim = 2) [[1]] / 7.0
+  scales <- x_blocks$abs()$max(dim = 2) [[1]] / 7.0
   scales <- scales$clamp(min = 1e-10)
 
   # Quantize: scale, round, clamp to -8..7, shift to 0..15
   x_scaled <- x_blocks / scales$unsqueeze(2)
-  x_int <- x_scaled$round() $clamp(- 8, 7) + 8L
+  x_int <- x_scaled$round()$clamp(- 8, 7) + 8L
   x_uint <- x_int$to(dtype = torch::torch_uint8())
 
   # Pack pairs into bytes (high nibble * 16 + low nibble)
   x_uint <- x_uint$reshape(c(n_blocks, block_size %/% 2L, 2L))
   high <- x_uint[,, 1]$to(torch::torch_int32()) * 16L
   low <- x_uint[,, 2]$to(torch::torch_int32())
-  packed <- (high + low) $to(torch::torch_uint8())
+  packed <- (high + low)$to(torch::torch_uint8())
 
   list(
     packed = packed$flatten(),
@@ -820,18 +820,18 @@ dequantize_int4 <- function(
   packed <- q$packed$to(dtype = torch::torch_int32(), device = device)
 
   # Unpack bytes: high nibble = floor(x/16), low nibble = x mod 16
-  high <- torch::torch_floor(packed$to(torch::torch_float32()) / 16) $to(torch::torch_int32())
+  high <- torch::torch_floor(packed$to(torch::torch_float32()) / 16)$to(torch::torch_int32())
   low <- packed - high * 16L
 
   # Interleave high and low nibbles
-  x_uint <- torch::torch_stack(list(high, low), dim = 2L) $flatten()
+  x_uint <- torch::torch_stack(list(high, low), dim = 2L)$flatten()
 
   # Shift back to signed (-8 to 7)
   x_int <- x_uint - 8L
 
   # Apply per-block scales
   block_size <- q$block_size
-  x_blocks <- x_int$reshape(c(- 1L, block_size)) $to(dtype = dtype)
+  x_blocks <- x_int$reshape(c(- 1L, block_size))$to(dtype = dtype)
   scales_dev <- q$scales$to(dtype = dtype, device = device)
   x_scaled <- x_blocks * scales_dev$unsqueeze(2)
 
@@ -1355,7 +1355,7 @@ save_int4_weights <- function(
     }
     if (verbose) message(sprintf("Saving %d tensors to %s...", length(tensors), path))
     safetensors::safe_save_file(tensors, path)
-    file_size <- file.info(path) $size / 1e6
+    file_size <- file.info(path)$size / 1e6
     if (verbose) message(sprintf("Saved %.2f MB", file_size))
     return(invisible(path))
   }
@@ -1392,7 +1392,7 @@ save_int4_weights <- function(
     saved_paths <- c(saved_paths, shard_path)
   }
 
-  total_size <- sum(file.info(saved_paths) $size) / 1e6
+  total_size <- sum(file.info(saved_paths)$size) / 1e6
   if (verbose) message(sprintf("Total: %.2f MB across %d shards", total_size, length(saved_paths)))
 
   invisible(saved_paths)
@@ -1433,7 +1433,7 @@ load_int4_weights <- function(
     # Load sharded files
     shard_files <- sort(shard_files)
     if (verbose) {
-      total_size <- sum(file.info(shard_files) $size) / 1e6
+      total_size <- sum(file.info(shard_files)$size) / 1e6
       message(sprintf("Loading INT4 weights from %d shards (%.2f MB total)...",
           length(shard_files), total_size))
     }
@@ -1441,7 +1441,7 @@ load_int4_weights <- function(
   } else if (file.exists(path)) {
     # Single file
     if (verbose) {
-      size_mb <- file.info(path) $size / 1e6
+      size_mb <- file.info(path)$size / 1e6
       message(sprintf("Loading INT4 weights from %s (%.2f MB)...", path, size_mb))
     }
     paths <- path
@@ -1612,7 +1612,7 @@ quantize_ltx2_transformer <- function(
   # Check if already cached
   if (file.exists(output_file) && !force) {
     if (verbose) {
-      size_gb <- file.info(output_file) $size / 1e9
+      size_gb <- file.info(output_file)$size / 1e9
       message(sprintf("Using cached INT4 weights: %s (%.2f GB)", output_file, size_gb))
     }
     return(output_file)
@@ -1660,7 +1660,7 @@ quantize_ltx2_transformer <- function(
 
   if (verbose) {
     message(sprintf("Found %d safetensor files in: %s", length(safetensor_files), transformer_dir))
-    total_size <- sum(file.info(safetensor_files) $size) / 1e9
+    total_size <- sum(file.info(safetensor_files)$size) / 1e9
     message(sprintf("Total size: %.2f GB (will compress to ~%.2f GB)",
         total_size, total_size / 7))
   }
@@ -1717,7 +1717,7 @@ quantize_ltx2_vae <- function(
   # Check if already cached
   if (file.exists(output_file) && !force) {
     if (verbose) {
-      size_mb <- file.info(output_file) $size / 1e6
+      size_mb <- file.info(output_file)$size / 1e6
       message(sprintf("Using cached INT4 VAE weights: %s (%.2f MB)", output_file, size_mb))
     }
     return(output_file)
@@ -1764,7 +1764,7 @@ quantize_ltx2_vae <- function(
   }
 
   if (verbose) {
-    total_size <- sum(file.info(safetensor_files) $size) / 1e6
+    total_size <- sum(file.info(safetensor_files)$size) / 1e6
     message(sprintf("Found %d VAE safetensor files (%.2f MB)",
         length(safetensor_files), total_size))
   }

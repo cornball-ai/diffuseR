@@ -37,7 +37,7 @@ ltx2_rotary_pos_embed_1d <- torch::nn_module(
     grid_1d <- torch::torch_arange(start = 0, end = seq_len - 1L,
       dtype = torch::torch_float32(), device = device)
     grid_1d <- grid_1d / self$base_seq_len
-    grid <- grid_1d$unsqueeze(1L) $`repeat`(c(batch_size, 1L)) # [batch_size, seq_len]
+    grid <- grid_1d$unsqueeze(1L)$`repeat`(c(batch_size, 1L)) # [batch_size, seq_len]
 
     # 2. Calculate 1D RoPE frequencies
     num_rope_elems <- 2L# 1D * 2 (for cos, sin)
@@ -52,7 +52,7 @@ ltx2_rotary_pos_embed_1d <- torch::nn_module(
       torch::torch_linspace(start = 0.0, end = 1.0, steps = self$dim %/% num_rope_elems,
         dtype = freqs_dtype, device = device)
     )
-    freqs <- (pow_indices * pi / 2.0) $to(dtype = torch::torch_float32())
+    freqs <- (pow_indices * pi / 2.0)$to(dtype = torch::torch_float32())
 
     # 3. Outer product: [batch_size, seq_len] x [dim/2] -> [batch_size, seq_len, dim/2]
     freqs_outer <- torch::torch_einsum("bs,d->bsd", list(grid, freqs))
@@ -64,8 +64,8 @@ ltx2_rotary_pos_embed_1d <- torch::nn_module(
     # 5. Interleave or split based on rope_type
     if (self$rope_type == "interleaved") {
       # Repeat each element: [B, S, D/2] -> [B, S, D]
-      cos_freqs <- cos_freqs$unsqueeze(- 1L) $`repeat`(c(1L, 1L, 1L, 2L)) $flatten(start_dim = 3L)
-      sin_freqs <- sin_freqs$unsqueeze(- 1L) $`repeat`(c(1L, 1L, 1L, 2L)) $flatten(start_dim = 3L)
+      cos_freqs <- cos_freqs$unsqueeze(- 1L)$`repeat`(c(1L, 1L, 1L, 2L))$flatten(start_dim = 3L)
+      sin_freqs <- sin_freqs$unsqueeze(- 1L)$`repeat`(c(1L, 1L, 1L, 2L))$flatten(start_dim = 3L)
     } else {
       # Concatenate: [B, S, D/2] -> [B, S, D]
       cos_freqs <- torch::torch_cat(list(cos_freqs, cos_freqs), dim = - 1L)
@@ -199,9 +199,9 @@ ltx2_connector_transformer_1d <- torch::nn_module(
       registers <- self$learnable_registers$`repeat`(c(num_register_repeats, 1L)) # [seq_len, inner_dim]
 
       # Binarize attention mask
-      binary_attn_mask <- (attention_mask >= attn_mask_binarize_threshold) $to(dtype = torch::torch_int32())
+      binary_attn_mask <- (attention_mask >= attn_mask_binarize_threshold)$to(dtype = torch::torch_int32())
       if (binary_attn_mask$ndim == 4L) {
-        binary_attn_mask <- binary_attn_mask$squeeze(2L) $squeeze(2L) # [B, 1, 1, L] -> [B, L]
+        binary_attn_mask <- binary_attn_mask$squeeze(2L)$squeeze(2L) # [B, 1, 1, L] -> [B, L]
       }
 
       # Extract non-padded tokens and re-pad with registers
@@ -226,7 +226,7 @@ ltx2_connector_transformer_1d <- torch::nn_module(
 
       # Flip mask along sequence dimension and blend with registers
       # In R torch, flip requires a vector for dims
-      flipped_mask <- torch::torch_flip(binary_attn_mask, c(2L)) $unsqueeze(- 1L) $to(dtype = hidden_states$dtype) # [B, L, 1]
+      flipped_mask <- torch::torch_flip(binary_attn_mask, c(2L))$unsqueeze(- 1L)$to(dtype = hidden_states$dtype) # [B, L, 1]
       # Expand registers to batch dimension for broadcasting
       registers_expanded <- registers$unsqueeze(1L) # [L, D] -> [1, L, D] - broadcasts to [B, L, D]
       hidden_states <- flipped_mask * padded_hidden_states + (1 - flipped_mask) * registers_expanded
@@ -340,8 +340,8 @@ ltx2_text_connectors <- torch::nn_module(
     # Convert to additive attention mask if necessary
     if (!additive_mask) {
       text_dtype <- text_encoder_hidden_states$dtype
-      attention_mask <- (attention_mask - 1) $reshape(c(attention_mask$shape[1], 1L, - 1L, attention_mask$shape[length(attention_mask$shape)]))
-      attention_mask <- attention_mask$to(dtype = text_dtype) * torch::torch_finfo(text_dtype) $max
+      attention_mask <- (attention_mask - 1)$reshape(c(attention_mask$shape[1], 1L, - 1L, attention_mask$shape[length(attention_mask$shape)]))
+      attention_mask <- attention_mask$to(dtype = text_dtype) * torch::torch_finfo(text_dtype)$max
     }
 
     # Project input
@@ -353,7 +353,7 @@ ltx2_text_connectors <- torch::nn_module(
     new_attn_mask <- video_result[[2]]
 
     # Apply attention mask
-    attn_mask <- (new_attn_mask < 1e-6) $to(dtype = torch::torch_int64())
+    attn_mask <- (new_attn_mask < 1e-6)$to(dtype = torch::torch_int64())
     attn_mask <- attn_mask$reshape(c(video_text_embedding$shape[1], video_text_embedding$shape[2], 1L))
     video_text_embedding <- video_text_embedding * attn_mask
     new_attn_mask <- attn_mask$squeeze(- 1L)
@@ -516,7 +516,7 @@ pack_text_embeds <- function(
   original_dtype <- text_hidden_states$dtype
 
   # Create padding mask
-  token_indices <- torch::torch_arange(start = 0, end = seq_len - 1L, device = device) $unsqueeze(1L)
+  token_indices <- torch::torch_arange(start = 0, end = seq_len - 1L, device = device)$unsqueeze(1L)
   sequence_lengths_t <- torch::torch_tensor(sequence_lengths, device = device)
 
   if (padding_side == "right") {
@@ -527,16 +527,16 @@ pack_text_embeds <- function(
   } else {
     stop("padding_side must be 'left' or 'right'")
   }
-  mask <- mask$unsqueeze(- 1L) $unsqueeze(- 1L) # [B, seq_len, 1, 1]
+  mask <- mask$unsqueeze(- 1L)$unsqueeze(- 1L) # [B, seq_len, 1, 1]
 
   # Compute masked mean
   masked_states <- text_hidden_states$masked_fill(!mask, 0.0)
-  num_valid <- (sequence_lengths_t * hidden_dim) $view(c(batch_size, 1L, 1L, 1L))
+  num_valid <- (sequence_lengths_t * hidden_dim)$view(c(batch_size, 1L, 1L, 1L))
   masked_mean <- masked_states$sum(dim = c(2L, 3L), keepdim = TRUE) / (num_valid + eps)
 
   # Compute min/max
-  x_min <- text_hidden_states$masked_fill(!mask, Inf) $amin(dim = c(2L, 3L), keepdim = TRUE)
-  x_max <- text_hidden_states$masked_fill(!mask, - Inf) $amax(dim = c(2L, 3L), keepdim = TRUE)
+  x_min <- text_hidden_states$masked_fill(!mask, Inf)$amin(dim = c(2L, 3L), keepdim = TRUE)
+  x_max <- text_hidden_states$masked_fill(!mask, - Inf)$amax(dim = c(2L, 3L), keepdim = TRUE)
 
   # Normalize
   normalized <- (text_hidden_states - masked_mean) / (x_max - x_min + eps)
@@ -544,7 +544,7 @@ pack_text_embeds <- function(
 
   # Flatten layers dimension
   normalized <- normalized$flatten(start_dim = 3L)
-  mask_flat <- mask$squeeze(- 1L) $expand(c(- 1L, - 1L, hidden_dim * num_layers))
+  mask_flat <- mask$squeeze(- 1L)$expand(c(- 1L, - 1L, hidden_dim * num_layers))
   normalized <- normalized$masked_fill(!mask_flat, 0.0)
   normalized <- normalized$to(dtype = original_dtype)
 

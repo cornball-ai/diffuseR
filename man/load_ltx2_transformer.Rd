@@ -19,8 +19,7 @@ load_ltx2_transformer(
 
 \item{device}{Character. Device to load weights to. Default: "cpu"}
 
-\item{dtype}{Character. Data type ("float32", "float16", "bfloat16"). Default:
-"float16"}
+\item{dtype}{Character. Data type ("float32", "float16", "bfloat16"). Default: "float16"}
 
 \item{verbose}{Logical. Print loading progress. Default: TRUE}
 }
@@ -28,6 +27,6 @@ load_ltx2_transformer(
 Initialized ltx2_video_transformer3d module
 }
 \description{
-Load pre-trained LTX2 transformer weights from HuggingFace safetensors
-files. Supports both single file and sharded multi-file loading.
+Load pre-trained LTX2 transformer weights from HuggingFace safetensors files.
+Supports both single file and sharded multi-file loading.
 }

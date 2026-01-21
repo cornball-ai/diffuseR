@@ -20,8 +20,8 @@ flowmatch_set_timesteps(
 
 \item{device}{Character or torch device. Device for tensors. Default: "cpu"}
 
-\item{mu}{Numeric or NULL. Shift parameter for dynamic shifting. Required if
-use_dynamic_shifting is TRUE. Default: NULL}
+\item{mu}{Numeric or NULL. Shift parameter for dynamic shifting. Required
+if use_dynamic_shifting is TRUE. Default: NULL}
 
 \item{sigmas}{Numeric vector or NULL. Custom sigma values. Default: NULL}
 
@@ -31,6 +31,6 @@ use_dynamic_shifting is TRUE. Default: NULL}
 Updated scheduler with configured timesteps and sigmas.
 }
 \description{
-Configures the scheduler timesteps for a specific number of inference
-steps. This must be called before using the scheduler for denoising.
+Configures the scheduler timesteps for a specific number of inference steps.
+This must be called before using the scheduler for denoising.
 }

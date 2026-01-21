@@ -34,24 +34,18 @@ txt2img_sdxl(
 
 \item{img_dim}{Dimension of the output image (e.g., 512 for 512x512).}
 
-\item{pipeline}{Optional A pre-loaded diffusion pipeline. If `NULL`, it will be loaded
-based on the model name and devices.}
+\item{pipeline}{Optional A pre-loaded diffusion pipeline. If `NULL`, it will be loaded based on the model name and devices.}
 
-\item{devices}{A named list of devices for each model component (e.g., `list(unet =
-"cuda", decoder = "cpu", text_encoder = "cpu")`), or "auto" to use
-`auto_devices()`, or NULL to use memory_profile devices.}
+\item{devices}{A named list of devices for each model component (e.g., `list(unet = "cuda", decoder = "cpu", text_encoder = "cpu")`),
+or "auto" to use `auto_devices()`, or NULL to use memory_profile devices.}
 
-\item{memory_profile}{Character or list. Memory profile for GPU-poor optimization: "auto" for
-auto-detection, or a profile name ("full_gpu", "balanced", "unet_gpu",
-"cpu_only"), or a list from `sdxl_memory_profile()`. When specified,
-overrides devices parameter.}
+\item{memory_profile}{Character or list. Memory profile for GPU-poor optimization:
+"auto" for auto-detection, or a profile name ("full_gpu", "balanced", "unet_gpu", "cpu_only"),
+or a list from `sdxl_memory_profile()`. When specified, overrides devices parameter.}
 
-\item{unet_dtype_str}{Optional A character for dtype of the unet component (typically
-"float16" for cuda and "float32" for cpu; float32 is available for
-cuda).}
+\item{unet_dtype_str}{Optional A character for dtype of the unet component (typically "float16" for cuda and "float32" for cpu; float32 is available for cuda).}
 
-\item{download_models}{Logical indicating whether to download the model files if they are not
-found.}
+\item{download_models}{Logical indicating whether to download the model files if they are not found.}
 
 \item{scheduler}{Scheduler to use (e.g., `"ddim"`, `"euler"`).}
 
@@ -67,17 +61,15 @@ found.}
 
 \item{save_file}{Logical indicating whether to save the generated image.}
 
-\item{filename}{Optional filename for saving the image. If `NULL`, a default name is
-generated.}
+\item{filename}{Optional filename for saving the image. If `NULL`, a default name is generated.}
 
 \item{metadata_path}{Optional file path to save metadata.}
 
 \item{use_native_decoder}{Logical; if TRUE, uses native R torch decoder instead of TorchScript.
 Native decoder has better GPU compatibility (especially Blackwell).}
 
-\item{use_native_text_encoder}{Logical; if TRUE, uses native R torch text encoder instead of
-TorchScript. Native text encoder has better GPU compatibility
-(especially Blackwell).}
+\item{use_native_text_encoder}{Logical; if TRUE, uses native R torch text encoder instead of TorchScript.
+Native text encoder has better GPU compatibility (especially Blackwell).}
 
 \item{use_native_unet}{Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 Native UNet has better GPU compatibility (especially Blackwell).}

@@ -27,13 +27,13 @@ text_encoder_native(
 
 \item{mlp_dim}{MLP hidden dimension}
 
-\item{apply_final_ln}{Whether to apply final layer norm (default TRUE). Set to FALSE to match
-TorchScript exports that don't include final LN.}
+\item{apply_final_ln}{Whether to apply final layer norm (default TRUE).
+Set to FALSE to match TorchScript exports that don't include final LN.}
 }
 \value{
 An nn_module representing the text encoder
 }
 \description{
-Native R torch implementation of CLIP text encoder. Replaces TorchScript
-for better GPU compatibility.
+Native R torch implementation of CLIP text encoder.
+Replaces TorchScript for better GPU compatibility.
 }

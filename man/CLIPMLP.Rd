@@ -11,8 +11,7 @@ CLIPMLP(in_dim, hidden_dim, gelu_type = "tanh")
 
 \item{hidden_dim}{Hidden dimension}
 
-\item{gelu_type}{GELU variant: "tanh" (tanh approximation), "quick" (QuickGELU), "exact"
-(standard GELU)}
+\item{gelu_type}{GELU variant: "tanh" (tanh approximation), "quick" (QuickGELU), "exact" (standard GELU)}
 }
 \description{
 Feed-forward network with configurable activation

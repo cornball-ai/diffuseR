@@ -25,8 +25,7 @@ encode_text_ltx2(
 
 \item{model_path}{Character. Path to Gemma3 model directory (for "gemma3" backend).}
 
-\item{tokenizer_path}{Character. Path to tokenizer (for "gemma3" backend, defaults to
-model_path).}
+\item{tokenizer_path}{Character. Path to tokenizer (for "gemma3" backend, defaults to model_path).}
 
 \item{text_encoder}{Pre-loaded Gemma3 text encoder module (for "gemma3" backend).}
 
@@ -46,9 +45,9 @@ model_path).}
 List with prompt_embeds and prompt_attention_mask tensors.
 }
 \description{
-Encodes text prompts for LTX2 video generation. Supports multiple
-backends: - "gemma3": Native R torch Gemma3 text encoder -
-"precomputed": Load pre-computed embeddings from file - "api": Call an
-HTTP API for text encoding - "random": Generate random embeddings (for
-testing only)
+Encodes text prompts for LTX2 video generation. Supports multiple backends:
+- "gemma3": Native R torch Gemma3 text encoder
+- "precomputed": Load pre-computed embeddings from file
+- "api": Call an HTTP API for text encoding
+- "random": Generate random embeddings (for testing only)
 }

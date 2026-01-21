@@ -7,8 +7,8 @@
 load_int4_weights(path, verbose = TRUE)
 }
 \arguments{
-\item{path}{Character. Path to safetensors file or base path for sharded files. For
-sharded files, pass the base path (e.g., "model_int4.safetensors") and
+\item{path}{Character. Path to safetensors file or base path for sharded files.
+For sharded files, pass the base path (e.g., "model_int4.safetensors") and
 the function will find all shards matching the pattern.}
 
 \item{verbose}{Logical. Print progress.}

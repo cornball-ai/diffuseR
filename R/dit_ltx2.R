@@ -89,14 +89,14 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
 
     # Reshape to [batch_size, 3, num_patches, 2]
     latent_coords <- latent_coords$flatten(start_dim = 2L, end_dim = 4L)
-    latent_coords <- latent_coords$unsqueeze(1L) $`repeat`(c(batch_size, 1L, 1L, 1L))
+    latent_coords <- latent_coords$unsqueeze(1L)$`repeat`(c(batch_size, 1L, 1L, 1L))
 
     # Scale to pixel space
     scale_tensor <- torch::torch_tensor(self$scale_factors, device = latent_coords$device)
     pixel_coords <- latent_coords * scale_tensor$view(c(1L, 3L, 1L, 1L))
 
     # Handle causal offset for temporal dimension
-    pixel_coords[, 1,,] <- (pixel_coords[, 1,,] + self$causal_offset - self$scale_factors[1]) $clamp(min = 0)
+    pixel_coords[, 1,,] <- (pixel_coords[, 1,,] + self$causal_offset - self$scale_factors[1])$clamp(min = 0)
 
     # Scale temporal by FPS
     pixel_coords[, 1,,] <- pixel_coords[, 1,,] / fps
@@ -118,16 +118,16 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
 
     # Calculate start timestamps
     grid_start_mel <- grid_f * audio_scale_factor
-    grid_start_mel <- (grid_start_mel + self$causal_offset - audio_scale_factor) $clamp(min = 0)
+    grid_start_mel <- (grid_start_mel + self$causal_offset - audio_scale_factor)$clamp(min = 0)
     grid_start_s <- grid_start_mel * self$hop_length / self$sampling_rate
 
     # Calculate end timestamps
     grid_end_mel <- (grid_f + self$patch_size_t) * audio_scale_factor
-    grid_end_mel <- (grid_end_mel + self$causal_offset - audio_scale_factor) $clamp(min = 0)
+    grid_end_mel <- (grid_end_mel + self$causal_offset - audio_scale_factor)$clamp(min = 0)
     grid_end_s <- grid_end_mel * self$hop_length / self$sampling_rate
 
     audio_coords <- torch::torch_stack(list(grid_start_s, grid_end_s), dim = - 1L) # [num_patches, 2]
-    audio_coords <- audio_coords$unsqueeze(1L) $expand(c(batch_size, - 1L, - 1L)) # [batch_size, num_patches, 2]
+    audio_coords <- audio_coords$unsqueeze(1L)$expand(c(batch_size, - 1L, - 1L)) # [batch_size, num_patches, 2]
     audio_coords <- audio_coords$unsqueeze(2L) # [batch_size, 1, num_patches, 2]
 
     audio_coords
@@ -171,7 +171,7 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
     grid_parts <- lapply(seq_len(num_pos_dims), function(i) {
         coords[, i,] / max_positions[i]
       })
-    grid <- torch::torch_stack(grid_parts, dim = - 1L) $to(device = device)
+    grid <- torch::torch_stack(grid_parts, dim = - 1L)$to(device = device)
 
     num_rope_elems <- num_pos_dims * 2L
 
@@ -186,16 +186,16 @@ ltx2_audio_video_rotary_pos_embed <- torch::nn_module(
       torch::torch_linspace(start = 0.0, end = 1.0, steps = self$dim %/% num_rope_elems,
         dtype = freqs_dtype, device = device)
     )
-    freqs <- (pow_indices * pi / 2.0) $to(dtype = torch::torch_float32())
+    freqs <- (pow_indices * pi / 2.0)$to(dtype = torch::torch_float32())
 
     # Outer product
     freqs <- (grid$unsqueeze(- 1L) * 2 - 1) * freqs# [B, num_patches, num_pos_dims, dim/num_elems]
-    freqs <- freqs$transpose(- 1L, - 2L) $flatten(start_dim = 3L) # [B, num_patches, dim/2]
+    freqs <- freqs$transpose(- 1L, - 2L)$flatten(start_dim = 3L) # [B, num_patches, dim/2]
 
     # Get cos/sin frequencies
     if (self$rope_type == "interleaved") {
-      cos_freqs <- freqs$cos() $repeat_interleave(2L, dim = - 1L)
-      sin_freqs <- freqs$sin() $repeat_interleave(2L, dim = - 1L)
+      cos_freqs <- freqs$cos()$repeat_interleave(2L, dim = - 1L)
+      sin_freqs <- freqs$sin()$repeat_interleave(2L, dim = - 1L)
 
       if (self$dim %% num_rope_elems != 0L) {
         pad_size <- self$dim %% num_rope_elems
@@ -491,7 +491,7 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
       encoder_attention_mask <- encoder_attention_mask$to(dtype = mask_dtype)
       # Use tensor scalar to preserve dtype
       scale <- torch::torch_tensor(- 10000.0, dtype = mask_dtype, device = encoder_attention_mask$device)
-      encoder_attention_mask <- encoder_attention_mask$sub(1) $neg() $mul(scale)
+      encoder_attention_mask <- encoder_attention_mask$sub(1)$neg()$mul(scale)
       encoder_attention_mask <- encoder_attention_mask$unsqueeze(2L)
     }
 
@@ -499,7 +499,7 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
       mask_dtype <- audio_hidden_states$dtype
       audio_encoder_attention_mask <- audio_encoder_attention_mask$to(dtype = mask_dtype)
       scale <- torch::torch_tensor(- 10000.0, dtype = mask_dtype, device = audio_encoder_attention_mask$device)
-      audio_encoder_attention_mask <- audio_encoder_attention_mask$sub(1) $neg() $mul(scale)
+      audio_encoder_attention_mask <- audio_encoder_attention_mask$sub(1)$neg()$mul(scale)
       audio_encoder_attention_mask <- audio_encoder_attention_mask$unsqueeze(2L)
     }
 
@@ -581,7 +581,7 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
     }
 
     # 6. Output layers
-    scale_shift_values <- self$scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(dtype = hidden_states$dtype) + embedded_timestep$unsqueeze(3)
+    scale_shift_values <- self$scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(dtype = hidden_states$dtype) + embedded_timestep$unsqueeze(3)
     shift <- scale_shift_values[,, 1,]
     scale <- scale_shift_values[,, 2,]
 
@@ -589,7 +589,7 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
     hidden_states <- hidden_states * scale$add(1) + shift
     output <- self$proj_out(hidden_states)
 
-    audio_scale_shift_values <- self$audio_scale_shift_table$unsqueeze(1) $unsqueeze(1) $to(dtype = audio_hidden_states$dtype) + audio_embedded_timestep$unsqueeze(3)
+    audio_scale_shift_values <- self$audio_scale_shift_table$unsqueeze(1)$unsqueeze(1)$to(dtype = audio_hidden_states$dtype) + audio_embedded_timestep$unsqueeze(3)
     audio_shift <- audio_scale_shift_values[,, 1,]
     audio_scale <- audio_scale_shift_values[,, 2,]
 

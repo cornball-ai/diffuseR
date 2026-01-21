@@ -48,7 +48,7 @@ preprocess_image <- function(
   # Add batch dimension and rearrange to [batch, channel, height, width]
   if (length(dim(img_tensor)) == 3) {
     # [H, W, C] -> [1, C, H, W]
-    img_tensor <- img_tensor$permute(c(3, 1, 2)) $unsqueeze(1)
+    img_tensor <- img_tensor$permute(c(3, 1, 2))$unsqueeze(1)
   } else if (length(dim(img_tensor)) == 4) {
     # Assume [B, H, W, C] -> [B, C, H, W]
     img_tensor <- img_tensor$permute(c(1, 4, 2, 3))
@@ -61,7 +61,7 @@ preprocess_image <- function(
     align_corners = FALSE) # Usually FALSE for stable diffusion
 
   # Convert to float and normalize to [-1, 1]
-  img_tensor <- img_tensor$to(dtype = torch::torch_float()) $to(device = device)
+  img_tensor <- img_tensor$to(dtype = torch::torch_float())$to(device = device)
   img_tensor <- (img_tensor * 2) - 1
 
   return(img_tensor)

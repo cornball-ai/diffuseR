@@ -13,6 +13,6 @@ bpe_tokenizer(tokenizer_path)
 A bpe_tokenizer object.
 }
 \description{
-Native R implementation of Byte-Pair Encoding tokenizer. Loads from
-HuggingFace tokenizer.json format.
+Native R implementation of Byte-Pair Encoding tokenizer.
+Loads from HuggingFace tokenizer.json format.
 }

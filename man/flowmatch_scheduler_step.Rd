@@ -13,7 +13,8 @@ flowmatch_scheduler_step(
 )
 }
 \arguments{
-\item{model_output}{torch tensor. The output from the diffusion model (velocity prediction).}
+\item{model_output}{torch tensor. The output from the diffusion model
+(velocity prediction).}
 
 \item{timestep}{Numeric. The current timestep.}
 
@@ -22,14 +23,6 @@ flowmatch_scheduler_step(
 \item{schedule}{List. The FlowMatch scheduler object.}
 
 \item{generator}{torch generator or NULL. Random generator for reproducibility.}
-}
-\details{
-The FlowMatch Euler step is remarkably simple:
-\code{prev_sample = sample + dt * model_output}
-where \code{dt = sigma_next - sigma_current}.
-
-This implements the Euler method for solving the probability flow ODE
-in continuous normalizing flows.
 }
 \value{
 A list containing:
@@ -41,4 +34,12 @@ A list containing:
 \description{
 Performs a single denoising step using Euler integration. This is the
 core sampling function for FlowMatch models.
+}
+\details{
+The FlowMatch Euler step is remarkably simple:
+\code{prev_sample = sample + dt * model_output}
+where \code{dt = sigma_next - sigma_current}.
+
+This implements the Euler method for solving the probability flow ODE
+in continuous normalizing flows.
 }

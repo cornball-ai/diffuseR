@@ -15,7 +15,6 @@ repeat_kv(hidden_states, n_rep)
 Tensor of shape [batch, num_kv_heads * n_rep, seq_len, head_dim]
 }
 \description{
-Interleaves KV heads to match query heads: [k0,k0,k1,k1,...] not
-[k0,k1,...,k0,k1,...]
+Interleaves KV heads to match query heads: [k0,k0,k1,k1,...] not [k0,k1,...,k0,k1,...]
 }
 \keyword{internal}

@@ -15,15 +15,15 @@ save_video(
 )
 }
 \arguments{
-\item{video}{Array of video frames with shape [T, H, W, C] where C is 3 (RGB). Values
-should be in [0, 1] range.}
+\item{video}{Array of video frames with shape [T, H, W, C] where C is 3 (RGB).
+Values should be in [0, 1] range.}
 
 \item{file}{Character. Output file path. Extension determines format.}
 
 \item{fps}{Numeric. Frames per second (default 24).}
 
-\item{format}{Character. Output format: "mp4", "gif", "webm", or "frames". If NULL,
-inferred from file extension.}
+\item{format}{Character. Output format: "mp4", "gif", "webm", or "frames".
+If NULL, inferred from file extension.}
 
 \item{backend}{Character. Backend to use: "ffmpeg", "av", or "auto".}
 

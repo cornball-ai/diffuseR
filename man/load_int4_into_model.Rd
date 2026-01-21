@@ -23,6 +23,13 @@ load_int4_into_model(
 
 \item{verbose}{Logical. Print progress.}
 }
+\value{
+The model with linear layers replaced by INT4 versions.
+}
+\description{
+Replaces linear layers in a model with INT4 versions and loads quantized weights.
+This is the main entry point for running large models with INT4 quantization.
+}
 \details{
 This function:
 1. Identifies linear layers by matching parameter names ending in ".weight"
@@ -32,12 +39,4 @@ This function:
 
 The INT4 weights stay compressed on GPU (~10GB for a 40GB model).
 During forward(), each layer dequantizes on-the-fly, keeping memory usage low.
-}
-\value{
-The model with linear layers replaced by INT4 versions.
-}
-\description{
-Replaces linear layers in a model with INT4 versions and loads quantized
-weights. This is the main entry point for running large models with INT4
-quantization.
 }

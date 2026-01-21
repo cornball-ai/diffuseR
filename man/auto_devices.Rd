@@ -9,8 +9,16 @@ auto_devices(model = "sdxl", strategy = "auto")
 \arguments{
 \item{model}{Character. Model type: "sd21" or "sdxl".}
 
-\item{strategy}{Character. Memory strategy: "auto" (default), "full_gpu", "unet_gpu", or
-"cpu_only". See Details.}
+\item{strategy}{Character. Memory strategy: "auto" (default), "full_gpu",
+"unet_gpu", or "cpu_only". See Details.}
+}
+\value{
+A named list of device assignments suitable for `models2devices()`.
+}
+\description{
+Automatically determines optimal device configuration for diffusion model
+components based on available VRAM and GPU architecture. Uses gpuctl for
+detection if available, otherwise falls back to sensible defaults.
 }
 \details{
 Strategies:
@@ -26,15 +34,6 @@ most modern GPUs (8GB+ VRAM).
 
 On Blackwell GPUs (RTX 50xx), "unet_gpu" is forced due to TorchScript
 compatibility issues, regardless of available VRAM.
-}
-\value{
-A named list of device assignments suitable for `models2devices()`.
-}
-\description{
-Automatically determines optimal device configuration for diffusion
-model components based on available VRAM and GPU architecture. Uses
-gpuctl for detection if available, otherwise falls back to sensible
-defaults.
 }
 \examples{
 \dontrun{

@@ -23,6 +23,14 @@ int4_linear(
 
 \item{dtype}{torch_dtype. Data type for dequantized operations.}
 }
+\value{
+nn_module with INT4 weight storage.
+}
+\description{
+A linear layer that stores weights in INT4 format and dequantizes on-the-fly
+during forward pass. This enables running large models on limited VRAM by
+keeping weights compressed on GPU.
+}
 \details{
 The layer stores:
 - `weight_packed`: uint8 tensor with packed INT4 values
@@ -33,12 +41,4 @@ The layer stores:
 During forward(), weights are dequantized to the target dtype, the matmul
 is performed, and the dequantized tensor is freed. This allows ~40GB models
 to run with ~10GB of VRAM for weights.
-}
-\value{
-nn_module with INT4 weight storage.
-}
-\description{
-A linear layer that stores weights in INT4 format and dequantizes
-on-the-fly during forward pass. This enables running large models on
-limited VRAM by keeping weights compressed on GPU.
 }

@@ -33,8 +33,7 @@ rope_prepare_video_coords(
 torch tensor of shape (batch_size, 3, num_patches, 2).
 }
 \description{
-Creates per-dimension patch boundaries for video coordinates in pixel
-space. Returns tensor of shape (batch_size, 3, num_patches, 2) where
-dimension 1 represents (frame, height, width) and dimension 3 represents
-(start, end).
+Creates per-dimension patch boundaries for video coordinates in pixel space.
+Returns tensor of shape (batch_size, 3, num_patches, 2) where dimension 1
+represents (frame, height, width) and dimension 3 represents (start, end).
 }

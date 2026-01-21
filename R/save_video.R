@@ -317,7 +317,7 @@ latents_to_video <- function(
       video_tensor <- vae$decode(latents)
 
       # Convert to array [T, H, W, C]
-      video_array <- video_tensor$squeeze(1L) $permute(c(2, 3, 4, 1)) $cpu() $numpy()
+      video_array <- video_tensor$squeeze(1L)$permute(c(2, 3, 4, 1))$cpu()$numpy()
 
       # Clamp to [0, 1]
       video_array <- pmax(pmin(video_array, 1), 0)

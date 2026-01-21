@@ -27,6 +27,5 @@ load_ltx2_connectors(
 Initialized ltx2_text_connectors module
 }
 \description{
-Load pre-trained LTX2 connector weights from HuggingFace safetensors
-file.
+Load pre-trained LTX2 connector weights from HuggingFace safetensors file.
 }

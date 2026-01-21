@@ -14,7 +14,7 @@ unpack_video_latents(
 )
 }
 \arguments{
-\item{latents}{Tensor of shape \\[B, num_patches, D\\].}
+\item{latents}{Tensor of shape \[B, num_patches, D\].}
 
 \item{num_frames}{Integer. Target number of latent frames.}
 
@@ -27,9 +27,8 @@ unpack_video_latents(
 \item{patch_size_t}{Integer. Temporal patch size (default 1).}
 }
 \value{
-Unpacked tensor of shape \\[B, C, F, H, W\\].
+Unpacked tensor of shape \[B, C, F, H, W\].
 }
 \description{
-Transforms 3D sequence \\[B, num_patches, D\\] back to 5D video latents
-\\[B, C, F, H, W\\].
+Transforms 3D sequence \[B, num_patches, D\] back to 5D video latents \[B, C, F, H, W\].
 }

@@ -33,7 +33,7 @@ gemma3_rms_norm <- torch::nn_module(
   forward = function(x) {
     input_dtype <- x$dtype
     x <- x$to(dtype = torch::torch_float32())
-    variance <- x$pow(2) $mean(dim = - 1L, keepdim = TRUE)
+    variance <- x$pow(2)$mean(dim = - 1L, keepdim = TRUE)
     x <- x * torch::torch_rsqrt(variance + self$eps)
     # Gemma adds 1 to the weight: (1 + weight) * x
     x$to(dtype = input_dtype) * (self$weight$add(1))
@@ -68,7 +68,7 @@ gemma3_rotary_embedding <- torch::nn_module(
 
     # Precompute inverse frequencies
     # For linear scaling, divide inv_freq by the scaling factor (HuggingFace convention)
-    inv_freq <- 1.0 / (base ^ (torch::torch_arange(0, dim - 1L, 2L) $to(dtype = torch::torch_float32()) / dim))
+    inv_freq <- 1.0 / (base ^ (torch::torch_arange(0, dim - 1L, 2L)$to(dtype = torch::torch_float32()) / dim))
     inv_freq <- inv_freq / scaling_factor
     self$inv_freq <- torch::nn_buffer(inv_freq, persistent = FALSE)
   },
@@ -91,8 +91,8 @@ gemma3_rotary_embedding <- torch::nn_module(
     # This duplicates freqs so that first half and second half are identical
     emb <- torch::torch_cat(list(freqs, freqs), dim = - 1L)
 
-    cos_emb <- torch::torch_cos(emb) $to(dtype = x$dtype)
-    sin_emb <- torch::torch_sin(emb) $to(dtype = x$dtype)
+    cos_emb <- torch::torch_cos(emb)$to(dtype = x$dtype)
+    sin_emb <- torch::torch_sin(emb)$to(dtype = x$dtype)
 
     list(cos_emb, sin_emb)
   }
@@ -154,7 +154,7 @@ repeat_kv <- function(
   head_dim <- hidden_states$shape[4]
 
   # Add dimension and expand: [batch, kv_heads, 1, seq, dim] -> [batch, kv_heads, n_rep, seq, dim]
-  hidden_states <- hidden_states$unsqueeze(3L) $expand(c(batch, num_kv_heads, n_rep, seq_len, head_dim))
+  hidden_states <- hidden_states$unsqueeze(3L)$expand(c(batch, num_kv_heads, n_rep, seq_len, head_dim))
   # Reshape to interleave: [batch, kv_heads * n_rep, seq, dim]
   hidden_states$reshape(c(batch, num_kv_heads * n_rep, seq_len, head_dim))
 }
@@ -259,9 +259,9 @@ gemma3_attention <- torch::nn_module(
     value_states <- self$v_proj(hidden_states)
 
     # Reshape to [batch, heads, seq, head_dim]
-    query_states <- query_states$view(c(batch_size, seq_len, self$num_heads, self$head_dim)) $transpose(2L, 3L)
-    key_states <- key_states$view(c(batch_size, seq_len, self$num_key_value_heads, self$head_dim)) $transpose(2L, 3L)
-    value_states <- value_states$view(c(batch_size, seq_len, self$num_key_value_heads, self$head_dim)) $transpose(2L, 3L)
+    query_states <- query_states$view(c(batch_size, seq_len, self$num_heads, self$head_dim))$transpose(2L, 3L)
+    key_states <- key_states$view(c(batch_size, seq_len, self$num_key_value_heads, self$head_dim))$transpose(2L, 3L)
+    value_states <- value_states$view(c(batch_size, seq_len, self$num_key_value_heads, self$head_dim))$transpose(2L, 3L)
 
     # Apply Q/K normalization
     query_states <- self$q_norm(query_states)
@@ -311,7 +311,7 @@ gemma3_attention <- torch::nn_module(
     attn_output <- torch::torch_matmul(attn_weights, value_states)
 
     # Reshape back: [batch, heads, seq, head_dim] -> [batch, seq, hidden]
-    attn_output <- attn_output$transpose(2L, 3L) $contiguous()
+    attn_output <- attn_output$transpose(2L, 3L)$contiguous()
     attn_output <- attn_output$reshape(c(batch_size, seq_len, self$num_heads * self$head_dim))
 
     # Output projection
@@ -333,8 +333,8 @@ create_sliding_window_mask <- function(
   mask <- torch::torch_triu(mask, diagonal = 1L)
 
   # Create sliding window mask (tokens beyond window are masked)
-  row_idx <- torch::torch_arange(0, seq_len - 1L, device = device) $unsqueeze(2L)
-  col_idx <- torch::torch_arange(0, seq_len - 1L, device = device) $unsqueeze(1L)
+  row_idx <- torch::torch_arange(0, seq_len - 1L, device = device)$unsqueeze(2L)
+  col_idx <- torch::torch_arange(0, seq_len - 1L, device = device)$unsqueeze(1L)
   window_mask <- (row_idx - col_idx) > window_size
 
   # Combine: mask future tokens and tokens outside window
@@ -466,7 +466,7 @@ gemma3_text_model <- torch::nn_module(
     # Position IDs
     if (is.null(position_ids)) {
       position_ids <- torch::torch_arange(0, seq_len - 1L, device = input_ids$device)
-      position_ids <- position_ids$unsqueeze(1L) $expand(c(batch_size, - 1L))
+      position_ids <- position_ids$unsqueeze(1L)$expand(c(batch_size, - 1L))
     }
 
     # Compute rotary embeddings (both global and local)
@@ -479,7 +479,7 @@ gemma3_text_model <- torch::nn_module(
       causal_mask <- torch::torch_ones(c(seq_len, seq_len), device = hidden_states$device)
       causal_mask <- torch::torch_triu(causal_mask, diagonal = 1L)
       causal_mask <- causal_mask$to(dtype = hidden_states$dtype) * (- 1e9)
-      causal_mask <- causal_mask$unsqueeze(1L) $unsqueeze(1L)
+      causal_mask <- causal_mask$unsqueeze(1L)$unsqueeze(1L)
     } else {
       # Convert attention mask to additive mask
       # attention_mask: [batch, seq_len] with 1 for valid, 0 for padding
@@ -487,10 +487,10 @@ gemma3_text_model <- torch::nn_module(
       causal_mask <- torch::torch_triu(causal_mask, diagonal = 1L)
 
       # Expand padding mask: [batch, 1, 1, seq_len]
-      padding_mask <- (1 - attention_mask) $unsqueeze(2L) $unsqueeze(2L)
+      padding_mask <- (1 - attention_mask)$unsqueeze(2L)$unsqueeze(2L)
 
       # Combine masks
-      causal_mask <- (causal_mask$unsqueeze(1L) $unsqueeze(1L) + padding_mask) $to(dtype = hidden_states$dtype) * (- 1e9)
+      causal_mask <- (causal_mask$unsqueeze(1L)$unsqueeze(1L) + padding_mask)$to(dtype = hidden_states$dtype) * (- 1e9)
     }
 
     # Collect hidden states if requested
@@ -861,7 +861,7 @@ encode_with_gemma3 <- function(
   hidden_states_stacked <- torch::torch_stack(transformer_hidden_states, dim = - 1L)
 
   # Compute sequence lengths from attention mask
-  sequence_lengths <- as.integer(attention_mask$sum(dim = 2L) $cpu())
+  sequence_lengths <- as.integer(attention_mask$sum(dim = 2L)$cpu())
 
   # Pack embeddings
   if (verbose) message("Packing embeddings...")

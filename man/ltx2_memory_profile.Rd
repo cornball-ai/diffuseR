@@ -9,8 +9,14 @@ ltx2_memory_profile(vram_gb = NULL, model = "ltx2-19b-fp4")
 \arguments{
 \item{vram_gb}{Numeric. Available VRAM in GB, or NULL for auto-detection.}
 
-\item{model}{Character. Model variant: "ltx2-19b-fp4" (default), "ltx2-19b-fp8", or
-"ltx2-19b-distilled".}
+\item{model}{Character. Model variant: "ltx2-19b-fp4" (default), "ltx2-19b-fp8",
+or "ltx2-19b-distilled".}
+}
+\value{
+A list with memory profile settings.
+}
+\description{
+Determines optimal memory configuration based on available VRAM.
 }
 \details{
 LTX-2 is a 19B parameter model. Even with FP4 quantization (~10GB weights),
@@ -28,12 +34,6 @@ Memory profiles:
   \item{very_low}{6GB - FP4 layer-by-layer, VAE on CPU}
   \item{cpu_only}{All on CPU}
 }
-}
-\value{
-A list with memory profile settings.
-}
-\description{
-Determines optimal memory configuration based on available VRAM.
 }
 \examples{
 \dontrun{

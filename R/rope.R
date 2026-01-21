@@ -118,7 +118,7 @@ rope_prepare_video_coords <- function(
   patch_size_vec <- c(patch_size_t, patch_size, patch_size)
   patch_size_delta <- torch::torch_tensor(
     patch_size_vec, dtype = torch::torch_float32(), device = device
-  ) $view(c(3, 1, 1, 1))
+  )$view(c(3, 1, 1, 1))
 
   patch_ends <- grid + patch_size_delta
 
@@ -133,14 +133,14 @@ rope_prepare_video_coords <- function(
   # 3. Convert to pixel space using VAE scale factors
   scale_tensor <- torch::torch_tensor(
     scale_factors, dtype = torch::torch_float32(), device = device
-  ) $view(c(1, 3, 1, 1))
+  )$view(c(1, 3, 1, 1))
 
   pixel_coords <- latent_coords * scale_tensor
 
   # Handle causal offset for first frame
   # Frame coordinates need special handling for causal VAE
   frame_coords <- pixel_coords[, 1,,]
-  frame_coords <- (frame_coords + causal_offset - scale_factors[1]) $clamp(min = 0)
+  frame_coords <- (frame_coords + causal_offset - scale_factors[1])$clamp(min = 0)
   pixel_coords[, 1,,] <- frame_coords
 
   # Scale temporal coordinates by FPS (convert to seconds)
@@ -203,7 +203,7 @@ rope_forward <- function(
   for (i in seq_len(num_pos_dims)) {
     grid_list[[i]] <- coords[, i,] / max_positions[i]
   }
-  grid <- torch::torch_stack(grid_list, dim = - 1) $to(device = device)
+  grid <- torch::torch_stack(grid_list, dim = - 1)$to(device = device)
 
   # Number of RoPE elements (3 dims * 2 for cos/sin)
   num_rope_elems <- num_pos_dims * 2L
@@ -223,19 +223,19 @@ rope_forward <- function(
       dtype = freqs_dtype, device = device
     )
   )
-  freqs <- (pow_indices * pi / 2.0) $to(dtype = torch::torch_float32())
+  freqs <- (pow_indices * pi / 2.0)$to(dtype = torch::torch_float32())
 
   # 4. Compute position-specific frequencies
   # [B, num_patches, num_pos_dims, dim // num_rope_elems]
   freqs <- (grid$unsqueeze(- 1) * 2 - 1) * freqs
 
   # Transpose and flatten [B, num_patches, dim // 2]
-  freqs <- freqs$transpose(- 1, - 2) $flatten(start_dim = 3)
+  freqs <- freqs$transpose(- 1, - 2)$flatten(start_dim = 3)
 
   # 5. Get interleaved (cos, sin) frequencies
   if (rope_type == "interleaved") {
-    cos_freqs <- freqs$cos() $repeat_interleave(2L, dim = - 1L)
-    sin_freqs <- freqs$sin() $repeat_interleave(2L, dim = - 1L)
+    cos_freqs <- freqs$cos()$repeat_interleave(2L, dim = - 1L)
+    sin_freqs <- freqs$sin()$repeat_interleave(2L, dim = - 1L)
 
     # Handle padding if dim not divisible by num_rope_elems
     if (dim %% num_rope_elems != 0) {
@@ -299,7 +299,7 @@ apply_interleaved_rotary_emb <- function(
   x_imag <- x_split[[2]]# [B, S, C // 2]
 
   # Rotate: stack [-x_imag, x_real] and flatten back
-  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1) $flatten(start_dim = 3)
+  x_rotated <- torch::torch_stack(list(- x_imag, x_real), dim = - 1)$flatten(start_dim = 3)
 
   # Apply rotation formula: x * cos + rotate(x) * sin
   out <- (x$to(dtype = torch::torch_float32()) * cos_freqs +
@@ -335,7 +335,7 @@ apply_split_rotary_emb <- function(
     cos_shape <- as.numeric(cos_freqs$shape)
     h <- cos_shape[2]
     t <- cos_shape[3]
-    x <- x$reshape(c(b, t, h, - 1)) $swapaxes(2, 3)
+    x <- x$reshape(c(b, t, h, - 1))$swapaxes(2, 3)
     needs_reshape <- TRUE
   }
 
@@ -352,7 +352,7 @@ apply_split_rotary_emb <- function(
     x_rotated$to(dtype = torch::torch_float32()) * sin_freqs)
 
   if (needs_reshape) {
-    out <- out$swapaxes(2, 3) $flatten(start_dim = 2, end_dim = 3)
+    out <- out$swapaxes(2, 3)$flatten(start_dim = 2, end_dim = 3)
   }
 
   out$to(dtype = x_dtype)

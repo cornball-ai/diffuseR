@@ -17,7 +17,7 @@ quant_conv(x, dtype, device)
 Processed tensor after applying the quantized convolution.
 }
 \description{
-This function applies a quantized convolution operation to an input
-tensor. It is typically used in the context of image processing,
-particularly in generative models like Stable Diffusion.
+This function applies a quantized convolution operation to an input tensor.
+It is typically used in the context of image processing, particularly in
+generative models like Stable Diffusion.
 }

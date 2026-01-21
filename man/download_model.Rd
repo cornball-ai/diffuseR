@@ -16,8 +16,7 @@ download_model(
 \arguments{
 \item{model_name}{Name of the model (e.g., "sd21" for stable-diffusion-2-1)}
 
-\item{devices}{Either a single device string or a named list with elements 'unet',
-'decoder', 'text_encoder'; optionally 'encoder'}
+\item{devices}{Either a single device string or a named list with elements 'unet', 'decoder', 'text_encoder'; optionally 'encoder'}
 
 \item{unet_dtype_str}{Optional: "float16" or "float32" (only applies if unet uses CUDA)}
 
@@ -31,15 +30,16 @@ download_model(
 A list with `model_dir` and `model_files`
 }
 \description{
-Downloads the required model files (e.g., UNet, decoder, text encoder,
-and tokenizer) for a given Stable Diffusion model into a local
-user-specific data directory. The files will be stored in a persistent
-path returned by [tools::R_user_dir()], typically: \itemize{ \item
-macOS: `~/Library/Application Support/diffuseR/` \item Linux:
-`~/.local/share/R/diffuseR/` \item Windows:
-`C:/Users/<username>/AppData/Local/diffuseR/` } Each model is stored in
-its own subdirectory for better organization. If the files already
-exist, they will not be downloaded again unless `overwrite = TRUE`.
+Downloads the required model files (e.g., UNet, decoder, text encoder, and tokenizer)
+for a given Stable Diffusion model into a local user-specific data directory.
+The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
+\itemize{
+\item macOS: `~/Library/Application Support/diffuseR/`
+\item Linux: `~/.local/share/R/diffuseR/`
+\item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
+}
+Each model is stored in its own subdirectory for better organization.
+If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
 }
 \examples{
 \dontrun{

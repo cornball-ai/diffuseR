@@ -7,16 +7,16 @@
 pack_video_latents(latents, patch_size = 1L, patch_size_t = 1L)
 }
 \arguments{
-\item{latents}{Tensor of shape \\[B, C, F, H, W\\].}
+\item{latents}{Tensor of shape \[B, C, F, H, W\].}
 
 \item{patch_size}{Integer. Spatial patch size (default 1).}
 
 \item{patch_size_t}{Integer. Temporal patch size (default 1).}
 }
 \value{
-Packed tensor of shape \\[B, num_patches, C*patch_size_t*patch_size^2\\].
+Packed tensor of shape \[B, num_patches, C*patch_size_t*patch_size^2\].
 }
 \description{
-Transforms 5D video latents \\[B, C, F, H, W\\] to 3D sequence \\[B,
-F*H*W, C\\] for input to the DiT transformer.
+Transforms 5D video latents \[B, C, F, H, W\] to 3D sequence \[B, F*H*W, C\]
+for input to the DiT transformer.
 }

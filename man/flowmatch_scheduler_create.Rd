@@ -18,40 +18,31 @@ flowmatch_scheduler_create(
 )
 }
 \arguments{
-\item{num_train_timesteps}{Integer. The number of diffusion steps used to train the model. Default:
-1000}
+\item{num_train_timesteps}{Integer. The number of diffusion steps used to
+train the model. Default: 1000}
 
 \item{shift}{Numeric. The shift value for the timestep schedule. Default: 1.0}
 
-\item{use_dynamic_shifting}{Logical. Whether to apply timestep shifting on-the-fly based on the
-image/video resolution. Default: FALSE}
+\item{use_dynamic_shifting}{Logical. Whether to apply timestep shifting
+on-the-fly based on the image/video resolution. Default: FALSE}
 
-\item{base_shift}{Numeric. Value to stabilize generation. Increasing reduces variation.
-Default: 0.5}
+\item{base_shift}{Numeric. Value to stabilize generation. Increasing
+reduces variation. Default: 0.5}
 
-\item{max_shift}{Numeric. Maximum shift allowed. Increasing encourages more variation.
-Default: 1.15}
+\item{max_shift}{Numeric. Maximum shift allowed. Increasing encourages
+more variation. Default: 1.15}
 
 \item{base_seq_len}{Integer. Base sequence length for dynamic shifting. Default: 256}
 
 \item{max_seq_len}{Integer. Maximum sequence length for dynamic shifting. Default: 4096}
 
-\item{invert_sigmas}{Logical. Whether to invert the sigmas (used by some models like Mochi).
-Default: FALSE}
+\item{invert_sigmas}{Logical. Whether to invert the sigmas (used by some models
+like Mochi). Default: FALSE}
 
 \item{shift_terminal}{Numeric or NULL. End value of shifted schedule. Default: NULL}
 
-\item{time_shift_type}{Character. Type of dynamic shifting: "exponential" or "linear". Default:
-"exponential"}
-}
-\details{
-FlowMatch (Flow Matching) is a framework for training continuous normalizing
-flows by regressing onto target probability paths. The Euler discrete scheduler
-implements simple Euler integration for sampling from trained flow models.
-
-The core update rule is:
-\code{prev_sample = sample + dt * model_output}
-where \code{dt = sigma_next - sigma_current}.
+\item{time_shift_type}{Character. Type of dynamic shifting: "exponential" or
+"linear". Default: "exponential"}
 }
 \value{
 A FlowMatch scheduler object (list) containing:
@@ -63,9 +54,18 @@ A FlowMatch scheduler object (list) containing:
   }
 }
 \description{
-Creates a FlowMatch scheduler for use with flow-matching diffusion
-models like LTX-2. FlowMatch schedulers use Euler integration for
-sampling, which is simpler and often faster than DDIM-style schedulers.
+Creates a FlowMatch scheduler for use with flow-matching diffusion models
+like LTX-2. FlowMatch schedulers use Euler integration for sampling,
+which is simpler and often faster than DDIM-style schedulers.
+}
+\details{
+FlowMatch (Flow Matching) is a framework for training continuous normalizing
+flows by regressing onto target probability paths. The Euler discrete scheduler
+implements simple Euler integration for sampling from trained flow models.
+
+The core update rule is:
+\code{prev_sample = sample + dt * model_output}
+where \code{dt = sigma_next - sigma_current}.
 }
 \references{
 Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., & Le, M. (2022).

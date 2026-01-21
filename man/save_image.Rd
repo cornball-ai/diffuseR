@@ -11,16 +11,14 @@ save_image(img, save_to = "output.png", normalize = TRUE)
 
 \item{save_to}{File path for the PNG image (default is `"output.png"`).}
 
-\item{normalize}{Logical; whether to normalize pixel values to `[0, 1]`. Default is
-`TRUE`.}
+\item{normalize}{Logical; whether to normalize pixel values to `[0, 1]`. Default is `TRUE`.}
 }
 \value{
 Invisibly returns the saved file path.
 }
 \description{
-Converts a Torch tensor to a normalized RGB image array, saves it as a
-PNG file, and optionally displays it in the RStudio Viewer pane using
-`grid::grid.raster()`.
+Converts a Torch tensor to a normalized RGB image array, saves it as a PNG file,
+and optionally displays it in the RStudio Viewer pane using `grid::grid.raster()`.
 }
 \examples{
 \dontrun{

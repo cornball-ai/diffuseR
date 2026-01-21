@@ -15,8 +15,8 @@ vae_decoder_native(latent_channels = 4, out_channels = 3)
 An nn_module representing the VAE decoder
 }
 \description{
-Native R torch implementation of the SDXL VAE decoder. Replaces
-TorchScript decoder for better GPU compatibility.
+Native R torch implementation of the SDXL VAE decoder.
+Replaces TorchScript decoder for better GPU compatibility.
 }
 \examples{
 \dontrun{

@@ -104,6 +104,5 @@ ltx2_video_transformer_3d_model(
 An nn_module representing the LTX2 video transformer.
 }
 \description{
-Full audio-video transformer matching HuggingFace diffusers
-implementation.
+Full audio-video transformer matching HuggingFace diffusers implementation.
 }

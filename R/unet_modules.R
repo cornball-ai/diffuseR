@@ -39,7 +39,7 @@ timestep_embedding <- function(
   # Expand and compute embeddings
   # timesteps: [batch] -> [batch, 1]
   # freqs: [half_dim] -> [1, half_dim]
-  timesteps_float <- timesteps$to(dtype = torch::torch_float32()) $unsqueeze(2L)
+  timesteps_float <- timesteps$to(dtype = torch::torch_float32())$unsqueeze(2L)
   args <- timesteps_float * freqs$unsqueeze(1L)
 
   # SDXL uses flip_sin_to_cos=True -> [cos, sin]
@@ -106,7 +106,7 @@ UNetResBlock <- torch::nn_module(
     temb_out <- torch::nnf_silu(temb)
     temb_out <- self$time_emb_proj(temb_out)
     # Expand to spatial dimensions: (B, C) -> (B, C, 1, 1)
-    temb_out <- temb_out$unsqueeze(- 1L) $unsqueeze(- 1L)
+    temb_out <- temb_out$unsqueeze(- 1L)$unsqueeze(- 1L)
     h <- h + temb_out
 
     # Second block
@@ -200,9 +200,9 @@ UNetCrossAttention <- torch::nn_module(
     v <- self$to_v(context)
 
     # Reshape for multi-head attention: (B, S, H*D) -> (B, H, S, D)
-    q <- q$view(c(b, seq_len, h, self$dim_head)) $transpose(2L, 3L)
-    k <- k$view(c(b, context_len, h, self$dim_head)) $transpose(2L, 3L)
-    v <- v$view(c(b, context_len, h, self$dim_head)) $transpose(2L, 3L)
+    q <- q$view(c(b, seq_len, h, self$dim_head))$transpose(2L, 3L)
+    k <- k$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
+    v <- v$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
 
     # Scaled dot-product attention
     attn <- torch::torch_matmul(q, k$transpose(3L, 4L)) * self$scale
@@ -212,7 +212,7 @@ UNetCrossAttention <- torch::nn_module(
     out <- torch::torch_matmul(attn, v)
 
     # Reshape back: (B, H, S, D) -> (B, S, H*D)
-    out <- out$transpose(2L, 3L) $contiguous() $view(c(b, seq_len, - 1L))
+    out <- out$transpose(2L, 3L)$contiguous()$view(c(b, seq_len, - 1L))
 
     self$to_out(out)
   }
@@ -349,7 +349,7 @@ SpatialTransformer <- torch::nn_module(
     x <- self$norm(x)
 
     # Reshape to sequence: (B, C, H, W) -> (B, H*W, C)
-    x <- x$permute(c(1L, 3L, 4L, 2L)) $reshape(c(b, h * w, c))
+    x <- x$permute(c(1L, 3L, 4L, 2L))$reshape(c(b, h * w, c))
 
     # Project in
     x <- self$proj_in(x)
@@ -363,7 +363,7 @@ SpatialTransformer <- torch::nn_module(
     x <- self$proj_out(x)
 
     # Reshape back: (B, H*W, C) -> (B, C, H, W)
-    x <- x$reshape(c(b, h, w, c)) $permute(c(1L, 4L, 2L, 3L))
+    x <- x$reshape(c(b, h, w, c))$permute(c(1L, 4L, 2L, 3L))
 
     # Residual
     x + x_in
