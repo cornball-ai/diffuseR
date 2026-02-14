@@ -20,7 +20,7 @@ models2devices(
 \item{download_models}{Logical indicating whether to download models if they are not found.}
 }
 \value{
-A list containing the model directory, model files, device configuration, UNet data type, and CPU/CUDA devices.
+A list containing the device configuration, UNet data type, and CPU/CUDA devices.
 }
 \description{
 This function sets up the model directory, device configuration, and data types for diffusion models.
