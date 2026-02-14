@@ -35,17 +35,6 @@ download_model <- function(
   show_progress = TRUE,
   download_models = FALSE
 ) {
-  # Interactive consent for downloads
-  if (download_models && interactive()) {
-    ans <- utils::askYesNo(
-      paste0("Download '", model_name, "' model files from HuggingFace?"),
-      default = TRUE
-    )
-    if (!isTRUE(ans)) {
-      stop("Download cancelled.", call. = FALSE)
-    }
-  }
-
   # Normalize 'devices'
   if (is.character(devices) && length(devices) == 1) {
     # For SDXL, we need to handle both text encoders
@@ -94,11 +83,6 @@ download_model <- function(
   base_dir <- tools::R_user_dir("diffuseR", "data")
   model_dir <- file.path(base_dir, model_name)
 
-  # Only create directory when actually downloading (CRAN policy)
-  if (download_models) {
-    dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
-  }
-
   # Assemble model files
   if (model_name == "sdxl") {
     model_names <- c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
@@ -133,31 +117,38 @@ download_model <- function(
     }
   }
 
-  # Download files
-  if (download_models) {
-    repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
-    for (file in model_files) {
-      dest_path <- file.path(model_dir, file)
-      if (!file.exists(dest_path) || overwrite) {
-        url <- paste0(repo_url, file)
-        message("Downloading ", file, "...")
-        tryCatch({
-            utils::download.file(
-              url = url,
-              destfile = dest_path,
-              mode = "wb",
-              quiet = !show_progress
-            )
-          }, error = function(e) {
-            warning("Download failed: ", file, " - ", e$message)
-            if (file.exists(dest_path)) unlink(dest_path)
-          })
-      } else {
-        message("File already exists: ", file)
+  # Check which files need downloading
+  needs_download <- !file.exists(file.path(model_dir, model_files)) | overwrite
+
+  # Download files only if needed
+  if (download_models && any(needs_download)) {
+    # Interactive consent only when files actually need downloading
+    if (interactive()) {
+      ans <- utils::askYesNo(
+        paste0("Download '", model_name, "' model files from HuggingFace?"),
+        default = TRUE
+      )
+      if (!isTRUE(ans)) {
+        stop("Download cancelled.", call. = FALSE)
       }
     }
-  } else {
-    message("Skipping model download (download_models == FALSE)")
+    dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
+    repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
+    for (file in model_files[needs_download]) {
+      dest_path <- file.path(model_dir, file)
+      message("Downloading ", file, "...")
+      tryCatch({
+          utils::download.file(
+            url = paste0(repo_url, file),
+            destfile = dest_path,
+            mode = "wb",
+            quiet = !show_progress
+          )
+        }, error = function(e) {
+          warning("Download failed: ", file, " - ", e$message)
+          if (file.exists(dest_path)) unlink(dest_path)
+        })
+    }
   }
   # Check for missing
   missing_files <- model_files[!file.exists(file.path(model_dir, model_files))]
