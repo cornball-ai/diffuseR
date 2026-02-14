@@ -1,7 +1,7 @@
 % tinyrox says don't edit this manually, but it can't stop you!
 \name{download_component}
 \alias{download_component}
-\title{Download TorchScript model component for Stable Diffusion}
+\title{Download a single TorchScript model component}
 \usage{
 download_component(
   model_name = "sd21",
@@ -12,33 +12,25 @@ download_component(
 )
 }
 \arguments{
-\item{model_name}{Character string, the name of the model to download (e.g., `"sd21"`).}
+\item{model_name}{Character string, the name of the model (e.g., \code{"sd21"}).}
 
-\item{component}{Character string, the specific model component to download (e.g., `"unet"`, `"decoder"`, `"text_encoder"`).}
+\item{component}{Character string, the component to download (e.g., \code{"unet"}, \code{"decoder"}).}
 
-\item{device}{Character string, the device type for which the model is intended (e.g., `"cpu"` or `"cuda"`).}
+\item{device}{Character string, the device type (e.g., \code{"cpu"} or \code{"cuda"}).}
 
-\item{overwrite}{Logical; if `TRUE`, re-downloads the model files even if they already exist.}
+\item{overwrite}{Logical; if \code{TRUE}, force re-download even if cached.}
 
-\item{show_progress}{Logical; if `TRUE` (default), displays a progress bar during download.}
+\item{show_progress}{Logical; if \code{TRUE} (default), displays progress during download.}
 }
 \value{
-The local file path to the specific model directory (as a string).
+The local file path to the downloaded component (character string).
 }
 \description{
-Downloads the required model file (e.g., UNet, decoder, text encoder, and tokenizer)
-for a given Stable Diffusion model into a local user-specific data directory.
-The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
-\itemize{
-\item macOS: `~/Library/Application Support/diffuseR/`
-\item Linux: `~/.local/share/R/diffuseR/`
-\item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
-}
-Each model is stored in its own subdirectory for better organization.
-If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
+Downloads a specific model component file (e.g., UNet, decoder, text encoder)
+using \code{hfhub::hub_download()} from the cornball-ai dataset repos.
 }
 \examples{
 \dontrun{
-model_dir <- download_model("sd21")
+path <- download_component("sd21", "text_encoder", "cpu")
 }
 }
