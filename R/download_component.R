@@ -1,94 +1,35 @@
-#' Download TorchScript model component for Stable Diffusion
+#' Download a single TorchScript model component
 #'
-#' Downloads the required model file (e.g., UNet, decoder, text encoder, and tokenizer)
-#' for a given Stable Diffusion model into a local user-specific data directory.
+#' Downloads a specific model component file (e.g., UNet, decoder, text encoder)
+#' using \code{hfhub::hub_download()} from the cornball-ai dataset repos.
 #'
-#' The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
-#' \itemize{
-#'   \item macOS: `~/Library/Application Support/diffuseR/`
-#'   \item Linux: `~/.local/share/R/diffuseR/`
-#'   \item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
-#' }
+#' @param model_name Character string, the name of the model (e.g., \code{"sd21"}).
+#' @param component Character string, the component to download (e.g., \code{"unet"}, \code{"decoder"}).
+#' @param device Character string, the device type (e.g., \code{"cpu"} or \code{"cuda"}).
+#' @param overwrite Logical; if \code{TRUE}, force re-download even if cached.
+#' @param show_progress Logical; if \code{TRUE} (default), displays progress during download.
 #'
-#' Each model is stored in its own subdirectory for better organization.
-#' If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
-#'
-#' @param model_name Character string, the name of the model to download (e.g., `"sd21"`).
-#' @param component Character string, the specific model component to download (e.g., `"unet"`, `"decoder"`, `"text_encoder"`).
-#' @param device Character string, the device type for which the model is intended (e.g., `"cpu"` or `"cuda"`).
-#' @param overwrite Logical; if `TRUE`, re-downloads the model files even if they already exist.
-#' @param show_progress Logical; if `TRUE` (default), displays a progress bar during download.
-#'
-#' @return The local file path to the specific model directory (as a string).
+#' @return The local file path to the downloaded component (character string).
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' model_dir <- download_model("sd21")
+#' path <- download_component("sd21", "text_encoder", "cpu")
 #' }
-download_component <- function(
-  model_name = "sd21",
-  component,
-  device = "cpu",
-  overwrite = FALSE,
-  show_progress = TRUE
-) {
-  # Use "data" instead of "cache" for persistent storage
-  base_dir <- tools::R_user_dir("diffuseR", "data")
+download_component <- function (model_name = "sd21", component, device = "cpu",
+                                overwrite = FALSE, show_progress = TRUE) {
+    filename <- paste0(component, "-", device, ".pt")
 
-  # Create model-specific subdirectory
-  model_dir <- file.path(base_dir, model_name)
-
-  # Define all required model files
-  model_file <- paste0(model_name, "-", device, ".pt")
-  dest_path <- file.path(model_dir, component)
-
-  # Check if file exists and should be overwritten
-  if (!file.exists(dest_path) || overwrite) {
-    # Interactive consent before downloading (CRAN policy)
-    if (interactive()) {
-      ans <- utils::askYesNo(
-        paste0("Download '", component, "' component for '", model_name, "'?"),
-        default = TRUE
-      )
-      if (!isTRUE(ans)) {
-        stop("Download cancelled.", call. = FALSE)
-      }
+    if (overwrite) {
+        # Force download (bypass cache)
+        if (!requireNamespace("hfhub", quietly = TRUE)) {
+            stop("Package 'hfhub' is required. Install with: install.packages('hfhub')")
+        }
+        repo_id <- paste0("cornball-ai/", model_name, "-R")
+        return(hfhub::hub_download(repo_id, filename,
+                repo_type = "dataset", force_download = TRUE))
     }
 
-    # Only create directory when actually downloading (CRAN policy)
-    dir.create(model_dir, showWarnings = FALSE, recursive = TRUE)
-
-    # Define the remote source
-    repo_url <- paste0("https://huggingface.co/datasets/cornball-ai/", model_name, "-R/resolve/main/")
-    url <- paste0(repo_url, model_file)
-
-    message("Downloading ", model_file, " for ", model_name, "...")
-
-    # Handle possible download errors
-    tryCatch({
-        utils::download.file(
-          url = url,
-          destfile = dest_path,
-          mode = "wb",
-          quiet = !show_progress
-        )
-      }, error = function(e) {
-        warning("Failed to download ", model_file, ": ", e$message)
-        # If file was partially downloaded, remove it
-        if (file.exists(dest_path)) {
-          unlink(dest_path)
-        }
-      })
-  }
-
-  # Check if all required files were downloaded successfully
-  missing_files <- model_file[!file.exists(file.path(model_dir, model_file))]
-  if (length(missing_files) > 0) {
-    warning("Model file could not be downloaded: ",
-      paste(missing_files, collapse = ", "))
-  }
-
-  list(model_dir = model_dir, model_file = model_file)
+    hf_download_pt(model_name, filename, download = TRUE)
 }
 

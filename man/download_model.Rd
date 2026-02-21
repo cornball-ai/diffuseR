@@ -19,30 +19,24 @@ download_model(
 
 \item{unet_dtype_str}{Optional: "float16" or "float32" (only applies if unet uses CUDA)}
 
-\item{overwrite}{If TRUE, overwrite existing model files}
+\item{overwrite}{If TRUE, force re-download of model files}
 
 \item{show_progress}{Show download progress messages}
 
-\item{download_models}{If TRUE, download the model files from Hugging Face}
+\item{download_models}{If TRUE, download the model files from HuggingFace}
 }
 \value{
-A list with `model_dir` and `model_files`
+A named list of full file paths, keyed by component name.
 }
 \description{
-Downloads the required model files (e.g., UNet, decoder, text encoder, and tokenizer)
-for a given Stable Diffusion model into a local user-specific data directory.
-The files will be stored in a persistent path returned by [tools::R_user_dir()], typically:
-\itemize{
-\item macOS: `~/Library/Application Support/diffuseR/`
-\item Linux: `~/.local/share/R/diffuseR/`
-\item Windows: `C:/Users/<username>/AppData/Local/diffuseR/`
-}
-Each model is stored in its own subdirectory for better organization.
-If the files already exist, they will not be downloaded again unless `overwrite = TRUE`.
+Downloads the required model files (e.g., UNet, decoder, text encoder)
+for a given Stable Diffusion model using \code{hfhub::hub_download()}.
+Files are cached by hfhub (typically \code{~/.cache/huggingface/hub/}).
+Legacy files in the old \code{R_user_dir()} location are also recognized.
 }
 \examples{
 \dontrun{
-model_dir <- download_model("sd21")
+paths <- download_model("sd21")
 }
 
 }
