@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  _R_CHECK_FORCE_SUGGESTS_: "false"
+  TORCH_HOME: /tmp/torch
+
+jobs:
+  ci:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest}
+          - {os: ubuntu-latest}
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup
+        uses: eddelbuettel/github-actions/r-ci@master
+
+      - name: Dependencies
+        run: ./run.sh install_all
+
+      - name: Install torch
+        run: |
+          mkdir -p $TORCH_HOME
+          Rscript -e 'torch::install_torch()'
+
+      - name: Test
+        run: ./run.sh run_tests
