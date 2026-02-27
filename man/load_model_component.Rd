@@ -32,7 +32,7 @@ A torch model object.
 }
 \description{
 Loads a TorchScript model component (UNet, decoder, or text encoder) from the
-local model directory, downloading it first if necessary.
+hfhub cache or legacy model directory, downloading it first if necessary.
 }
 \examples{
 \dontrun{
