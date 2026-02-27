@@ -30,6 +30,8 @@
 #' @param vae Optional. Pre-loaded VAE module.
 #' @param dit Optional. Pre-loaded DiT transformer module.
 #' @param connectors Optional. Pre-loaded text connectors module.
+#' @param upsampler Optional. Pre-loaded upsampler module. Only used when
+#'   distilled=TRUE for the two-stage pipeline.
 #' @param seed Integer. Random seed for reproducibility.
 #' @param output_file Character. Path to save output video (NULL for no save).
 #' @param output_format Character. Output format: "mp4", "gif", or "frames".
@@ -65,7 +67,8 @@ txt2vid_ltx2 <- function (prompt, negative_prompt = NULL, width = 768L,
                           memory_profile = "auto", model_dir = NULL,
                           text_backend = "gemma3", text_model_path = NULL,
                           text_api_url = NULL, vae = NULL, dit = NULL,
-                          connectors = NULL, seed = NULL, output_file = NULL,
+                          connectors = NULL, upsampler = NULL,
+                          seed = NULL, output_file = NULL,
                           output_format = "mp4", return_latents = FALSE,
                           verbose = TRUE) {
     # Start timing
@@ -325,15 +328,24 @@ txt2vid_ltx2 <- function (prompt, negative_prompt = NULL, width = 768L,
             latent_channels <- 128L
             batch_size <- 1L
 
-            # Random noise
+            # For two-stage distilled: Stage 1 runs at half resolution
+            if (distilled) {
+                s1_latent_height <- latent_height %/% 2L
+                s1_latent_width <- latent_width %/% 2L
+            } else {
+                s1_latent_height <- latent_height
+                s1_latent_width <- latent_width
+            }
+
+            # Random noise at Stage 1 resolution
             latents <- torch::torch_randn(c(batch_size, latent_channels,
-                                            latent_frames, latent_height,
-                                            latent_width),
+                                            latent_frames, s1_latent_height,
+                                            s1_latent_width),
                                           device = dit_device,
                                           dtype = latent_dtype)
 
             # Flatten spatial dims for transformer: [B, C, T, H, W] -> [B, T*H*W, C]
-            num_patches <- latent_frames * latent_height * latent_width
+            num_patches <- latent_frames * s1_latent_height * s1_latent_width
             latents <- latents$permute(c(1, 3, 4, 5, 2)) # [B, T, H, W, C]
             latents <- latents$reshape(c(batch_size, num_patches,
                                          latent_channels))
@@ -342,17 +354,13 @@ txt2vid_ltx2 <- function (prompt, negative_prompt = NULL, width = 768L,
             if (verbose) { message("Setting up FlowMatch scheduler...") }
 
             if (distilled) {
-                # WanGP distilled sigma schedule (8 steps, no CFG)
-                distilled_sigmas <- c(1.0, 0.99375, 0.9875, 0.98125, 0.975,
-                                      0.909375, 0.725, 0.421875, 0.0)
-                num_inference_steps <- length(distilled_sigmas) - 1L
-                sigmas_tensor <- torch::torch_tensor(distilled_sigmas,
-                                                     dtype = latent_dtype,
-                                                     device = dit_device)
-                # Use sigmas directly as timesteps (FlowMatch convention)
+                # WanGP distilled Stage 1 sigma schedule (8 steps, no CFG)
+                stage1_sigmas <- c(1.0, 0.99375, 0.9875, 0.98125, 0.975,
+                                   0.909375, 0.725, 0.421875, 0.0)
+                num_inference_steps <- length(stage1_sigmas) - 1L
                 schedule <- list(
-                    sigmas = distilled_sigmas,
-                    timesteps = distilled_sigmas[-length(distilled_sigmas)]
+                    sigmas = stage1_sigmas,
+                    timesteps = stage1_sigmas[-length(stage1_sigmas)]
                 )
             } else {
                 schedule <- flowmatch_set_timesteps(
@@ -419,8 +427,17 @@ txt2vid_ltx2 <- function (prompt, negative_prompt = NULL, width = 768L,
                 }
             }
 
-            # ---- Step 5: Denoising Loop ----
-            if (verbose) { message(sprintf("Denoising (%d steps)...", num_inference_steps)) }
+            # ---- Step 5: Denoising (Stage 1) ----
+            if (distilled) {
+                if (verbose) {
+                    message(sprintf("Stage 1: Denoising at %dx%d (%d steps)...",
+                                    s1_latent_width * spatial_ratio,
+                                    s1_latent_height * spatial_ratio,
+                                    num_inference_steps))
+                }
+            } else {
+                if (verbose) { message(sprintf("Denoising (%d steps)...", num_inference_steps)) }
+            }
 
             # Audio placeholder (zeros for video-only generation)
             audio_latents <- torch::torch_zeros(
@@ -430,120 +447,152 @@ txt2vid_ltx2 <- function (prompt, negative_prompt = NULL, width = 768L,
                 dtype = latent_dtype
             )
 
-            timesteps_vec <- schedule$timesteps
-            sigmas <- schedule$sigmas
+            latents <- .denoise_loop(
+                latents = latents,
+                dit = dit,
+                schedule = schedule,
+                video_embeds = video_embeds,
+                audio_embeds = audio_embeds,
+                audio_latents = audio_latents,
+                latent_frames = latent_frames,
+                latent_height = s1_latent_height,
+                latent_width = s1_latent_width,
+                dit_device = dit_device,
+                latent_dtype = latent_dtype,
+                fps = fps,
+                use_cfg = use_cfg,
+                distilled = distilled,
+                memory_profile = memory_profile,
+                neg_video_embeds = if (use_cfg) neg_video_embeds else NULL,
+                neg_audio_embeds = if (use_cfg) neg_audio_embeds else NULL,
+                guidance_scale = guidance_scale,
+                verbose = verbose,
+                stage_label = if (distilled) "S1" else NULL
+            )
 
-            for (i in seq_len(num_inference_steps)) {
-                sigma <- sigmas[i]
-                sigma_next <- sigmas[i + 1L]
+            # ---- Step 5b: Upsampler + Stage 2 (distilled only) ----
+            if (distilled) {
+                # Reshape latents to spatial: [B, T*H*W, C] -> [B, C, T, H, W]
+                latents <- latents$reshape(c(batch_size, latent_frames,
+                                             s1_latent_height, s1_latent_width,
+                                             latent_channels))
+                latents <- latents$permute(c(1, 5, 2, 3, 4)) # [B, C, T, H, W]
+
+                if (verbose) message("Loading upsampler...")
+
+                # Load upsampler if not provided
+                if (is.null(upsampler)) {
+                    upsampler_path <- NULL
+                    if (!is.null(model_dir)) {
+                        cand <- file.path(path.expand(model_dir),
+                                          "ltx-2-spatial-upscaler-x2-1.0.safetensors")
+                        if (file.exists(cand)) upsampler_path <- cand
+                    }
+                    if (is.null(upsampler_path)) {
+                        upsampler_path <- tryCatch({
+                            if (requireNamespace("hfhub", quietly = TRUE)) {
+                                hfhub::hub_download("DeepBeepMeep/LTX-2",
+                                    "ltx-2-spatial-upscaler-x2-1.0.safetensors",
+                                    local_files_only = TRUE)
+                            } else NULL
+                        }, error = function(e) NULL)
+                    }
+                    if (is.null(upsampler_path)) {
+                        stop("Upsampler weights required for distilled pipeline.\n",
+                             "Provide model_dir or download with:\n",
+                             "  hfhub::hub_download('DeepBeepMeep/LTX-2', ",
+                             "'ltx-2-spatial-upscaler-x2-1.0.safetensors')")
+                    }
+
+                    upsampler_device <- memory_profile$upsampler_device %||%
+                        dit_device
+                    upsampler <- load_ltx2_upsampler(
+                        weights_path = upsampler_path,
+                        device = upsampler_device,
+                        dtype = memory_profile$dtype,
+                        verbose = verbose)
+                }
+
+                # Get VAE per-channel stats for un-normalize / re-normalize
+                vae_stats <- .get_vae_stats(model_dir, verbose)
+
+                if (verbose) message("Upsampling latents 2x...")
+                latents <- latents$cpu()$to(dtype = torch::torch_float32())
+                latents <- upsample_video_latents(
+                    latents = latents,
+                    upsampler = upsampler,
+                    latents_mean = vae_stats$latents_mean,
+                    latents_std = vae_stats$latents_std,
+                    device = upsampler$parameters[[1]]$device,
+                    dtype = upsampler$parameters[[1]]$dtype
+                )
+                latents <- latents$to(device = dit_device,
+                                       dtype = latent_dtype)
 
                 if (verbose) {
-                    message(sprintf("  Step %d/%d (sigma=%.4f -> %.4f)", i,
-                                    num_inference_steps, as.numeric(sigma),
-                                    as.numeric(sigma_next)))
+                    message(sprintf("  Upsampled: [%s] -> [%s]",
+                        paste(c(s1_latent_height, s1_latent_width), collapse="x"),
+                        paste(c(latent_height, latent_width), collapse="x")))
                 }
 
-                # Prepare timestep tensor (sigma value as timestep)
-                timestep <- torch::torch_tensor(c(as.numeric(sigma)))$unsqueeze(2L)
-                timestep <- timestep$to(device = dit_device,
-                                        dtype = latent_dtype)
+                # Free upsampler
+                rm(upsampler)
+                gc()
+                if (torch::cuda_is_available()) torch::cuda_empty_cache()
 
-                if (distilled || !use_cfg) {
-                    # Distilled: single forward pass, no CFG
-                    output <- dit(hidden_states = latents,
-                                  audio_hidden_states = audio_latents,
-                                  encoder_hidden_states = video_embeds,
-                                  audio_encoder_hidden_states = audio_embeds,
-                                  timestep = timestep,
-                                  num_frames = latent_frames,
-                                  height = latent_height, width = latent_width,
-                                  fps = fps, audio_num_frames = 50L)
-                    denoised <- output$sample
-                } else if (memory_profile$cfg_mode == "sequential") {
-                    # Sequential CFG (memory efficient)
-                    denoised <- sequential_cfg_forward(model = dit,
-                                                       latents = latents,
-                                                       timestep = timestep,
-                                                       prompt_embeds = video_embeds,
-                                                       negative_prompt_embeds = neg_video_embeds,
-                                                       guidance_scale = guidance_scale,
-                                                       audio_hidden_states = audio_latents,
-                                                       audio_encoder_hidden_states = audio_embeds,
-                                                       num_frames = latent_frames,
-                                                       height = latent_height,
-                                                       width = latent_width,
-                                                       fps = fps,
-                                                       audio_num_frames = 50L)
-                } else {
-                    # Batched CFG
-                    latents_input <- torch::torch_cat(list(latents, latents),
-                                                      dim = 1L)
-                    video_input <- torch::torch_cat(list(neg_video_embeds,
-                                                         video_embeds),
-                                                    dim = 1L)
-                    audio_input <- torch::torch_cat(list(neg_audio_embeds,
-                                                         audio_embeds),
-                                                    dim = 1L)
-                    timestep_input <- torch::torch_cat(list(timestep, timestep),
-                                                       dim = 1L)
+                # Add noise for Stage 2
+                stage2_sigmas <- c(0.909375, 0.725, 0.421875, 0.0)
+                noise_scale <- stage2_sigmas[1]
 
-                    output <- dit(hidden_states = latents_input,
-                                  audio_hidden_states = torch::torch_cat(list(audio_latents,
-                                                                              audio_latents),
-                                                                         dim = 1L),
-                                  encoder_hidden_states = video_input,
-                                  audio_encoder_hidden_states = audio_input,
-                                  timestep = timestep_input,
-                                  num_frames = latent_frames,
-                                  height = latent_height, width = latent_width,
-                                  fps = fps, audio_num_frames = 50L)
+                noise <- torch::torch_randn_like(latents)
+                latents <- noise * noise_scale + latents * (1 - noise_scale)
+                rm(noise)
 
-                    denoised_all <- output$sample
-                    denoised_uncond <- denoised_all[1,,]$unsqueeze(1L)
-                    denoised_cond <- denoised_all[2,,]$unsqueeze(1L)
-                    denoised <- denoised_uncond + (denoised_cond - denoised_uncond)$mul(guidance_scale)
-                }
+                # Flatten to patch form for Stage 2
+                num_patches_s2 <- latent_frames * latent_height * latent_width
+                latents <- latents$permute(c(1, 3, 4, 5, 2)) # [B, T, H, W, C]
+                latents <- latents$reshape(c(batch_size, num_patches_s2,
+                                             latent_channels))
 
-                # Debug: show model output and latent statistics
-                if (verbose) {
-                    d_f <- denoised$to(torch::torch_float32())
-                    l_f <- latents$to(torch::torch_float32())
-                    message(sprintf("    latents:  mean=%.4f std=%.4f min=%.4f max=%.4f",
-                            as.numeric(l_f$mean()), as.numeric(l_f$std()),
-                            as.numeric(l_f$min()), as.numeric(l_f$max())))
-                    message(sprintf("    model_out: mean=%.4f std=%.4f min=%.4f max=%.4f",
-                            as.numeric(d_f$mean()), as.numeric(d_f$std()),
-                            as.numeric(d_f$min()), as.numeric(d_f$max())))
-                }
-
-                # FlowMatch Euler step (LTX-2 / WanGP convention):
-                # Model predicts x_0 (denoised sample).
-                # velocity = (z_t - x_0) / sigma; z_{t+1} = z_t + velocity * dt
-                sigma_t <- torch::torch_tensor(as.numeric(sigma),
-                                               dtype = torch::torch_float32(),
-                                               device = dit_device)
-                dt <- torch::torch_tensor(sigma_next - sigma,
-                                          dtype = torch::torch_float32(),
-                                          device = dit_device)
-                velocity <- (latents$to(torch::torch_float32()) - denoised$to(torch::torch_float32())) / sigma_t
-                latents <- (latents$to(torch::torch_float32()) + velocity * dt)$to(dtype = latent_dtype)
+                stage2_schedule <- list(
+                    sigmas = stage2_sigmas,
+                    timesteps = stage2_sigmas[-length(stage2_sigmas)]
+                )
 
                 if (verbose) {
-                    l_f <- latents$to(torch::torch_float32())
-                    message(sprintf("    after_step: mean=%.4f std=%.4f", as.numeric(l_f$mean()), as.numeric(l_f$std())))
+                    message(sprintf("Stage 2: Refining at %dx%d (%d steps)...",
+                                    latent_width * spatial_ratio,
+                                    latent_height * spatial_ratio,
+                                    length(stage2_sigmas) - 1L))
                 }
 
-                # Cleanup for low memory
-                if (memory_profile$name %in% c("low", "very_low") &&
-                    i %% 2 == 0) {
-                    clear_vram()
-                }
+                latents <- .denoise_loop(
+                    latents = latents,
+                    dit = dit,
+                    schedule = stage2_schedule,
+                    video_embeds = video_embeds,
+                    audio_embeds = audio_embeds,
+                    audio_latents = audio_latents,
+                    latent_frames = latent_frames,
+                    latent_height = latent_height,
+                    latent_width = latent_width,
+                    dit_device = dit_device,
+                    latent_dtype = latent_dtype,
+                    fps = fps,
+                    use_cfg = FALSE,
+                    distilled = TRUE,
+                    memory_profile = memory_profile,
+                    guidance_scale = 1.0,
+                    verbose = verbose,
+                    stage_label = "S2"
+                )
             }
 
             # ---- Phase cleanup: free DiT before VAE ----
             # Move latents to CPU, delete DiT and embeddings to free VRAM
             latents <- latents$cpu()
-            rm(dit, video_embeds, audio_embeds, audio_latents, timestep)
+            rm(dit, video_embeds, audio_embeds, audio_latents)
+            if (exists("timestep")) rm(timestep)
             if (use_cfg) rm(neg_video_embeds, neg_audio_embeds)
             gc()
             if (torch::cuda_is_available()) torch::cuda_empty_cache()
@@ -743,5 +792,185 @@ save_video_frames <- function(
     if (verbose) { message(sprintf("  Saved: %s", output_file)) }
 
     invisible(output_file)
+}
+
+# -- Internal helpers ---------------------------------------------------------
+
+#' Run a denoising loop
+#'
+#' Shared Euler-step loop used by both Stage 1 and Stage 2 of the pipeline.
+#'
+#' @keywords internal
+.denoise_loop <- function(latents, dit, schedule, video_embeds, audio_embeds,
+                          audio_latents, latent_frames, latent_height,
+                          latent_width, dit_device, latent_dtype, fps,
+                          use_cfg, distilled, memory_profile,
+                          neg_video_embeds = NULL, neg_audio_embeds = NULL,
+                          guidance_scale = 1.0, verbose = TRUE,
+                          stage_label = NULL) {
+    sigmas <- schedule$sigmas
+    n_steps <- length(sigmas) - 1L
+    batch_size <- latents$shape[1]
+
+    for (i in seq_len(n_steps)) {
+        sigma <- sigmas[i]
+        sigma_next <- sigmas[i + 1L]
+
+        prefix <- if (!is.null(stage_label)) {
+            sprintf("  [%s] Step %d/%d", stage_label, i, n_steps)
+        } else {
+            sprintf("  Step %d/%d", i, n_steps)
+        }
+
+        if (verbose) {
+            message(sprintf("%s (sigma=%.4f -> %.4f)", prefix,
+                            as.numeric(sigma), as.numeric(sigma_next)))
+        }
+
+        # Prepare timestep tensor (sigma value as timestep)
+        timestep <- torch::torch_tensor(c(as.numeric(sigma)))$unsqueeze(2L)
+        timestep <- timestep$to(device = dit_device, dtype = latent_dtype)
+
+        if (distilled || !use_cfg) {
+            # Distilled: single forward pass, no CFG
+            output <- dit(hidden_states = latents,
+                          audio_hidden_states = audio_latents,
+                          encoder_hidden_states = video_embeds,
+                          audio_encoder_hidden_states = audio_embeds,
+                          timestep = timestep,
+                          num_frames = latent_frames,
+                          height = latent_height, width = latent_width,
+                          fps = fps, audio_num_frames = 50L)
+            denoised <- output$sample
+        } else if (memory_profile$cfg_mode == "sequential") {
+            # Sequential CFG (memory efficient)
+            denoised <- sequential_cfg_forward(model = dit,
+                                               latents = latents,
+                                               timestep = timestep,
+                                               prompt_embeds = video_embeds,
+                                               negative_prompt_embeds = neg_video_embeds,
+                                               guidance_scale = guidance_scale,
+                                               audio_hidden_states = audio_latents,
+                                               audio_encoder_hidden_states = audio_embeds,
+                                               num_frames = latent_frames,
+                                               height = latent_height,
+                                               width = latent_width,
+                                               fps = fps,
+                                               audio_num_frames = 50L)
+        } else {
+            # Batched CFG
+            latents_input <- torch::torch_cat(list(latents, latents),
+                                              dim = 1L)
+            video_input <- torch::torch_cat(list(neg_video_embeds,
+                                                 video_embeds), dim = 1L)
+            audio_input <- torch::torch_cat(list(neg_audio_embeds,
+                                                 audio_embeds), dim = 1L)
+            timestep_input <- torch::torch_cat(list(timestep, timestep),
+                                               dim = 1L)
+
+            output <- dit(hidden_states = latents_input,
+                          audio_hidden_states = torch::torch_cat(
+                              list(audio_latents, audio_latents), dim = 1L),
+                          encoder_hidden_states = video_input,
+                          audio_encoder_hidden_states = audio_input,
+                          timestep = timestep_input,
+                          num_frames = latent_frames,
+                          height = latent_height, width = latent_width,
+                          fps = fps, audio_num_frames = 50L)
+
+            denoised_all <- output$sample
+            denoised_uncond <- denoised_all[1,,]$unsqueeze(1L)
+            denoised_cond <- denoised_all[2,,]$unsqueeze(1L)
+            denoised <- denoised_uncond + (denoised_cond - denoised_uncond)$mul(guidance_scale)
+        }
+
+        # Debug statistics
+        if (verbose) {
+            d_f <- denoised$to(torch::torch_float32())
+            l_f <- latents$to(torch::torch_float32())
+            message(sprintf("    latents:  mean=%.4f std=%.4f min=%.4f max=%.4f",
+                    as.numeric(l_f$mean()), as.numeric(l_f$std()),
+                    as.numeric(l_f$min()), as.numeric(l_f$max())))
+            message(sprintf("    model_out: mean=%.4f std=%.4f min=%.4f max=%.4f",
+                    as.numeric(d_f$mean()), as.numeric(d_f$std()),
+                    as.numeric(d_f$min()), as.numeric(d_f$max())))
+        }
+
+        # FlowMatch Euler step: velocity = (z_t - x_0) / sigma
+        sigma_t <- torch::torch_tensor(as.numeric(sigma),
+                                       dtype = torch::torch_float32(),
+                                       device = dit_device)
+        dt <- torch::torch_tensor(sigma_next - sigma,
+                                  dtype = torch::torch_float32(),
+                                  device = dit_device)
+        velocity <- (latents$to(torch::torch_float32()) - denoised$to(torch::torch_float32())) / sigma_t
+        latents <- (latents$to(torch::torch_float32()) + velocity * dt)$to(dtype = latent_dtype)
+
+        if (verbose) {
+            l_f <- latents$to(torch::torch_float32())
+            message(sprintf("    after_step: mean=%.4f std=%.4f",
+                            as.numeric(l_f$mean()), as.numeric(l_f$std())))
+        }
+
+        # Cleanup for low memory
+        if (memory_profile$name %in% c("low", "very_low") && i %% 2 == 0) {
+            clear_vram()
+        }
+    }
+
+    latents
+}
+
+#' Get VAE per-channel statistics
+#'
+#' Loads latents_mean and latents_std from VAE config/weights for
+#' normalize/denormalize operations in the upsampler.
+#'
+#' @keywords internal
+.get_vae_stats <- function(model_dir = NULL, verbose = TRUE) {
+    # Try loading from VAE weights file
+    vae_weights_path <- NULL
+
+    if (!is.null(model_dir)) {
+        cand <- file.path(path.expand(model_dir),
+                          "ltx-2-19b_vae.safetensors")
+        if (file.exists(cand)) vae_weights_path <- cand
+    }
+
+    if (is.null(vae_weights_path)) {
+        # Fall back to HuggingFace cache
+        vae_weights_path <- tryCatch({
+            if (requireNamespace("hfhub", quietly = TRUE)) {
+                hfhub::hub_download("Lightricks/LTX-2",
+                                    "vae/diffusion_pytorch_model.safetensors",
+                                    local_files_only = TRUE)
+            } else NULL
+        }, error = function(e) NULL)
+    }
+
+    if (is.null(vae_weights_path)) {
+        stop("VAE weights required for per-channel statistics.\n",
+             "Provide model_dir with VAE weights.")
+    }
+
+    if (verbose) message("  Loading VAE per-channel statistics...")
+
+    # Load just the statistics tensors
+    weights <- safetensors::safe_load_file(vae_weights_path,
+                                            framework = "torch")
+
+    # Try various key patterns (Wan2GP flat, diffusers, prefixed)
+    lat_mean <- weights[["per_channel_statistics.mean-of-means"]] %||%
+        weights[["vae.per_channel_statistics.mean-of-means"]] %||%
+        weights[["latents_mean"]]
+    lat_std <- weights[["per_channel_statistics.std-of-means"]] %||%
+        weights[["vae.per_channel_statistics.std-of-means"]] %||%
+        weights[["latents_std"]]
+
+    if (is.null(lat_mean) || is.null(lat_std)) {
+        stop("Could not find per-channel statistics in VAE weights")
+    }
+
+    list(latents_mean = lat_mean, latents_std = lat_std)
 }
 

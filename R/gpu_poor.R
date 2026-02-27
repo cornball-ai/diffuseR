@@ -78,6 +78,8 @@ ltx2_memory_profile <- function (vram_gb = NULL, model = "ltx2-19b-fp4") {
             dit_device = "cuda",
             dit_offload = "chunk", # Load layers in chunks
             dit_chunk_size = 12L, # 12 layers at a time (~2.5GB)
+            # Upsampler (two-stage distilled)
+            upsampler_device = "cuda", # ~950MB on GPU
             # Stage 3: VAE decode
             vae_device = "cuda",
             vae_tiling = FALSE,
@@ -97,6 +99,7 @@ ltx2_memory_profile <- function (vram_gb = NULL, model = "ltx2-19b-fp4") {
             dit_device = "cuda",
             dit_offload = "chunk",
             dit_chunk_size = 8L, # 8 layers at a time (~1.7GB)
+            upsampler_device = "cuda", # ~950MB fits alongside DiT
             vae_device = "cuda",
             vae_tiling = TRUE,
             vae_tile_size = c(512L, 512L),
@@ -114,6 +117,7 @@ ltx2_memory_profile <- function (vram_gb = NULL, model = "ltx2-19b-fp4") {
             dit_device = "cuda",
             dit_offload = "layer", # One layer at a time
             dit_chunk_size = 1L,
+            upsampler_device = "cpu", # Keep off GPU, DiT needs all VRAM
             vae_device = "cuda",
             vae_tiling = TRUE,
             vae_tile_size = c(256L, 256L),
@@ -131,6 +135,7 @@ ltx2_memory_profile <- function (vram_gb = NULL, model = "ltx2-19b-fp4") {
             dit_device = "cuda",
             dit_offload = "layer",
             dit_chunk_size = 1L,
+            upsampler_device = "cpu", # Must stay on CPU
             vae_device = "cpu", # VAE on CPU
             vae_tiling = TRUE,
             vae_tile_size = c(128L, 128L),
@@ -148,6 +153,7 @@ ltx2_memory_profile <- function (vram_gb = NULL, model = "ltx2-19b-fp4") {
             dit_device = "cpu",
             dit_offload = "none",
             dit_chunk_size = 48L, # All layers (CPU has more RAM)
+            upsampler_device = "cpu",
             vae_device = "cpu",
             vae_tiling = TRUE,
             vae_tile_size = c(256L, 256L),

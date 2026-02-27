@@ -21,6 +21,7 @@ txt2vid_ltx2(
   vae = NULL,
   dit = NULL,
   connectors = NULL,
+  upsampler = NULL,
   seed = NULL,
   output_file = NULL,
   output_format = "mp4",
@@ -70,6 +71,9 @@ instead of HuggingFace cache.}
 \item{dit}{Optional. Pre-loaded DiT transformer module.}
 
 \item{connectors}{Optional. Pre-loaded text connectors module.}
+
+\item{upsampler}{Optional. Pre-loaded upsampler module. Only used when
+distilled=TRUE for the two-stage pipeline.}
 
 \item{seed}{Integer. Random seed for reproducibility.}
 

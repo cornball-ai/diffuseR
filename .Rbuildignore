@@ -1,3 +1,12 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^CLAUDE\.md$
+^\.github$
+^\.claude$
+^TORCHSCRIPT_MIGRATION\.md$
+^cat\.png$
+^cat2\.png$
+^gambling_cat\.png$
+^fyi\.md$
+^man-md$
+^inst/validation/\.venv$

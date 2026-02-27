@@ -330,6 +330,8 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 - [x] Pipeline integration (txt2vid_ltx2)
 - [x] Video output utilities (save_video)
 - [x] Weight loading from HuggingFace safetensors
+- [x] Two-stage distilled pipeline (Wan2GP parity) - see learnings below
+- [x] Latent upsampler (Conv3d ResBlocks + SpatialRationalResampler)
 
 #### LTX-2 Weight Loading
 
@@ -502,6 +504,34 @@ Pipeline produced noise instead of video. Four bugs found by comparing against d
 
 **Lesson**: Use `pyrotechnics::py2r_file()` to auto-convert reference Python to R for side-by-side comparison. The converted code isn't runnable but reveals algorithmic differences clearly.
 
+#### LTX-2 Two-Stage Distilled Pipeline (February 2026)
+
+Wan2GP's distilled pipeline uses two stages for higher quality output:
+
+**Architecture:**
+1. Stage 1: Denoise at half resolution (H/2, W/2) with 8 steps using `DISTILLED_SIGMA_VALUES`
+2. Upsampler: Un-normalize latents → Conv3d ResBlocks + SpatialRationalResampler (2x) → Re-normalize
+3. Stage 2: Add noise at `noise_scale=0.909375`, denoise at full resolution with 3 steps using `STAGE_2_DISTILLED_SIGMA_VALUES`
+
+**Sigma schedules (hardcoded):**
+- Stage 1: `[1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0]`
+- Stage 2: `[0.909375, 0.725, 0.421875, 0.0]`
+
+**Upsampler model details:**
+- Weight file: `ltx-2-spatial-upscaler-x2-1.0.safetensors` (~950MB)
+- Architecture: `dims=3` (Conv3d), `mid_channels=1024`, `in_channels=128`
+- Uses `SpatialRationalResampler(scale=2.0)`: rearranges to per-frame 2D, applies Conv2d(1024→4096) + PixelShuffle(2), then back to 5D
+- For scale=2.0: `num=2, den=1`, so BlurDownsample is identity (stride=1)
+- Weight key `upsampler.blur_down.kernel` is a buffer, safely skipped during loading
+
+**Stage 2 noise injection:**
+```r
+noise <- torch_randn_like(latents)
+latents <- noise * noise_scale + latents * (1 - noise_scale)
+```
+Where `noise_scale = stage_2_sigmas[1] = 0.909375`.
+
+**Resolution constraint:** For two-stage, resolution must be divisible by 64 (not 32).
 ## R torch API Quirks
 
 Important differences between R torch and Python PyTorch:
