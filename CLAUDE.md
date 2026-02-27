@@ -488,6 +488,20 @@ text <- decode_bpe(tok, result$input_ids)
 - Torch tensor output
 - SentencePiece-style space markers (▁)
 
+#### LTX-2 Pipeline Debugging (February 2026)
+
+Pipeline produced noise instead of video. Four bugs found by comparing against diffusers reference using `pyrotechnics::py2r_file()`:
+
+1. **Scheduler step treated velocity as x0** (CRITICAL): LTX-2 DiT predicts velocity directly. The step is `latents = latents + dt * model_output`, not the x0-to-velocity derivation.
+
+2. **Missing latent denormalization** (CRITICAL): Must denormalize latents (`latents * std / scaling_factor + mean`) before `vae$decode()`. The VAE's `latents_mean`/`latents_std` buffers are loaded from `per_channel_statistics` in safetensors weights.
+
+3. **VAE encoder negative indexing**: R's `[, -1,,,]` excludes the last channel; Python's `[:, -1:]` selects it. Fixed to `[, hidden_states$shape[2],,,, drop = FALSE]`.
+
+4. **Text encoder skipped embedding layer**: Gemma3 outputs 49 hidden states (1 embedding + 48 layers). Code was taking `[2:length]` (48 states) but `text_proj_in_factor=49` expects all 49.
+
+**Lesson**: Use `pyrotechnics::py2r_file()` to auto-convert reference Python to R for side-by-side comparison. The converted code isn't runnable but reveals algorithmic differences clearly.
+
 ## R torch API Quirks
 
 Important differences between R torch and Python PyTorch:

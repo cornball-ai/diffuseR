@@ -31,14 +31,14 @@ expect_true("cfg_mode" %in% names(profile), info = "Profile should have cfg_mode
 # Test 3: Low profile enables tiling and offloading
 cat("Test 3: Low profile settings\n")
 low <- ltx2_memory_profile(vram_gb = 8)
-expect_true(low$dit_offload, info = "Low profile should enable DiT offload")
+expect_equal(low$dit_offload, "layer", info = "Low profile should use layer-by-layer DiT offload")
 expect_true(low$vae_tiling, info = "Low profile should enable VAE tiling")
 expect_equal(low$cfg_mode, "sequential", info = "Low profile should use sequential CFG")
 
 # Test 4: High profile disables aggressive optimizations
 cat("Test 4: High profile settings\n")
 high <- ltx2_memory_profile(vram_gb = 20)
-expect_false(high$dit_offload, info = "High profile should not offload DiT")
+expect_equal(high$dit_offload, "chunk", info = "High profile should chunk DiT")
 expect_false(high$vae_tiling, info = "High profile should not tile VAE")
 expect_equal(high$cfg_mode, "batched", info = "High profile should use batched CFG")
 
