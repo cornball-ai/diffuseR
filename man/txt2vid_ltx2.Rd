@@ -11,14 +11,17 @@ txt2vid_ltx2(
   num_frames = 121L,
   fps = 24,
   num_inference_steps = 8L,
-  guidance_scale = 4,
+  guidance_scale = 1,
+  distilled = TRUE,
   memory_profile = "auto",
+  model_dir = NULL,
   text_backend = "gemma3",
   text_model_path = NULL,
   text_api_url = NULL,
   vae = NULL,
   dit = NULL,
   connectors = NULL,
+  upsampler = NULL,
   seed = NULL,
   output_file = NULL,
   output_format = "mp4",
@@ -29,7 +32,8 @@ txt2vid_ltx2(
 \arguments{
 \item{prompt}{Character. Text prompt describing the video to generate.}
 
-\item{negative_prompt}{Character. Optional negative prompt.}
+\item{negative_prompt}{Character. Optional negative prompt (only used when
+distilled=FALSE).}
 
 \item{width}{Integer. Video width in pixels (default 768).}
 
@@ -39,12 +43,22 @@ txt2vid_ltx2(
 
 \item{fps}{Numeric. Frames per second (default 24).}
 
-\item{num_inference_steps}{Integer. Number of denoising steps (default 8 for distilled).}
+\item{num_inference_steps}{Integer. Number of denoising steps (default 8
+for distilled). Ignored when distilled=TRUE (uses fixed 8-step schedule).}
 
-\item{guidance_scale}{Numeric. CFG scale (default 4.0).}
+\item{guidance_scale}{Numeric. CFG scale (default 1.0, no guidance).
+Only used when distilled=FALSE.}
+
+\item{distilled}{Logical. Use distilled pipeline (default TRUE). Distilled
+mode uses a fixed 8-step sigma schedule with no CFG, matching the WanGP
+container behavior.}
 
 \item{memory_profile}{Character or list. Memory profile: "auto" for auto-detection,
 or a profile from `ltx2_memory_profile()`.}
+
+\item{model_dir}{Character. Path to directory containing LTX-2 model files
+(VAE, connectors, text projection). When provided, loads from local files
+instead of HuggingFace cache.}
 
 \item{text_backend}{Character. Text encoding backend: "gemma3" (native), "api", "precomputed", or "random".}
 
@@ -57,6 +71,9 @@ or a profile from `ltx2_memory_profile()`.}
 \item{dit}{Optional. Pre-loaded DiT transformer module.}
 
 \item{connectors}{Optional. Pre-loaded text connectors module.}
+
+\item{upsampler}{Optional. Pre-loaded upsampler module. Only used when
+distilled=TRUE for the two-stage pipeline.}
 
 \item{seed}{Integer. Random seed for reproducibility.}
 
@@ -76,10 +93,13 @@ A list with:
 }
 \description{
 Generates video using the LTX-2 diffusion transformer model.
+Uses the WanGP-style distilled pipeline by default: no classifier-free
+guidance, specific sigma schedule, and phase-based memory management
+(components loaded/unloaded sequentially to minimize VRAM usage).
 }
 \examples{
 \dontrun{
-# Basic usage
+# Basic usage (distilled, no CFG)
 result <- txt2vid_ltx2("A cat walking on a beach at sunset")
 
 # With specific settings
@@ -88,7 +108,6 @@ result <- txt2vid_ltx2(
   width = 512,
   height = 320,
   num_frames = 61,
-  num_inference_steps = 8,
   seed = 42,
   output_file = "clouds.mp4"
 )

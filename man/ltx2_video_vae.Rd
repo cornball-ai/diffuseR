@@ -46,8 +46,7 @@ ltx2_video_vae(
   2L),
   timestep_conditioning,
   patch_size,
-  patch_size_t,
-  resnet_norm_eps
+  patch_size_t
 )
 }
 \arguments{
