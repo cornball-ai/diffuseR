@@ -60,6 +60,7 @@ img2img <- function (input_image, prompt, negative_prompt = NULL,
 
     if (is.null(pipeline)) {
         pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+            i2i = TRUE,
             unet_dtype_str = unet_dtype_str,
             use_native_decoder = use_native_decoder,
             use_native_text_encoder = use_native_text_encoder,

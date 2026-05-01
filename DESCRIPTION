@@ -1,6 +1,6 @@
 Package: diffuseR
 Title: Functional Interface to Diffusion Models in R
-Version: 0.0.1
+Version: 0.0.2
 Authors@R: 
     person("Troy", "Hernandez", email = "troy@cornball.ai", role = c("aut", "cre"))
 Description: A native R implementation of diffusion models providing a functional 
