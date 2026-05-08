@@ -30,9 +30,9 @@ Saves INT4 quantized weights to disk as sharded safetensors files.
 \details{
 Weights are saved in safetensors format with the following structure:
 \itemize{
-  \item `{name}::packed` - uint8 tensor with packed INT4 values
-  \item `{name}::scales` - float32 tensor with per-block scales
-  \item `{name}::shape` - int64 tensor with original shape
+  \item \code{<name>::packed} - uint8 tensor with packed INT4 values
+  \item \code{<name>::scales} - float32 tensor with per-block scales
+  \item \code{<name>::shape} - int64 tensor with original shape
 }
 
 Large models are automatically sharded to avoid R's 2GB vector limit.

@@ -6,6 +6,7 @@
 load_ltx2_connectors(
   weights_path,
   config_path = NULL,
+  text_proj_path = NULL,
   device = "cpu",
   dtype = "float32",
   verbose = TRUE

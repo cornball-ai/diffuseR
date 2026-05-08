@@ -524,6 +524,11 @@ ltx2_video_transformer_3d_model <- torch::nn_module(
     audio_hidden_states <- self$audio_proj_in(audio_hidden_states)
 
     # 3. Prepare timestep embeddings
+    # Scale timesteps from [0,1] to [0, timestep_scale_multiplier] for sinusoidal embeddings
+    # (matches WanGP convention: model receives sigma in [0,1], scales internally)
+    timestep <- timestep * self$timestep_scale_multiplier
+    audio_timestep <- audio_timestep * self$timestep_scale_multiplier
+
     timestep_cross_attn_gate_scale_factor <- self$cross_attn_timestep_scale_multiplier / self$timestep_scale_multiplier
 
     # 3.1 Global timestep embedding

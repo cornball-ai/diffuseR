@@ -21,7 +21,7 @@ expect_equal(defaults$width, 768L, info = "Default width should be 768")
 expect_equal(defaults$height, 512L, info = "Default height should be 512")
 expect_equal(defaults$num_frames, 121L, info = "Default frames should be 121")
 expect_equal(defaults$num_inference_steps, 8L, info = "Default steps should be 8 (distilled)")
-expect_equal(defaults$guidance_scale, 4.0, info = "Default CFG should be 4.0")
+expect_equal(defaults$guidance_scale, 1.0, info = "Default CFG should be 1.0 (distilled mode)")
 
 # Test 3: Memory profile resolution
 cat("Test 3: Memory profile parameter\n")

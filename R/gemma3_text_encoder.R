@@ -516,9 +516,9 @@ gemma3_text_model <- torch::nn_module(
     # Final normalization
     hidden_states <- self$norm(hidden_states)
 
-    if (output_hidden_states) {
-      all_hidden_states <- c(all_hidden_states, list(hidden_states))
-    }
+    # NOTE: do NOT append post-norm output to all_hidden_states.
+    # LTX-2 connectors expect exactly 49 states (embedding + 48 layers).
+    # The post-norm output is only returned as last_hidden_state.
 
     list(
       last_hidden_state = hidden_states,
@@ -852,13 +852,12 @@ encode_with_gemma3 <- function(
       output <- model(input_ids, attention_mask = attention_mask, output_hidden_states = TRUE)
     })
 
-  # Stack hidden states from transformer layers (skip embedding layer at index 1)
+  # Stack ALL hidden states (embedding + 48 transformer layers = 49 total)
   hidden_states_list <- output$hidden_states
-  # hidden_states_list[[1]] is embedding layer, [[2]] onwards are transformer layers
+  # hidden_states_list[[1]] is embedding layer, [[2]]..[[49]] are transformer layers
   # LTX-2 connectors expect 49 layers (text_proj_in_factor=49)
-  transformer_hidden_states <- hidden_states_list[2:length(hidden_states_list)]
   # Stack: [batch, seq_len, hidden_size, num_layers]
-  hidden_states_stacked <- torch::torch_stack(transformer_hidden_states, dim = - 1L)
+  hidden_states_stacked <- torch::torch_stack(hidden_states_list, dim = -1L)
 
   # Compute sequence lengths from attention mask
   sequence_lengths <- as.integer(attention_mask$sum(dim = 2L)$cpu())
