@@ -347,6 +347,13 @@ ltx23_transformer <- torch::nn_module(
         )
         hidden_states <- res[[1]]
         audio_hidden_states <- res[[2]]
+        if (isTRUE(getOption("diffuseR.debug"))) {
+            ms <- torch::cuda_memory_stats()
+            message(sprintf("    block %d: %.2f GB allocated, %.2f GB reserved",
+                            block_idx,
+                            ms$allocated_bytes$all$current / 1e9,
+                            ms$reserved_bytes$all$current / 1e9))
+        }
         if (fp8_mode) {
             # Dequantized fp8 temporaries only free once R's GC finalizes them
             gc(verbose = FALSE)
