@@ -113,7 +113,7 @@ download_ltx2 <- function(
   if (text_encoder) {
     te_files <- c(
       "text_encoder/config.json",
-      sprintf("text_encoder/model-%05d-of-00006.safetensors", 1:6),
+      sprintf("text_encoder/model-%05d-of-00011.safetensors", 1:11),
       "text_encoder/model.safetensors.index.json",
       "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json",
       "tokenizer/special_tokens_map.json"
