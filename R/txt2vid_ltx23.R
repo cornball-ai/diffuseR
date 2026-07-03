@@ -75,6 +75,63 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
   latents * std + mean
 }
 
+# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free)
+.ltx23_denoise <- function(
+  transformer, latents, audio_latents, sigmas,
+  video_text_embeds, audio_text_embeds, text_mask,
+  latent_frames, latent_height, latent_width,
+  audio_num_frames, frame_rate,
+  device, compute_dtype, verbose = TRUE, stage = ""
+) {
+  f32 <- torch::torch_float32()
+  video_coords <- transformer$rope$prepare_video_coords(
+    latents$shape[1], latent_frames, latent_height, latent_width,
+    device, fps = frame_rate
+  )
+  audio_coords <- transformer$audio_rope$prepare_audio_coords(
+    audio_latents$shape[1], audio_num_frames, device
+  )
+
+  n_steps <- length(sigmas) - 1L
+  scale_mult <- transformer$timestep_scale_multiplier
+  torch::with_no_grad({
+    for (i in seq_len(n_steps)) {
+      sigma <- sigmas[i]
+      t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
+
+      out <- transformer(
+        hidden_states = latents$to(dtype = compute_dtype),
+        audio_hidden_states = audio_latents$to(dtype = compute_dtype),
+        encoder_hidden_states = video_text_embeds,
+        audio_encoder_hidden_states = audio_text_embeds,
+        timestep = t,
+        sigma = t,
+        encoder_attention_mask = text_mask,
+        audio_encoder_attention_mask = text_mask,
+        num_frames = latent_frames,
+        height = latent_height,
+        width = latent_width,
+        fps = frame_rate,
+        audio_num_frames = audio_num_frames,
+        video_coords = video_coords,
+        audio_coords = audio_coords,
+        use_cross_timestep = TRUE
+      )
+
+      # Euler velocity step in float32; dt is negative (sigma decreasing)
+      dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
+      latents <- latents + dt * out$sample$to(dtype = f32)
+      audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+      rm(out)
+      gc(verbose = FALSE)
+      if (verbose) {
+        message(sprintf("  %sstep %d/%d (sigma %.4f)", stage, i, n_steps, sigma))
+      }
+    }
+  })
+  list(latents = latents, audio_latents = audio_latents)
+}
+
 #' Load the LTX-2.3 generation components from a single-file checkpoint
 #'
 #' Builds the transformer, connectors, video VAE, audio VAE, and vocoder
@@ -82,15 +139,20 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #' them. The Gemma3 text encoder ships separately (see
 #' \code{\link{load_gemma3_text_encoder}}).
 #'
-#' @param checkpoint_path Path to e.g.
-#'   \code{ltx-2.3-22b-distilled-1.1.safetensors}.
+#' @param checkpoint_path Path to the single-file checkpoint (e.g.
+#'   \code{ltx-2.3-22b-distilled-1.1.safetensors}) or to an fp8 artifact
+#'   directory produced by \code{\link{ltx23_quantize_fp8}}. With the fp8
+#'   artifact, the transformer loads with CPU-resident fp8 weights that
+#'   stream to \code{device} during the forward pass.
 #' @param device Character. Device for the small components (VAEs,
-#'   vocoder, connectors). The transformer placement is controlled by
-#'   \code{transformer_device}.
+#'   vocoder, connectors) and, with fp8, the transformer residents.
 #' @param dtype Character. "bfloat16" (checkpoint native) or "float32".
 #' @param transformer_device Character. Device for the transformer
-#'   weights (default "cpu"; the fp8/offload path manages movement).
+#'   weights when loading the plain (non-fp8) checkpoint.
 #' @param components Character vector. Which components to load.
+#' @param pin Logical. Pin fp8 host memory (fp8 artifact only).
+#' @param attn_chunk Integer or NULL. Query-chunk size for attention
+#'   (see \code{\link{ltx23_set_attn_chunk}}).
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -103,9 +165,16 @@ ltx23_load_pipeline <- function(
   dtype = "bfloat16",
   transformer_device = "cpu",
   components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
+  pin = TRUE,
+  attn_chunk = NULL,
   verbose = TRUE
 ) {
-  ckpt <- ltx23_open_checkpoint(checkpoint_path)
+  fp8 <- dir.exists(checkpoint_path)
+  ckpt <- if (fp8) {
+    ltx23_open_fp8_checkpoint(checkpoint_path)
+  } else {
+    ltx23_open_checkpoint(checkpoint_path)
+  }
   groups <- ltx23_split_keys(ckpt$keys)
   torch_dtype <- switch(dtype,
     bfloat16 = torch::torch_bfloat16(),
@@ -131,9 +200,18 @@ ltx23_load_pipeline <- function(
   }
 
   if ("dit" %in% components) {
-    pipe$transformer <- load_component(
-      "dit", ltx23_transformer(), ltx23_map_dit_key, transformer_device
-    )
+    if (fp8) {
+      pipe$transformer <- ltx23_load_transformer_fp8(
+        ckpt, device = device, pin = pin, verbose = verbose
+      )
+    } else {
+      pipe$transformer <- load_component(
+        "dit", ltx23_transformer(), ltx23_map_dit_key, transformer_device
+      )
+    }
+    if (!is.null(attn_chunk)) {
+      ltx23_set_attn_chunk(pipe$transformer, as.integer(attn_chunk))
+    }
   }
   if ("connectors" %in% components) {
     pipe$connectors <- load_component(
@@ -200,6 +278,16 @@ ltx23_load_pipeline <- function(
 #' @param max_sequence_length Integer. Text token length (multiple of 128).
 #' @param decode_video,decode_audio Logicals. Decode the respective
 #'   latents (disable for latent-space work).
+#' @param two_stage Logical. Generate at half resolution, upsample the
+#'   latents 2x spatially, and refine over the stage-2 schedule
+#'   (resolution must then be a multiple of 64; requires
+#'   \code{upsampler}).
+#' @param upsampler An \code{\link{ltx23_latent_upsampler}} (see
+#'   \code{\link{ltx23_load_upsampler}}).
+#' @param adain_factor Numeric. AdaIN blend of the upsampled latents
+#'   toward the stage-1 statistics (0 disables).
+#' @param tone_map_compression Numeric in [0, 1]. Optional latent tone
+#'   mapping before stage 2.
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{video} (array
@@ -226,11 +314,23 @@ txt2vid_ltx2 <- function(
   max_sequence_length = 1024L,
   decode_video = TRUE,
   decode_audio = TRUE,
+  two_stage = FALSE,
+  upsampler = NULL,
+  adain_factor = 1.0,
+  tone_map_compression = 0,
   verbose = TRUE
 ) {
   stopifnot(inherits(pipeline, "ltx23_pipeline"))
   if (guidance_scale != 1) {
     stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
+  }
+  if (two_stage) {
+    if (is.null(upsampler)) {
+      stop("two_stage = TRUE requires an upsampler (see ltx23_load_upsampler).")
+    }
+    if (width %% 64L != 0L || height %% 64L != 0L) {
+      stop("width and height must be multiples of 64 for two-stage generation")
+    }
   }
   if (width %% 32L != 0L || height %% 32L != 0L) {
     stop("width and height must be multiples of 32")
@@ -283,13 +383,16 @@ txt2vid_ltx2 <- function(
   latent_frames <- (num_frames - 1L) %/% 8L + 1L
   latent_height <- height %/% 32L
   latent_width <- width %/% 32L
+  # Two-stage: stage 1 generates at half resolution
+  s1_height <- if (two_stage) latent_height %/% 2L else latent_height
+  s1_width <- if (two_stage) latent_width %/% 2L else latent_width
 
   # 25 audio latent frames per second: sampling_rate / hop / downsample
   audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
   latent_mel_bins <- 16L# 64 mel bins / 4
 
   latents <- torch::torch_randn(
-    c(1L, 128L, latent_frames, latent_height, latent_width),
+    c(1L, 128L, latent_frames, s1_height, s1_width),
     device = device, dtype = f32
   )
   latents <- ltx23_pack_video_latents(latents)
@@ -300,54 +403,75 @@ txt2vid_ltx2 <- function(
   )
   audio_latents <- ltx23_pack_audio_latents(audio_latents)
 
-  # Positional coords are constant across steps
-  transformer <- pipeline$transformer
-  video_coords <- transformer$rope$prepare_video_coords(
-    1L, latent_frames, latent_height, latent_width, device, fps = frame_rate
-  )
-  audio_coords <- transformer$audio_rope$prepare_audio_coords(
-    1L, audio_num_frames, device
-  )
-
   # --- Phase 3: denoising -------------------------------------------------------
-  n_steps <- length(sigmas) - 1L
-  scale_mult <- transformer$timestep_scale_multiplier
+  transformer <- pipeline$transformer
   if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
-    n_steps, width, height, num_frames))
+    length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
+    height %/% (if (two_stage) 2L else 1L), num_frames))
 
-  torch::with_no_grad({
-    for (i in seq_len(n_steps)) {
-      sigma <- sigmas[i]
-      t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
+  denoised <- .ltx23_denoise(
+    transformer, latents, audio_latents, sigmas,
+    video_text_embeds, audio_text_embeds, text_mask,
+    latent_frames, s1_height, s1_width,
+    audio_num_frames, frame_rate,
+    device, compute_dtype, verbose = verbose,
+    stage = if (two_stage) "stage 1 " else ""
+  )
+  latents <- denoised$latents
+  audio_latents <- denoised$audio_latents
 
-      out <- transformer(
-        hidden_states = latents$to(dtype = compute_dtype),
-        audio_hidden_states = audio_latents$to(dtype = compute_dtype),
-        encoder_hidden_states = video_text_embeds,
-        audio_encoder_hidden_states = audio_text_embeds,
-        timestep = t,
-        sigma = t,
-        encoder_attention_mask = text_mask,
-        audio_encoder_attention_mask = text_mask,
-        num_frames = latent_frames,
-        height = latent_height,
-        width = latent_width,
-        fps = frame_rate,
-        audio_num_frames = audio_num_frames,
-        video_coords = video_coords,
-        audio_coords = audio_coords,
-        use_cross_timestep = TRUE
+  if (two_stage) {
+    vae <- pipeline$vae
+    if (verbose) message("Upsampling latents 2x...")
+    torch::with_no_grad({
+      up_device <- upsampler$final_conv$weight$device
+      up_dtype <- upsampler$final_conv$weight$dtype
+      s1_latents <- ltx23_unpack_video_latents(
+        latents, latent_frames, s1_height, s1_width
+      )$to(device = up_device)
+      # The upsampler operates on unnormalized latents
+      s1_latents <- ltx23_denormalize_latents(
+        s1_latents, vae$latents_mean, vae$latents_std
       )
+      up_latents <- upsampler(s1_latents$to(dtype = up_dtype))$to(dtype = f32)
+      if (adain_factor != 0) {
+        up_latents <- ltx23_adain_filter_latent(
+          up_latents, s1_latents$to(dtype = f32), adain_factor
+        )
+      }
+      if (tone_map_compression > 0) {
+        up_latents <- ltx23_tone_map_latents(up_latents, tone_map_compression)
+      }
+      up_latents <- ltx23_normalize_latents(
+        up_latents, vae$latents_mean, vae$latents_std
+      )
+      latents <- ltx23_pack_video_latents(up_latents$to(device = device))
+      rm(s1_latents, up_latents)
+    })
+    gc(verbose = FALSE)
 
-      # Euler velocity step in float32; dt is negative (sigma decreasing)
-      dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
-      latents <- latents + dt * out$sample$to(dtype = f32)
-      audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
-      rm(out)
-      gc(verbose = FALSE)
-      if (verbose) message(sprintf("  step %d/%d (sigma %.4f)", i, n_steps, sigma))
-    }
-  })
+    # Re-noise BOTH modalities at the stage-2 entry sigma
+    s2_sigmas <- ltx23_stage2_distilled_sigmas()
+    noise_scale <- s2_sigmas[1]
+    torch::with_no_grad({
+      latents <- torch::torch_randn_like(latents)$mul(noise_scale) +
+        latents$mul(1 - noise_scale)
+      audio_latents <- torch::torch_randn_like(audio_latents)$mul(noise_scale) +
+        audio_latents$mul(1 - noise_scale)
+    })
+
+    if (verbose) message(sprintf("Refining: %d steps at %dx%d...",
+      length(s2_sigmas) - 1L, width, height))
+    denoised <- .ltx23_denoise(
+      transformer, latents, audio_latents, s2_sigmas,
+      video_text_embeds, audio_text_embeds, text_mask,
+      latent_frames, latent_height, latent_width,
+      audio_num_frames, frame_rate,
+      device, compute_dtype, verbose = verbose, stage = "stage 2 "
+    )
+    latents <- denoised$latents
+    audio_latents <- denoised$audio_latents
+  }
 
   result <- list(
     latents = latents,

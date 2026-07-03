@@ -9,7 +9,8 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
              sigmas = ltx23_distilled_sigmas(), guidance_scale = 1,
              seed = NULL, device = "cuda", dtype = "bfloat16", filename = NULL,
              max_sequence_length = 1024L, decode_video = TRUE,
-             decode_audio = TRUE, verbose = TRUE)
+             decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
+             adain_factor = 1, tone_map_compression = 0, verbose = TRUE)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}
@@ -41,6 +42,20 @@ distilled checkpoints are trained for CFG-free sampling.}
 muxed in when the av package is available.}
 
 \item{max_sequence_length}{Integer. Text token length (multiple of 128).}
+
+\item{two_stage}{Logical. Generate at half resolution, upsample the
+latents 2x spatially, and refine over the stage-2 schedule
+(resolution must then be a multiple of 64; requires
+\code{upsampler}).}
+
+\item{upsampler}{An \code{\link{ltx23_latent_upsampler}} (see
+\code{\link{ltx23_load_upsampler}}).}
+
+\item{adain_factor}{Numeric. AdaIN blend of the upsampled latents
+toward the stage-1 statistics (0 disables).}
+
+\item{tone_map_compression}{Numeric in [0, 1]. Optional latent tone
+mapping before stage 2.}
 
 \item{verbose}{Logical.}
 
