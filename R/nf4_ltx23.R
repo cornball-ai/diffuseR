@@ -76,14 +76,10 @@ ltx23_nf4_quantize <- function(x) {
 #' @export
 ltx23_nf4_dequantize <- function(packed, absmax, shape,
                                  dtype = torch::torch_bfloat16(),
-                                 chunk_elements = 16777216L,
+                                 chunk_elements = 8388608L,
                                  out = NULL) {
     block <- .ltx23_nf4_block_size
-    table <- torch::torch_tensor(.ltx23_nf4_table,
-                                 dtype = torch::torch_float32(),
-                                 device = packed$device)
 
-    n_elements <- prod(as.numeric(shape))
     if (is.null(out)) {
         out <- torch::torch_empty(shape, dtype = dtype, device = packed$device)
     }
@@ -91,30 +87,91 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
 
     n_bytes <- packed$shape[1]
     bytes_per_chunk <- max(chunk_elements %/% 2L, block)
+    scratch <- .ltx23_get_dequant_scratch(min(bytes_per_chunk, n_bytes),
+                                          packed$device)
+
     start <- 1L
     torch::with_no_grad({
         while (start <= n_bytes) {
             len <- min(bytes_per_chunk, n_bytes - start + 1L)
             chunk <- packed$narrow(1L, start, len)
 
-            hi <- torch::torch_div(chunk, 16L, rounding_mode = "floor")
-            lo <- chunk - hi * 16L
-            idx <- torch::torch_stack(list(hi, lo), dim = 2L)$flatten()
-            idx <- idx$to(dtype = torch::torch_long())
+            # Fully in-place nibble unpack into persistent scratch:
+            # hi = byte %/% 16, lo = byte - 16 * hi
+            hi <- scratch$hi$narrow(1L, 1L, len)
+            lo <- scratch$lo$narrow(1L, 1L, len)
+            hi$copy_(chunk)$div_(16L, rounding_mode = "floor")
+            lo$copy_(hi)$mul_(-16L)$add_(chunk)
 
-            vals <- torch::torch_index_select(table, 1L, idx + 1L)
-            rm(idx, hi, lo)
+            # Interleave into the (1-based) int64 index scratch
+            idx <- scratch$idx$narrow(1L, 1L, len * 2L)
+            idx_pairs <- idx$view(c(-1L, 2L))
+            idx_pairs$narrow(2L, 1L, 1L)$squeeze(2L)$copy_(hi)
+            idx_pairs$narrow(2L, 2L, 1L)$squeeze(2L)$copy_(lo)
+            idx$add_(1L)
+
+            vals <- scratch$vals$narrow(1L, 1L, len * 2L)
+            .ltx23_index_select_into(vals, scratch$table, idx)
 
             block_start <- ((start - 1L) * 2L) %/% block + 1L
             n_blocks <- (len * 2L) %/% block
             scales <- absmax$narrow(1L, block_start, n_blocks)
-            vals <- (vals$reshape(c(-1L, block)) * scales$unsqueeze(2L))$flatten()
+            vals$view(c(-1L, block))$mul_(scales$unsqueeze(2L))
+
             out_flat$narrow(1L, (start - 1L) * 2L + 1L, len * 2L)$copy_(vals)
-            rm(vals, chunk)
             start <- start + len
         }
     })
     out
+}
+
+# torch_index_select_out is not exported from torch; fall back to an
+# allocating index_select if it ever disappears
+.ltx23_index_select_into <- local({
+    fn <- NULL
+    function(out, table, idx) {
+        if (is.null(fn)) {
+            fn <<- tryCatch(
+                get("torch_index_select_out", envir = asNamespace("torch")),
+                error = function(e) FALSE
+            )
+        }
+        if (isFALSE(fn)) {
+            out$copy_(torch::torch_index_select(table, 1L, idx))
+        } else {
+            fn(out, table, 1L, idx)
+        }
+        invisible(out)
+    }
+})
+
+# Persistent per-device dequantization scratch (nibbles, indices, values,
+# and the level table), sized to the chunk length
+.ltx23_dequant_scratch <- new.env(parent = emptyenv())
+
+.ltx23_get_dequant_scratch <- function(n_bytes, device) {
+    key <- paste(device$type, device$index %||% 0L, sep = "|")
+    scratch <- .ltx23_dequant_scratch[[key]]
+    if (is.null(scratch) || scratch$n_bytes < n_bytes) {
+        scratch <- list(
+            n_bytes = n_bytes,
+            hi = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
+                                    device = device),
+            lo = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
+                                    device = device),
+            idx = torch::torch_empty(n_bytes * 2L,
+                                     dtype = torch::torch_long(),
+                                     device = device),
+            vals = torch::torch_empty(n_bytes * 2L,
+                                      dtype = torch::torch_float32(),
+                                      device = device),
+            table = torch::torch_tensor(.ltx23_nf4_table,
+                                        dtype = torch::torch_float32(),
+                                        device = device)
+        )
+        .ltx23_dequant_scratch[[key]] <- scratch
+    }
+    scratch
 }
 
 # Reusable dequantization buffers, keyed by shape/dtype/device: each
@@ -144,6 +201,7 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
 #' @export
 ltx23_release_dequant_buffers <- function() {
     rm(list = ls(.ltx23_dequant_buffers), envir = .ltx23_dequant_buffers)
+    rm(list = ls(.ltx23_dequant_scratch), envir = .ltx23_dequant_scratch)
     gc(verbose = FALSE)
     if (torch::cuda_is_available()) {
         tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
