@@ -1,7 +1,7 @@
-#` filename_from_prompt` function
+#' filename_from_prompt
 #' @title Generate a filename from a prompt
 #' @description This function generates a filename from a prompt by removing all non-alphanumeric characters and replacing them with underscores. The filename is limited to 50 characters. If `datetime` is set to TRUE, the current date and time are prepended to the filename.
-#``
+#'
 #' @param prompt A character string representing the prompt.
 #' @param datetime Logical indicating whether to prepend the current date and time to the filename. Default is TRUE.
 #' @return A character string representing the generated filename.

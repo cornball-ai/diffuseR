@@ -239,10 +239,16 @@ ltx23_video_decoder3d <- torch::nn_module(
 #' \code{scaling_factor} is 1.0, so latent (de)normalization is purely
 #' the per-channel affine map.
 #'
+#' @param in_channels,out_channels Integers. Pixel channels.
 #' @param latent_channels Integer.
-#' @param ... Passed to both encoder and decoder constructors where they
-#'   accept it (see \code{\link{ltx23_video_encoder3d}} and
-#'   \code{\link{ltx23_video_decoder3d}} for the full parameter set).
+#' @param block_out_channels,layers_per_block,spatio_temporal_scaling,downsample_type
+#'   Encoder configuration (see \code{\link{ltx23_video_encoder3d}}).
+#' @param decoder_block_out_channels,decoder_layers_per_block,decoder_spatio_temporal_scaling,upsample_type,upsample_residual,upsample_factor
+#'   Decoder configuration (see \code{\link{ltx23_video_decoder3d}}).
+#' @param patch_size,patch_size_t Integers. Pixel patchification.
+#' @param resnet_norm_eps Numeric.
+#' @param encoder_causal,decoder_causal Logicals. Temporal padding modes.
+#' @param encoder_spatial_padding_mode,decoder_spatial_padding_mode Characters.
 #'
 #' @export
 ltx23_video_vae <- torch::nn_module(

@@ -99,6 +99,8 @@ ltx23_downsample1d <- torch::nn_module(
 #' @param ratio Integer. Upsampling ratio.
 #' @param kernel_size Integer or NULL.
 #' @param window_type "kaiser" (BigVGAN default) or "hann" (final resampler).
+#' @param persistent Logical. Register the filter as a buffer (present in
+#'   checkpoints); FALSE stores the computed filter as a plain field.
 #'
 #' @export
 ltx23_upsample1d <- torch::nn_module(
@@ -393,7 +395,15 @@ ltx23_mel_stft <- torch::nn_module(
 #' vocoder, causal mel re-analysis, BWE vocoder residual added to a
 #' Hann-resampled skip path, clamped to [-1, 1].
 #'
+#' @param in_channels,bwe_in_channels Integers. Flattened mel input channels.
 #' @param hidden_channels,bwe_hidden_channels Integers.
+#' @param out_channels Integer. Audio channels.
+#' @param upsample_kernel_sizes,upsample_factors,bwe_upsample_kernel_sizes,bwe_upsample_factors
+#'   Integer vectors. Per-stage transposed-conv configs.
+#' @param resnet_kernel_sizes,bwe_resnet_kernel_sizes Integer vectors.
+#' @param resnet_dilations,bwe_resnet_dilations Lists of integer vectors.
+#' @param filter_length,window_length,num_mel_channels Integers. Mel
+#'   re-analysis configuration.
 #' @param input_sampling_rate,output_sampling_rate Integers.
 #' @param hop_length Integer. Mel analysis hop.
 #'

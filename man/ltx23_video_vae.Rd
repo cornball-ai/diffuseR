@@ -22,9 +22,19 @@ ltx23_video_vae(in_channels = 3L, out_channels = 3L, latent_channels = 128L,
 \arguments{
 \item{latent_channels}{Integer.}
 
-\item{...}{Passed to both encoder and decoder constructors where they
-accept it (see \code{\link{ltx23_video_encoder3d}} and
-\code{\link{ltx23_video_decoder3d}} for the full parameter set).}
+\item{resnet_norm_eps}{Numeric.}
+
+\item{in_channels,out_channels}{Integers. Pixel channels.}
+
+\item{block_out_channels,layers_per_block,spatio_temporal_scaling,downsample_type}{Encoder configuration (see \code{\link{ltx23_video_encoder3d}}).}
+
+\item{decoder_block_out_channels,decoder_layers_per_block,decoder_spatio_temporal_scaling,upsample_type,upsample_residual,upsample_factor}{Decoder configuration (see \code{\link{ltx23_video_decoder3d}}).}
+
+\item{patch_size,patch_size_t}{Integers. Pixel patchification.}
+
+\item{encoder_causal,decoder_causal}{Logicals. Temporal padding modes.}
+
+\item{encoder_spatial_padding_mode,decoder_spatial_padding_mode}{Characters.}
 }
 \description{
 Encoder + decoder + per-channel latent statistics (loaded from the

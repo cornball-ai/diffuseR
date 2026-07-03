@@ -28,12 +28,11 @@ is_blackwell_gpu <- function() {
 
     # Fallback: check compute capability via torch
     if (torch::cuda_is_available()) {
-        props <- tryCatch(torch::cuda_get_device_properties(0L),
-                          error = function(e) NULL)
-        if (!is.null(props)) {
+        cap <- tryCatch(torch::cuda_get_device_capability(0L),
+                        error = function(e) NULL)
+        if (!is.null(cap)) {
             # Blackwell is compute 12.x
-            major <- props$major
-            return(major >= 12)
+            return(as.integer(cap[[1]]) >= 12L)
         }
     }
 

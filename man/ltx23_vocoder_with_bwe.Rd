@@ -20,9 +20,22 @@ ltx23_vocoder_with_bwe(in_channels = 128L, hidden_channels = 1536L,
                        output_sampling_rate = 48000L)
 }
 \arguments{
+\item{out_channels}{Integer. Audio channels.}
+
 \item{hop_length}{Integer. Mel analysis hop.}
 
+\item{in_channels,bwe_in_channels}{Integers. Flattened mel input channels.}
+
 \item{hidden_channels,bwe_hidden_channels}{Integers.}
+
+\item{upsample_kernel_sizes,upsample_factors,bwe_upsample_kernel_sizes,bwe_upsample_factors}{Integer vectors. Per-stage transposed-conv configs.}
+
+\item{resnet_kernel_sizes,bwe_resnet_kernel_sizes}{Integer vectors.}
+
+\item{resnet_dilations,bwe_resnet_dilations}{Lists of integer vectors.}
+
+\item{filter_length,window_length,num_mel_channels}{Integers. Mel
+re-analysis configuration.}
 
 \item{input_sampling_rate,output_sampling_rate}{Integers.}
 }

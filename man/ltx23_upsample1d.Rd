@@ -12,6 +12,9 @@ ltx23_upsample1d(ratio = 2L, kernel_size = NULL, window_type = "kaiser",
 \item{kernel_size}{Integer or NULL.}
 
 \item{window_type}{"kaiser" (BigVGAN default) or "hann" (final resampler).}
+
+\item{persistent}{Logical. Register the filter as a buffer (present in
+checkpoints); FALSE stores the computed filter as a plain field.}
 }
 \description{
 Anti-aliasing 1D upsampler (transposed low-pass)
