@@ -497,6 +497,10 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         audio_latents <- denoised$audio_latents
     }
 
+    # Weight dequant buffers are not needed past denoising; free them
+    # before the decoders claim VRAM
+    ltx23_release_dequant_buffers()
+
     result <- list(
                    latents = latents,
                    audio_latents = audio_latents,

@@ -68,48 +68,87 @@ ltx23_nf4_quantize <- function(x) {
 #' @param dtype Target torch dtype.
 #' @param chunk_elements Integer. Elements dequantized per slice (bounds
 #'   the int64 index temporary).
+#' @param out Optional preallocated tensor of \code{shape} to write into
+#'   (avoids allocating a fresh weight tensor per call).
 #'
 #' @return Tensor of \code{shape} in \code{dtype} on the input's device.
 #'
 #' @export
 ltx23_nf4_dequantize <- function(packed, absmax, shape,
                                  dtype = torch::torch_bfloat16(),
-                                 chunk_elements = 33554432L) {
+                                 chunk_elements = 16777216L,
+                                 out = NULL) {
     block <- .ltx23_nf4_block_size
     table <- torch::torch_tensor(.ltx23_nf4_table,
                                  dtype = torch::torch_float32(),
                                  device = packed$device)
 
+    n_elements <- prod(as.numeric(shape))
+    if (is.null(out)) {
+        out <- torch::torch_empty(shape, dtype = dtype, device = packed$device)
+    }
+    out_flat <- out$view(-1L)
+
     n_bytes <- packed$shape[1]
     bytes_per_chunk <- max(chunk_elements %/% 2L, block)
-    out_chunks <- list()
     start <- 1L
-    while (start <= n_bytes) {
-        len <- min(bytes_per_chunk, n_bytes - start + 1L)
-        chunk <- packed$narrow(1L, start, len)
+    torch::with_no_grad({
+        while (start <= n_bytes) {
+            len <- min(bytes_per_chunk, n_bytes - start + 1L)
+            chunk <- packed$narrow(1L, start, len)
 
-        hi <- torch::torch_div(chunk, 16L, rounding_mode = "floor")
-        lo <- chunk - hi * 16L
-        idx <- torch::torch_stack(list(hi, lo), dim = 2L)$flatten()
-        idx <- idx$to(dtype = torch::torch_long())
+            hi <- torch::torch_div(chunk, 16L, rounding_mode = "floor")
+            lo <- chunk - hi * 16L
+            idx <- torch::torch_stack(list(hi, lo), dim = 2L)$flatten()
+            idx <- idx$to(dtype = torch::torch_long())
 
-        vals <- torch::torch_index_select(table, 1L, idx + 1L)
-        rm(idx, hi, lo)
+            vals <- torch::torch_index_select(table, 1L, idx + 1L)
+            rm(idx, hi, lo)
 
-        block_start <- ((start - 1L) * 2L) %/% block + 1L
-        n_blocks <- (len * 2L) %/% block
-        scales <- absmax$narrow(1L, block_start, n_blocks)
-        vals <- (vals$reshape(c(-1L, block)) * scales$unsqueeze(2L))$flatten()
-        out_chunks[[length(out_chunks) + 1L]] <- vals$to(dtype = dtype)
-        start <- start + len
+            block_start <- ((start - 1L) * 2L) %/% block + 1L
+            n_blocks <- (len * 2L) %/% block
+            scales <- absmax$narrow(1L, block_start, n_blocks)
+            vals <- (vals$reshape(c(-1L, block)) * scales$unsqueeze(2L))$flatten()
+            out_flat$narrow(1L, (start - 1L) * 2L + 1L, len * 2L)$copy_(vals)
+            rm(vals, chunk)
+            start <- start + len
+        }
+    })
+    out
+}
+
+# Reusable dequantization buffers, keyed by shape/dtype/device: each
+# distinct weight shape gets one long-lived buffer, so per-step
+# dequantization allocates nothing (the buffer is overwritten in place
+# by the next linear of the same shape)
+.ltx23_dequant_buffers <- new.env(parent = emptyenv())
+
+.ltx23_get_dequant_buffer <- function(shape, dtype, device) {
+    key <- paste(paste(shape, collapse = "x"), dtype$.type(),
+                 paste(device$type, device$index %||% 0L), sep = "|")
+    buf <- .ltx23_dequant_buffers[[key]]
+    if (is.null(buf)) {
+        buf <- torch::torch_empty(shape, dtype = dtype, device = device)
+        .ltx23_dequant_buffers[[key]] <- buf
     }
+    buf
+}
 
-    out <- if (length(out_chunks) == 1L) {
-        out_chunks[[1L]]
-    } else {
-        torch::torch_cat(out_chunks)
+#' Release the NF4 dequantization buffers
+#'
+#' Frees the cached per-shape weight buffers (e.g. before decoding at
+#' high resolution).
+#'
+#' @return Invisibly, NULL.
+#'
+#' @export
+ltx23_release_dequant_buffers <- function() {
+    rm(list = ls(.ltx23_dequant_buffers), envir = .ltx23_dequant_buffers)
+    gc(verbose = FALSE)
+    if (torch::cuda_is_available()) {
+        tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
     }
-    out$reshape(shape)
+    invisible(NULL)
 }
 
 #' NF4 linear layer
@@ -147,14 +186,16 @@ ltx23_nf4_linear <- torch::nn_module(
         invisible(self)
     },
     forward = function(x) {
-        w <- ltx23_nf4_dequantize(
+        w <- .ltx23_get_dequant_buffer(
+            c(self$out_features, self$in_features), x$dtype,
+            self$weight_nf4$device
+        )
+        ltx23_nf4_dequantize(
             self$weight_nf4, self$weight_absmax,
             c(self$out_features, self$in_features),
-            dtype = x$dtype
+            dtype = x$dtype, out = w
         )
-        out <- torch::nnf_linear(x, w, self$bias)
-        rm(w)
-        out
+        torch::nnf_linear(x, w, self$bias)
     }
 )
 
