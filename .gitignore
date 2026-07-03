@@ -48,3 +48,7 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 /devman-md/
+
+# Upstream reference checkouts and working notes (never committed)
+ref/
+tasks/

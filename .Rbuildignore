@@ -10,3 +10,5 @@
 ^fyi\.md$
 ^man-md$
 ^inst/validation/\.venv$
+^ref$
+^tasks$

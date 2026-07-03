@@ -1,8 +1,14 @@
 Package: diffuseR
 Title: Functional Interface to Diffusion Models in R
 Version: 0.0.2
-Authors@R: 
-    person("Troy", "Hernandez", email = "troy@cornball.ai", role = c("aut", "cre"))
+Authors@R: c(
+    person("Troy", "Hernandez", email = "troy@cornball.ai", role = c("aut", "cre"),
+           comment = c(ORCID = "0009-0005-4248-604X")),
+    person("cornball.ai", role = "cph"),
+    person("The HuggingFace Team", role = "cph",
+           comment = "portions ported from the diffusers library (Apache-2.0); see inst/COPYRIGHTS"),
+    person("Lightricks Ltd.", role = "cph",
+           comment = "LTX checkpoint layout and pipeline constants; see inst/COPYRIGHTS"))
 Description: A native R implementation of diffusion models providing a functional 
     interface to state-of-the-art generative AI. Inspired by Hugging Face's Python 
     'diffusers' library, 'diffuseR' allows users to generate and manipulate images 
