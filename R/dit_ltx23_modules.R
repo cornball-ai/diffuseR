@@ -148,7 +148,7 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
   key_t <- key$transpose(-2L, -1L)
 
   attend <- function(q, mask) {
-    attn <- torch::torch_matmul(q * scale, key_t)
+    attn <- torch::torch_matmul(q$mul(scale), key_t)
     if (!is.null(mask)) attn <- attn + mask
     attn <- torch::nnf_softmax(attn, dim = -1L)
     torch::torch_matmul(attn, value)
@@ -491,7 +491,7 @@ ltx23_transformer_block <- torch::nn_module(
     shift_mlp <- video_ada[[4]]; scale_mlp <- video_ada[[5]]; gate_mlp <- video_ada[[6]]
 
     norm_hidden_states <- self$norm1(hidden_states)
-    norm_hidden_states <- norm_hidden_states * (1 + scale_msa) + shift_msa
+    norm_hidden_states <- norm_hidden_states * scale_msa$add(1) + shift_msa
 
     attn_hidden_states <- self$attn1(
       norm_hidden_states,
@@ -509,7 +509,7 @@ ltx23_transformer_block <- torch::nn_module(
     audio_scale_mlp <- audio_ada[[5]]; audio_gate_mlp <- audio_ada[[6]]
 
     norm_audio_hidden_states <- self$audio_norm1(audio_hidden_states)
-    norm_audio_hidden_states <- norm_audio_hidden_states * (1 + audio_scale_msa) + audio_shift_msa
+    norm_audio_hidden_states <- norm_audio_hidden_states * audio_scale_msa$add(1) + audio_shift_msa
 
     attn_audio_hidden_states <- self$audio_attn1(
       norm_audio_hidden_states,
@@ -533,11 +533,11 @@ ltx23_transformer_block <- torch::nn_module(
     norm_hidden_states <- self$norm2(hidden_states)
     if (self$video_cross_attn_adaln) {
       shift_text_q <- video_ada[[7]]; scale_text_q <- video_ada[[8]]; gate_text_q <- video_ada[[9]]
-      norm_hidden_states <- norm_hidden_states * (1 + scale_text_q) + shift_text_q
+      norm_hidden_states <- norm_hidden_states * scale_text_q$add(1) + shift_text_q
     }
     enc_states <- encoder_hidden_states
     if (self$cross_attn_adaln) {
-      enc_states <- enc_states * (1 + scale_text_kv) + shift_text_kv
+      enc_states <- enc_states * scale_text_kv$add(1) + shift_text_kv
     }
     attn_hidden_states <- self$attn2(
       norm_hidden_states,
@@ -554,12 +554,12 @@ ltx23_transformer_block <- torch::nn_module(
     if (self$audio_cross_attn_adaln) {
       audio_shift_text_q <- audio_ada[[7]]; audio_scale_text_q <- audio_ada[[8]]
       audio_gate_text_q <- audio_ada[[9]]
-      norm_audio_hidden_states <- norm_audio_hidden_states * (1 + audio_scale_text_q) +
+      norm_audio_hidden_states <- norm_audio_hidden_states * audio_scale_text_q$add(1) +
         audio_shift_text_q
     }
     audio_enc_states <- audio_encoder_hidden_states
     if (self$cross_attn_adaln) {
-      audio_enc_states <- audio_enc_states * (1 + audio_scale_text_kv) + audio_shift_text_kv
+      audio_enc_states <- audio_enc_states * audio_scale_text_kv$add(1) + audio_shift_text_kv
     }
     attn_audio_hidden_states <- self$audio_attn2(
       norm_audio_hidden_states,
@@ -598,9 +598,9 @@ ltx23_transformer_block <- torch::nn_module(
 
       if (use_a2v_cross_attention) {
         mod_norm_hidden <- norm_hidden_states *
-          (1 + video_ca_ada[[1]]$squeeze(3L)) + video_ca_ada[[2]]$squeeze(3L)
+          video_ca_ada[[1]]$squeeze(3L)$add(1) + video_ca_ada[[2]]$squeeze(3L)
         mod_norm_audio <- norm_audio_hidden_states *
-          (1 + audio_ca_ada[[1]]$squeeze(3L)) + audio_ca_ada[[2]]$squeeze(3L)
+          audio_ca_ada[[1]]$squeeze(3L)$add(1) + audio_ca_ada[[2]]$squeeze(3L)
 
         a2v_attn <- self$audio_to_video_attn(
           mod_norm_hidden,
@@ -613,9 +613,9 @@ ltx23_transformer_block <- torch::nn_module(
 
       if (use_v2a_cross_attention) {
         mod_norm_hidden <- norm_hidden_states *
-          (1 + video_ca_ada[[3]]$squeeze(3L)) + video_ca_ada[[4]]$squeeze(3L)
+          video_ca_ada[[3]]$squeeze(3L)$add(1) + video_ca_ada[[4]]$squeeze(3L)
         mod_norm_audio <- norm_audio_hidden_states *
-          (1 + audio_ca_ada[[3]]$squeeze(3L)) + audio_ca_ada[[4]]$squeeze(3L)
+          audio_ca_ada[[3]]$squeeze(3L)$add(1) + audio_ca_ada[[4]]$squeeze(3L)
 
         v2a_attn <- self$video_to_audio_attn(
           mod_norm_audio,
@@ -628,11 +628,11 @@ ltx23_transformer_block <- torch::nn_module(
     }
 
     # 4. Feed-forward
-    norm_hidden_states <- self$norm3(hidden_states) * (1 + scale_mlp) + shift_mlp
+    norm_hidden_states <- self$norm3(hidden_states) * scale_mlp$add(1) + shift_mlp
     hidden_states <- hidden_states + self$ff(norm_hidden_states) * gate_mlp
 
     norm_audio_hidden_states <- self$audio_norm3(audio_hidden_states) *
-      (1 + audio_scale_mlp) + audio_shift_mlp
+      audio_scale_mlp$add(1) + audio_shift_mlp
     audio_hidden_states <- audio_hidden_states + self$audio_ff(norm_audio_hidden_states) *
       audio_gate_mlp
 

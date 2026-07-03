@@ -212,19 +212,19 @@ ltx23_transformer <- torch::nn_module(
 
     # Multiplicative [B, S] masks -> additive bias [B, 1, S]
     if (!is.null(encoder_attention_mask) && encoder_attention_mask$ndim == 2L) {
-      encoder_attention_mask <- ((1 - encoder_attention_mask$to(
+      encoder_attention_mask <- encoder_attention_mask$to(
         dtype = hidden_states$dtype
-      )) * -10000.0)$unsqueeze(2L)
+      )$neg()$add(1)$mul(-10000.0)$unsqueeze(2L)
     }
     if (!is.null(audio_encoder_attention_mask) && audio_encoder_attention_mask$ndim == 2L) {
-      audio_encoder_attention_mask <- ((1 - audio_encoder_attention_mask$to(
+      audio_encoder_attention_mask <- audio_encoder_attention_mask$to(
         dtype = audio_hidden_states$dtype
-      )) * -10000.0)$unsqueeze(2L)
+      )$neg()$add(1)$mul(-10000.0)$unsqueeze(2L)
     }
     if (!is.null(video_self_attention_mask)) {
-      video_self_attention_mask <- (1 - video_self_attention_mask$to(
+      video_self_attention_mask <- video_self_attention_mask$to(
         dtype = hidden_states$dtype
-      )) * -10000.0
+      )$neg()$add(1)$mul(-10000.0)
     }
 
     batch_size <- hidden_states$shape[1]
@@ -357,7 +357,7 @@ ltx23_transformer <- torch::nn_module(
     shift <- scale_shift_values[, , 1, ]
     scale <- scale_shift_values[, , 2, ]
     hidden_states <- self$norm_out(hidden_states)
-    hidden_states <- hidden_states * (1 + scale) + shift
+    hidden_states <- hidden_states * scale$add(1) + shift
     output <- self$proj_out(hidden_states)
 
     audio_scale_shift_values <- self$audio_scale_shift_table$unsqueeze(1L)$unsqueeze(1L) +
@@ -365,7 +365,7 @@ ltx23_transformer <- torch::nn_module(
     audio_shift <- audio_scale_shift_values[, , 1, ]
     audio_scale <- audio_scale_shift_values[, , 2, ]
     audio_hidden_states <- self$audio_norm_out(audio_hidden_states)
-    audio_hidden_states <- audio_hidden_states * (1 + audio_scale) + audio_shift
+    audio_hidden_states <- audio_hidden_states * audio_scale$add(1) + audio_shift
     audio_output <- self$audio_proj_out(audio_hidden_states)
 
     list(sample = output, audio_sample = audio_output)

@@ -149,8 +149,8 @@ ltx23_upsample1d <- torch::nn_module(
     num_channels <- x$shape[2]
     x <- torch::nnf_pad(x, c(self$pad, self$pad), mode = "replicate")
     lp <- self$filter$to(dtype = x$dtype, device = x$device)$expand(c(num_channels, -1L, -1L))
-    x <- self$ratio * torch::nnf_conv_transpose1d(x, lp, stride = self$ratio,
-      groups = num_channels)
+    x <- torch::nnf_conv_transpose1d(x, lp, stride = self$ratio,
+      groups = num_channels)$mul(self$ratio)
     n <- x$shape[3]
     x$narrow(3L, self$pad_left + 1L, n - self$pad_left - self$pad_right)
   }
@@ -178,7 +178,7 @@ ltx23_snake_beta <- torch::nn_module(
     alpha <- torch::torch_exp(self$alpha$view(shape))
     beta <- torch::torch_exp(self$beta$view(shape))
     hidden_states + torch::torch_sin(hidden_states * alpha)$pow(2) *
-      (beta + self$eps)$reciprocal()
+      beta$add(self$eps)$reciprocal()
   }
 )
 

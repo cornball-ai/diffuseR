@@ -25,7 +25,7 @@ ltx23_per_channel_rms_norm <- torch::nn_module(
   },
   forward = function(x) {
     mean_sq <- torch::torch_mean(x^2, dim = 2L, keepdim = TRUE)
-    x / torch::torch_sqrt(mean_sq + self$eps)
+    x$div(mean_sq$add(self$eps)$sqrt())
   }
 )
 

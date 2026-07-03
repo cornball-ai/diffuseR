@@ -20,7 +20,7 @@ NULL
 #' @export
 ltx23_per_token_rms_norm <- function(x, eps = 1e-6) {
   variance <- torch::torch_mean(x^2, dim = 3L, keepdim = TRUE)
-  x * torch::torch_rsqrt(variance + eps)
+  x * torch::torch_rsqrt(variance$add(eps))
 }
 
 #' 1D rotary embeddings for the text connectors
@@ -338,7 +338,7 @@ ltx23_text_connectors <- torch::nn_module(
     text_dtype <- video_proj$dtype
     add_mask <- (attention_mask$to(dtype = torch::torch_int64()) - 1L)$to(dtype = text_dtype)
     add_mask <- add_mask$reshape(c(add_mask$shape[1], 1L, -1L, add_mask$shape[2]))
-    add_mask <- add_mask * torch::torch_finfo(text_dtype)$max
+    add_mask <- add_mask$mul(torch::torch_finfo(text_dtype)$max)
 
     video_res <- self$video_connector(video_proj, add_mask)
     video_text_embedding <- video_res[[1]]
