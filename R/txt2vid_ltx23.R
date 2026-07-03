@@ -152,6 +152,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #' @param pin Logical. Pin fp8 host memory (fp8 artifact only).
 #' @param attn_chunk Integer or NULL. Query-chunk size for attention
 #'   (see \code{\link{ltx23_set_attn_chunk}}).
+#' @param phase_offload Logical. Load the small components (connectors,
+#'   VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
+#'   device only for its phase.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -162,7 +165,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 dtype = "bfloat16",
                                 transformer_device = "cpu",
                                 components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
-                                pin = TRUE, attn_chunk = NULL, verbose = TRUE) {
+                                pin = TRUE, attn_chunk = NULL,
+                                phase_offload = TRUE, verbose = TRUE) {
+    component_device <- if (phase_offload) "cpu" else device
     fp8 <- dir.exists(checkpoint_path)
     ckpt <- if (fp8) {
         ltx23_open_fp8_checkpoint(checkpoint_path)
@@ -209,17 +214,17 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     }
     if ("connectors" %in% components) {
         pipe$connectors <- load_component(
-            "connectors", ltx23_text_connectors(), ltx23_map_connector_key, device
+            "connectors", ltx23_text_connectors(), ltx23_map_connector_key, component_device
         )
     }
     if ("vae" %in% components) {
         pipe$vae <- load_component(
-                                   "vae", ltx23_video_vae(), ltx23_map_vae_key, device
+                                   "vae", ltx23_video_vae(), ltx23_map_vae_key, component_device
         )
     }
     if ("audio_vae" %in% components) {
         pipe$audio_vae <- load_component(
-            "audio_vae", ltx23_audio_vae(), ltx23_map_audio_vae_key, device
+            "audio_vae", ltx23_audio_vae(), ltx23_map_audio_vae_key, component_device
         )
     }
     if ("vocoder" %in% components) {
@@ -231,7 +236,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         if (length(res$unmapped) || length(res$unfilled)) {
             stop("vocoder: incomplete load")
         }
-        voc$to(device = device, dtype = torch::torch_float32())
+        voc$to(device = component_device, dtype = torch::torch_float32())
         voc$eval()
         pipe$vocoder <- voc
     }
@@ -282,6 +287,10 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   toward the stage-1 statistics (0 disables).
 #' @param tone_map_compression Numeric in [0, 1]. Optional latent tone
 #'   mapping before stage 2.
+#' @param phase_offload Logical. Move each small component to the compute
+#'   device only for its phase (text encoding, upsampling, decoding) and
+#'   back to the CPU afterwards, keeping the denoise phase as the sole
+#'   GPU tenant.
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{video} (array
@@ -298,7 +307,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          max_sequence_length = 1024L, decode_video = TRUE,
                          decode_audio = TRUE, two_stage = FALSE,
                          upsampler = NULL, adain_factor = 1.0,
-                         tone_map_compression = 0, verbose = TRUE) {
+                         tone_map_compression = 0, phase_offload = TRUE,
+                         verbose = TRUE) {
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
@@ -347,17 +357,34 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         )
     }
 
+    # Each phase is the sole GPU tenant: components move on for their
+    # phase and back off afterwards
+    phase_offload <- phase_offload && device != "cpu"
+    onload <- function(module) {
+        if (phase_offload) module$to(device = device)
+        module
+    }
+    offload <- function(module) {
+        if (phase_offload) {
+            module$to(device = "cpu")
+            clear_vram()
+        }
+        invisible(module)
+    }
+
+    onload(pipeline$connectors)
     connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
     torch::with_no_grad({
         conn <- pipeline$connectors(
                                     prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
                                     prompt_embeds$prompt_attention_mask$to(device = connectors_device)
         )
+        video_text_embeds <- conn$video_text_embedding$to(device = device)
+        audio_text_embeds <- conn$audio_text_embedding$to(device = device)
+        text_mask <- conn$attention_mask$to(device = device)
     })
-    video_text_embeds <- conn$video_text_embedding
-    audio_text_embeds <- conn$audio_text_embedding
-    text_mask <- conn$attention_mask
     rm(conn)
+    offload(pipeline$connectors)
     gc(verbose = FALSE)
 
     # --- Phase 2: latent preparation ---------------------------------------------
@@ -414,6 +441,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Upsampling latents 2x...")
         }
+        onload(upsampler)
         torch::with_no_grad({
             up_device <- upsampler$final_conv$weight$device
             up_dtype <- upsampler$final_conv$weight$dtype
@@ -439,6 +467,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             latents <- ltx23_pack_video_latents(up_latents$to(device = device))
             rm(s1_latents, up_latents)
         })
+        offload(upsampler)
         gc(verbose = FALSE)
 
         # Re-noise BOTH modalities at the stage-2 entry sigma
@@ -475,7 +504,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Decoding video...")
         }
-        vae <- pipeline$vae
+        vae <- onload(pipeline$vae)
         vae_device <- vae$latents_mean$device
         vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -492,6 +521,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         })
         result$video <- as.array(video)
         rm(video, video_latents)
+        offload(pipeline$vae)
         gc(verbose = FALSE)
     }
 
@@ -499,7 +529,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Decoding audio...")
         }
-        audio_vae <- pipeline$audio_vae
+        audio_vae <- onload(pipeline$audio_vae)
+        onload(pipeline$vocoder)
         av_device <- audio_vae$latents_mean$device
         av_dtype <- audio_vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -514,6 +545,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         })
         result$audio <- as.matrix(as.array(waveform))
         rm(waveform, mel, audio_lat, audio_packed)
+        offload(pipeline$audio_vae)
+        offload(pipeline$vocoder)
         gc(verbose = FALSE)
     }
 

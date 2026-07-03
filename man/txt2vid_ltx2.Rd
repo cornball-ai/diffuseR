@@ -10,7 +10,8 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
              seed = NULL, device = "cuda", dtype = "bfloat16", filename = NULL,
              max_sequence_length = 1024L, decode_video = TRUE,
              decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
-             adain_factor = 1, tone_map_compression = 0, verbose = TRUE)
+             adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
+             verbose = TRUE)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}
@@ -56,6 +57,11 @@ toward the stage-1 statistics (0 disables).}
 
 \item{tone_map_compression}{Numeric in [0, 1]. Optional latent tone
 mapping before stage 2.}
+
+\item{phase_offload}{Logical. Move each small component to the compute
+device only for its phase (text encoding, upsampling, decoding) and
+back to the CPU afterwards, keeping the denoise phase as the sole
+GPU tenant.}
 
 \item{verbose}{Logical.}
 

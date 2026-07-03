@@ -6,7 +6,8 @@
 ltx23_load_pipeline(checkpoint_path, device = "cuda", dtype = "bfloat16",
                     transformer_device = "cpu",
                     components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
-                    pin = TRUE, attn_chunk = NULL, verbose = TRUE)
+                    pin = TRUE, attn_chunk = NULL, phase_offload = TRUE,
+                    verbose = TRUE)
 }
 \arguments{
 \item{checkpoint_path}{Path to the single-file checkpoint (e.g.
@@ -29,6 +30,10 @@ weights when loading the plain (non-fp8) checkpoint.}
 
 \item{attn_chunk}{Integer or NULL. Query-chunk size for attention
 (see \code{\link{ltx23_set_attn_chunk}}).}
+
+\item{phase_offload}{Logical. Load the small components (connectors,
+VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
+device only for its phase.}
 
 \item{verbose}{Logical.}
 }
