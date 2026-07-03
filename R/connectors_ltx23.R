@@ -10,6 +10,21 @@
 #' @name connectors_ltx23
 NULL
 
+# Largest finite value for a float dtype; R torch's torch_finfo rejects
+# bfloat16, so fall back to the known constants
+.ltx23_finfo_max <- function(dtype) {
+  tryCatch(
+    torch::torch_finfo(dtype)$max,
+    error = function(e) {
+      switch(dtype$.type(),
+        BFloat16 = 3.3895313892515355e38,
+        Half = 65504,
+        3.402823466e38
+      )
+    }
+  )
+}
+
 #' Per-token RMS normalization over the channel axis
 #'
 #' @param x Tensor [B, S, C, L] of stacked per-layer hidden states.
@@ -338,7 +353,7 @@ ltx23_text_connectors <- torch::nn_module(
     text_dtype <- video_proj$dtype
     add_mask <- (attention_mask$to(dtype = torch::torch_int64()) - 1L)$to(dtype = text_dtype)
     add_mask <- add_mask$reshape(c(add_mask$shape[1], 1L, -1L, add_mask$shape[2]))
-    add_mask <- add_mask$mul(torch::torch_finfo(text_dtype)$max)
+    add_mask <- add_mask$mul(.ltx23_finfo_max(text_dtype))
 
     video_res <- self$video_connector(video_proj, add_mask)
     video_text_embedding <- video_res[[1]]
