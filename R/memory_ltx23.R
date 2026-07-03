@@ -11,10 +11,18 @@ NULL
 
 #' Get an LTX-2.3 memory profile
 #'
-#' Selects component placement and attention chunking for the available
-#' VRAM. The fp8 transformer weights (~21 GB) always stay CPU-resident
-#' and stream per-linear; profiles differ in what else lives on the GPU
-#' and how hard the attention is chunked.
+#' Selects transformer precision, component placement, and attention
+#' chunking for the available VRAM. Measured on an RTX 5060 Ti (16 GB):
+#' fp8 streaming peaks ~11.6 GB (without phase offloading) at
+#' 512x320x49; NF4 keeps the whole 22B transformer resident (~12.5 GB)
+#' and removes the ~21 GB/step PCIe weight streaming.
+#'
+#' \describe{
+#'   \item{precision "nf4"}{Weights resident on the GPU; fastest steps;
+#'     ~9\% weight round-trip error.}
+#'   \item{precision "fp8"}{Weights CPU-resident, streamed per linear;
+#'     near-bf16 quality; each step pays the PCIe transfer.}
+#' }
 #'
 #' @param vram_gb Numeric or NULL (auto-detect free VRAM).
 #'
@@ -40,19 +48,20 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
 
     profiles <- list(
                      high = list(name = "high", device = "cuda", dtype = "bfloat16",
-                                 pin_weights = TRUE, attn_chunk = 8192L,
-                                 text_device = "cpu", vae_device = "cuda",
-                                 audio_device = "cuda", max_resolution = c(704L, 1280L),
+                                 precision = "nf4", phase_offload = TRUE,
+                                 pin_weights = FALSE, attn_chunk = 8192L,
+                                 text_device = "cpu",
+                                 max_resolution = c(704L, 1280L),
                                  max_frames = 121L),
                      medium = list(
                                    name = "medium",
                                    device = "cuda",
                                    dtype = "bfloat16",
+                                   precision = "fp8",
+                                   phase_offload = TRUE,
                                    pin_weights = TRUE,
                                    attn_chunk = 4096L,
                                    text_device = "cpu",
-                                   vae_device = "cuda",
-                                   audio_device = "cuda",
                                    max_resolution = c(576L, 1024L),
                                    max_frames = 121L
         ),
@@ -60,11 +69,11 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
                                 name = "low",
                                 device = "cuda",
                                 dtype = "bfloat16",
+                                precision = "fp8",
+                                phase_offload = TRUE,
                                 pin_weights = TRUE,
                                 attn_chunk = 2048L,
                                 text_device = "cpu",
-                                vae_device = "cpu",
-                                audio_device = "cpu",
                                 max_resolution = c(512L, 768L),
                                 max_frames = 65L
         ),
@@ -72,11 +81,11 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
                                      name = "cpu_only",
                                      device = "cpu",
                                      dtype = "float32",
+                                     precision = "fp8",
+                                     phase_offload = FALSE,
                                      pin_weights = FALSE,
                                      attn_chunk = NULL,
                                      text_device = "cpu",
-                                     vae_device = "cpu",
-                                     audio_device = "cpu",
                                      max_resolution = c(384L, 640L),
                                      max_frames = 33L
         )

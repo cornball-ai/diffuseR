@@ -13,8 +13,18 @@ Named list with device/dtype placement, \code{attn_chunk},
   \code{pin_weights}, and resolution caps.
 }
 \description{
-Selects component placement and attention chunking for the available
-VRAM. The fp8 transformer weights (~21 GB) always stay CPU-resident
-and stream per-linear; profiles differ in what else lives on the GPU
-and how hard the attention is chunked.
+Selects transformer precision, component placement, and attention
+chunking for the available VRAM. Measured on an RTX 5060 Ti (16 GB):
+fp8 streaming peaks ~11.6 GB (without phase offloading) at
+512x320x49; NF4 keeps the whole 22B transformer resident (~12.5 GB)
+and removes the ~21 GB/step PCIe weight streaming.
+}
+\details{
+\describe{
+\item{precision "nf4"}{Weights resident on the GPU; fastest steps;
+~9\\% weight round-trip error.}
+\item{precision "fp8"}{Weights CPU-resident, streamed per linear;
+near-bf16 quality; each step pays the PCIe transfer.}
+}
+
 }
