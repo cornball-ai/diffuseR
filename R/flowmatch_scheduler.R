@@ -55,53 +55,51 @@
 #' scheduler <- flowmatch_set_timesteps(scheduler, num_inference_steps = 8)
 #' }
 #' @export
-flowmatch_scheduler_create <- function(
-  num_train_timesteps = 1000L,
-  shift = 1.0,
-  use_dynamic_shifting = FALSE,
-  base_shift = 0.5,
-  max_shift = 1.15,
-  base_seq_len = 256L,
-  max_seq_len = 4096L,
-  invert_sigmas = FALSE,
-  shift_terminal = NULL,
-  time_shift_type = c("exponential", "linear")
-) {
-  time_shift_type <- match.arg(time_shift_type)
+flowmatch_scheduler_create <- function(num_train_timesteps = 1000L,
+                                       shift = 1.0,
+                                       use_dynamic_shifting = FALSE,
+                                       base_shift = 0.5, max_shift = 1.15,
+                                       base_seq_len = 256L,
+                                       max_seq_len = 4096L,
+                                       invert_sigmas = FALSE,
+                                       shift_terminal = NULL,
+                                       time_shift_type = c("exponential", "linear")) {
+    time_shift_type <- match.arg(time_shift_type)
 
-  # Initial timesteps (reversed, from max to min)
-  timesteps <- seq(from = 1, to = num_train_timesteps, length.out = num_train_timesteps)
-  timesteps <- rev(timesteps)
+    # Initial timesteps (reversed, from max to min)
+    timesteps <- seq(from = 1, to = num_train_timesteps,
+                     length.out = num_train_timesteps)
+    timesteps <- rev(timesteps)
 
-  # Initial sigmas (normalized timesteps)
-  sigmas <- timesteps / num_train_timesteps
+    # Initial sigmas (normalized timesteps)
+    sigmas <- timesteps / num_train_timesteps
 
-  # Apply shift if not using dynamic shifting
-  if (!use_dynamic_shifting) {
-    sigmas <- shift * sigmas / (1 + (shift - 1) * sigmas)
-  }
+    # Apply shift if not using dynamic shifting
+    if (!use_dynamic_shifting) {
+        sigmas <- shift * sigmas / (1 + (shift - 1) * sigmas)
+    }
 
-  timesteps <- sigmas * num_train_timesteps
+    timesteps <- sigmas * num_train_timesteps
 
-  list(
-    sigmas = sigmas,
-    timesteps = timesteps,
-    num_train_timesteps = num_train_timesteps,
-    num_inference_steps = NULL,
-    step_index = NULL,
-    config = list(
-      num_train_timesteps = num_train_timesteps,
-      shift = shift,
-      use_dynamic_shifting = use_dynamic_shifting,
-      base_shift = base_shift,
-      max_shift = max_shift,
-      base_seq_len = base_seq_len,
-      max_seq_len = max_seq_len,
-      invert_sigmas = invert_sigmas,
-      shift_terminal = shift_terminal,
-      time_shift_type = time_shift_type
+    list(
+         sigmas = sigmas,
+         timesteps = timesteps,
+         num_train_timesteps = num_train_timesteps,
+         num_inference_steps = NULL,
+         step_index = NULL,
+         config = list(
+                       num_train_timesteps = num_train_timesteps,
+                       shift = shift,
+                       use_dynamic_shifting = use_dynamic_shifting,
+                       base_shift = base_shift,
+                       max_shift = max_shift,
+                       base_seq_len = base_seq_len,
+                       max_seq_len = max_seq_len,
+                       invert_sigmas = invert_sigmas,
+                       shift_terminal = shift_terminal,
+                       time_shift_type = time_shift_type
+        )
     )
-  )
 }
 
 #' Calculate shift for dynamic shifting
@@ -117,17 +115,13 @@ flowmatch_scheduler_create <- function(
 #'
 #' @return Numeric. The computed shift value (mu).
 #' @export
-flowmatch_calculate_shift <- function(
-  seq_len,
-  base_seq_len = 256L,
-  max_seq_len = 4096L,
-  base_shift = 0.5,
-  max_shift = 1.15
-) {
-  m <- (max_shift - base_shift) / (max_seq_len - base_seq_len)
-  b <- base_shift - m * base_seq_len
-  mu <- seq_len * m + b
-  mu
+flowmatch_calculate_shift <- function(seq_len, base_seq_len = 256L,
+                                      max_seq_len = 4096L, base_shift = 0.5,
+                                      max_shift = 1.15) {
+    m <- (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b <- base_shift - m * base_seq_len
+    mu <- seq_len * m + b
+    mu
 }
 
 #' Set timesteps for inference
@@ -145,79 +139,72 @@ flowmatch_calculate_shift <- function(
 #'
 #' @return Updated scheduler with configured timesteps and sigmas.
 #' @export
-flowmatch_set_timesteps <- function(
-  schedule,
-  num_inference_steps = 50L,
-  device = "cpu",
-  mu = NULL,
-  sigmas = NULL,
-  timesteps = NULL
-) {
-  config <- schedule$config
+flowmatch_set_timesteps <- function(schedule, num_inference_steps = 50L,
+                                    device = "cpu", mu = NULL, sigmas = NULL,
+                                    timesteps = NULL) {
+    config <- schedule$config
 
-  if (config$use_dynamic_shifting && is.null(mu)) {
-    stop("`mu` must be provided when use_dynamic_shifting is TRUE")
-  }
-
-  schedule$num_inference_steps <- num_inference_steps
-
-  # Get sigma_max and sigma_min
-  sigma_max <- max(schedule$sigmas)
-  sigma_min <- min(schedule$sigmas)
-
-  # Create sigmas if not provided
-  if (is.null(sigmas)) {
-    if (is.null(timesteps)) {
-      # Linear spacing from sigma_max to sigma_min
-      timesteps <- seq(
-        from = sigma_max * config$num_train_timesteps,
-        to = sigma_min * config$num_train_timesteps,
-        length.out = num_inference_steps
-      )
+    if (config$use_dynamic_shifting && is.null(mu)) {
+        stop("`mu` must be provided when use_dynamic_shifting is TRUE")
     }
-    sigmas <- timesteps / config$num_train_timesteps
-  }
 
-  # Apply timestep shifting
-  if (config$use_dynamic_shifting) {
-    sigmas <- .flowmatch_time_shift(
-      mu = mu,
-      sigma = 1.0,
-      t = sigmas,
-      shift_type = config$time_shift_type
-    )
-  } else {
-    shift <- config$shift
-    sigmas <- shift * sigmas / (1 + (shift - 1) * sigmas)
-  }
+    schedule$num_inference_steps <- num_inference_steps
 
-  # Stretch to terminal if configured
-  if (!is.null(config$shift_terminal)) {
-    sigmas <- .flowmatch_stretch_shift_to_terminal(sigmas, config$shift_terminal)
-  }
+    # Get sigma_max and sigma_min
+    sigma_max <- max(schedule$sigmas)
+    sigma_min <- min(schedule$sigmas)
 
-  # Convert to tensors
-  sigmas <- torch::torch_tensor(sigmas, dtype = torch::torch_float32())
-  timesteps <- sigmas * config$num_train_timesteps
+    # Create sigmas if not provided
+    if (is.null(sigmas)) {
+        if (is.null(timesteps)) {
+            # Linear spacing from sigma_max to sigma_min
+            timesteps <- seq(from = sigma_max * config$num_train_timesteps,
+                             to = sigma_min * config$num_train_timesteps,
+                             length.out = num_inference_steps)
+        }
+        sigmas <- timesteps / config$num_train_timesteps
+    }
 
-  # Append terminal sigma
-  if (config$invert_sigmas) {
-    sigmas <- 1.0 - sigmas
+    # Apply timestep shifting
+    if (config$use_dynamic_shifting) {
+        sigmas <- .flowmatch_time_shift(
+                                        mu = mu,
+                                        sigma = 1.0,
+                                        t = sigmas,
+                                        shift_type = config$time_shift_type
+        )
+    } else {
+        shift <- config$shift
+        sigmas <- shift * sigmas / (1 + (shift - 1) * sigmas)
+    }
+
+    # Stretch to terminal if configured
+    if (!is.null(config$shift_terminal)) {
+        sigmas <- .flowmatch_stretch_shift_to_terminal(sigmas, config$shift_terminal)
+    }
+
+    # Convert to tensors
+    sigmas <- torch::torch_tensor(sigmas, dtype = torch::torch_float32())
     timesteps <- sigmas * config$num_train_timesteps
-    sigmas <- torch::torch_cat(list(sigmas, torch::torch_ones(1)))
-  } else {
-    sigmas <- torch::torch_cat(list(sigmas, torch::torch_zeros(1)))
-  }
 
-  # Move to device
-  sigmas <- sigmas$to(device = device)
-  timesteps <- timesteps$to(device = device)
+    # Append terminal sigma
+    if (config$invert_sigmas) {
+        sigmas <- 1.0 - sigmas
+        timesteps <- sigmas * config$num_train_timesteps
+        sigmas <- torch::torch_cat(list(sigmas, torch::torch_ones(1)))
+    } else {
+        sigmas <- torch::torch_cat(list(sigmas, torch::torch_zeros(1)))
+    }
 
-  schedule$sigmas <- sigmas
-  schedule$timesteps <- timesteps
-  schedule$step_index <- NULL
+    # Move to device
+    sigmas <- sigmas$to(device = device)
+    timesteps <- timesteps$to(device = device)
 
-  schedule
+    schedule$sigmas <- sigmas
+    schedule$timesteps <- timesteps
+    schedule$step_index <- NULL
+
+    schedule
 }
 
 #' Perform a FlowMatch scheduler step
@@ -247,42 +234,34 @@ flowmatch_set_timesteps <- function(
 #' in continuous normalizing flows.
 #'
 #' @export
-flowmatch_scheduler_step <- function(
-  model_output,
-  timestep,
-  sample,
-  schedule,
-  generator = NULL
-) {
-  # Initialize step index if needed
-  if (is.null(schedule$step_index)) {
-    schedule$step_index <- .flowmatch_init_step_index(timestep, schedule)
-  }
+flowmatch_scheduler_step <- function(model_output, timestep, sample,
+                                     schedule, generator = NULL) {
+    # Initialize step index if needed
+    if (is.null(schedule$step_index)) {
+        schedule$step_index <- .flowmatch_init_step_index(timestep, schedule)
+    }
 
-  # Upcast sample for precision
-  sample <- sample$to(dtype = torch::torch_float32())
+    # Upcast sample for precision
+    sample <- sample$to(dtype = torch::torch_float32())
 
-  # Get current and next sigma
-  sigma_idx <- schedule$step_index
-  sigma <- schedule$sigmas[sigma_idx]$item()
-  sigma_next <- schedule$sigmas[sigma_idx + 1]$item()
+    # Get current and next sigma
+    sigma_idx <- schedule$step_index
+    sigma <- schedule$sigmas[sigma_idx]$item()
+    sigma_next <- schedule$sigmas[sigma_idx + 1]$item()
 
-  # Compute dt (step size)
-  dt <- sigma_next - sigma
+    # Compute dt (step size)
+    dt <- sigma_next - sigma
 
-  # Euler step: x_{t-1} = x_t + dt * v
-  prev_sample <- sample + dt * model_output
+    # Euler step: x_{t-1} = x_t + dt * v
+    prev_sample <- sample + dt * model_output
 
-  # Cast back to model dtype
-  prev_sample <- prev_sample$to(dtype = model_output$dtype)
+    # Cast back to model dtype
+    prev_sample <- prev_sample$to(dtype = model_output$dtype)
 
-  # Increment step index
-  schedule$step_index <- schedule$step_index + 1L
+    # Increment step index
+    schedule$step_index <- schedule$step_index + 1L
 
-  list(
-    prev_sample = prev_sample,
-    schedule = schedule
-  )
+    list(prev_sample = prev_sample, schedule = schedule)
 }
 
 #' Scale noise for flow matching forward process
@@ -297,87 +276,67 @@ flowmatch_scheduler_step <- function(
 #'
 #' @return torch tensor. The noisy sample at timestep t.
 #' @export
-flowmatch_scale_noise <- function(
-  sample,
-  timestep,
-  noise,
-  schedule
-) {
-  # Get sigma for this timestep
-  sigmas <- schedule$sigmas$to(device = sample$device, dtype = sample$dtype)
+flowmatch_scale_noise <- function(sample, timestep, noise, schedule) {
+    # Get sigma for this timestep
+    sigmas <- schedule$sigmas$to(device = sample$device, dtype = sample$dtype)
 
-  step_indices <- .flowmatch_index_for_timestep(timestep, schedule)
-  sigma <- sigmas[step_indices]
+    step_indices <- .flowmatch_index_for_timestep(timestep, schedule)
+    sigma <- sigmas[step_indices]
 
-  # Expand sigma dimensions to match sample
-  while (length(sigma$shape) < length(sample$shape)) {
-    sigma <- sigma$unsqueeze(- 1)
-  }
+    # Expand sigma dimensions to match sample
+    while (length(sigma$shape) < length(sample$shape)) {
+        sigma <- sigma$unsqueeze(-1)
+    }
 
-  # Flow matching interpolation: x_t = (1 - sigma) * x_0 + sigma * noise
-  noisy_sample <- (1.0 - sigma) * sample + sigma * noise
+    # Flow matching interpolation: x_t = (1 - sigma) * x_0 + sigma * noise
+    noisy_sample <- (1.0 - sigma) * sample + sigma * noise
 
-  noisy_sample
+    noisy_sample
 }
 
 # Internal helper functions
 
-.flowmatch_time_shift <- function(
-  mu,
-  sigma,
-  t,
-  shift_type
-) {
-  if (shift_type == "exponential") {
-    exp(mu) / (exp(mu) + (1 / t - 1) ^ sigma)
-  } else {
-    # linear
-    mu / (mu + (1 / t - 1) ^ sigma)
-  }
+.flowmatch_time_shift <- function(mu, sigma, t, shift_type) {
+    if (shift_type == "exponential") {
+        exp(mu) / (exp(mu) + (1 / t - 1) ^ sigma)
+    } else {
+        # linear
+        mu / (mu + (1 / t - 1) ^ sigma)
+    }
 }
 
-.flowmatch_stretch_shift_to_terminal <- function(
-  t,
-  shift_terminal
-) {
-  one_minus_z <- 1 - t
-  scale_factor <- one_minus_z[length(one_minus_z)] / (1 - shift_terminal)
-  stretched_t <- 1 - (one_minus_z / scale_factor)
-  stretched_t
+.flowmatch_stretch_shift_to_terminal <- function(t, shift_terminal) {
+    one_minus_z <- 1 - t
+    scale_factor <- one_minus_z[length(one_minus_z)] / (1 - shift_terminal)
+    stretched_t <- 1 - (one_minus_z / scale_factor)
+    stretched_t
 }
 
-.flowmatch_init_step_index <- function(
-  timestep,
-  schedule
-) {
-  # Find index for this timestep
-  idx <- .flowmatch_index_for_timestep(timestep, schedule)
-  idx
+.flowmatch_init_step_index <- function(timestep, schedule) {
+    # Find index for this timestep
+    idx <- .flowmatch_index_for_timestep(timestep, schedule)
+    idx
 }
 
-.flowmatch_index_for_timestep <- function(
-  timestep,
-  schedule
-) {
-  timesteps <- schedule$timesteps
+.flowmatch_index_for_timestep <- function(timestep, schedule) {
+    timesteps <- schedule$timesteps
 
-  if (inherits(timestep, "torch_tensor")) {
-    timestep <- timestep$item()
-  }
+    if (inherits(timestep, "torch_tensor")) {
+        timestep <- timestep$item()
+    }
 
-  # Find matching index
-  indices <- which(abs(as.numeric(timesteps) - timestep) < 1e-6)
+    # Find matching index
+    indices <- which(abs(as.numeric(timesteps) - timestep) < 1e-6)
 
-  if (length(indices) == 0) {
-    # Find closest
-    indices <- which.min(abs(as.numeric(timesteps) - timestep))
-  }
+    if (length(indices) == 0) {
+        # Find closest
+        indices <- which.min(abs(as.numeric(timesteps) - timestep))
+    }
 
-  # Return first match (or second if multiple, for numerical stability)
-  if (length(indices) > 1) {
-    indices[2]
-  } else {
-    indices[1]
-  }
+    # Return first match (or second if multiple, for numerical stability)
+    if (length(indices) > 1) {
+        indices[2]
+    } else {
+        indices[1]
+    }
 }
-

@@ -25,33 +25,34 @@ NULL
 #'
 #' @export
 ltx23_audio_causal_conv2d <- torch::nn_module(
-  "ltx23_audio_causal_conv2d",
-  initialize = function(
-    in_channels,
-    out_channels,
-    kernel_size = 3L,
-    stride = 1L,
-    causality_axis = "height"
-  ) {
+    "ltx23_audio_causal_conv2d",
+    initialize = function(
+                          in_channels,
+                          out_channels,
+                          kernel_size = 3L,
+                          stride = 1L,
+                          causality_axis = "height"
+    ) {
     if (length(kernel_size) == 1L) kernel_size <- rep(kernel_size, 2L)
     pad_h <- kernel_size[1] - 1L
     pad_w <- kernel_size[2] - 1L
 
     self$padding <- switch(causality_axis,
-      none = c(pad_w %/% 2L, pad_w - pad_w %/% 2L, pad_h %/% 2L, pad_h - pad_h %/% 2L),
-      width = c(pad_w, 0L, pad_h %/% 2L, pad_h - pad_h %/% 2L),
-      `width-compatibility` = c(pad_w, 0L, pad_h %/% 2L, pad_h - pad_h %/% 2L),
-      height = c(pad_w %/% 2L, pad_w - pad_w %/% 2L, pad_h, 0L),
-      stop("Invalid causality_axis: ", causality_axis)
+                           none = c(pad_w %/% 2L, pad_w - pad_w %/% 2L, pad_h %/% 2L,
+                                    pad_h - pad_h %/% 2L),
+                           width = c(pad_w, 0L, pad_h %/% 2L, pad_h - pad_h %/% 2L),
+                           `width-compatibility` = c(pad_w, 0L, pad_h %/% 2L, pad_h - pad_h %/% 2L),
+                           height = c(pad_w %/% 2L, pad_w - pad_w %/% 2L, pad_h, 0L),
+                           stop("Invalid causality_axis: ", causality_axis)
     )
     self$conv <- torch::nn_conv2d(
-      in_channels, out_channels, kernel_size,
-      stride = stride, padding = 0L
+                                  in_channels, out_channels, kernel_size,
+                                  stride = stride, padding = 0L
     )
-  },
-  forward = function(x) {
+},
+    forward = function(x) {
     self$conv(torch::nnf_pad(x, self$padding))
-  }
+}
 )
 
 #' LTX audio ResNet block
@@ -64,30 +65,29 @@ ltx23_audio_causal_conv2d <- torch::nn_module(
 #'
 #' @export
 ltx23_audio_resnet_block <- torch::nn_module(
-  "ltx23_audio_resnet_block",
-  initialize = function(
-    in_channels,
-    out_channels = NULL,
-    causality_axis = "height"
-  ) {
+    "ltx23_audio_resnet_block",
+    initialize = function(
+                          in_channels,
+                          out_channels = NULL,
+                          causality_axis = "height"
+    ) {
     out_channels <- out_channels %||% in_channels
     self$changes_channels <- in_channels != out_channels
 
     self$norm1 <- ltx23_per_channel_rms_norm(eps = 1e-6)
-    self$conv1 <- ltx23_audio_causal_conv2d(
-      in_channels, out_channels, kernel_size = 3L, causality_axis = causality_axis
-    )
+    self$conv1 <- ltx23_audio_causal_conv2d(in_channels, out_channels,
+        kernel_size = 3L, causality_axis = causality_axis)
     self$norm2 <- ltx23_per_channel_rms_norm(eps = 1e-6)
     self$conv2 <- ltx23_audio_causal_conv2d(
-      out_channels, out_channels, kernel_size = 3L, causality_axis = causality_axis
+        out_channels, out_channels, kernel_size = 3L, causality_axis = causality_axis
     )
     if (self$changes_channels) {
-      self$nin_shortcut <- ltx23_audio_causal_conv2d(
-        in_channels, out_channels, kernel_size = 1L, causality_axis = causality_axis
-      )
+        self$nin_shortcut <- ltx23_audio_causal_conv2d(
+            in_channels, out_channels, kernel_size = 1L, causality_axis = causality_axis
+        )
     }
-  },
-  forward = function(x) {
+},
+    forward = function(x) {
     h <- self$norm1(x)
     h <- torch::nnf_silu(h)
     h <- self$conv1(h)
@@ -95,10 +95,10 @@ ltx23_audio_resnet_block <- torch::nn_module(
     h <- torch::nnf_silu(h)
     h <- self$conv2(h)
     if (self$changes_channels) {
-      x <- self$nin_shortcut(x)
+        x <- self$nin_shortcut(x)
     }
     x + h
-  }
+}
 )
 
 #' LTX audio upsampler
@@ -111,24 +111,23 @@ ltx23_audio_resnet_block <- torch::nn_module(
 #'
 #' @export
 ltx23_audio_upsample <- torch::nn_module(
-  "ltx23_audio_upsample",
-  initialize = function(in_channels, causality_axis = "height") {
+    "ltx23_audio_upsample",
+    initialize = function(in_channels, causality_axis = "height") {
     self$causality_axis <- causality_axis
-    self$conv <- ltx23_audio_causal_conv2d(
-      in_channels, in_channels, kernel_size = 3L, causality_axis = causality_axis
-    )
-  },
-  forward = function(x) {
+    self$conv <- ltx23_audio_causal_conv2d(in_channels, in_channels,
+        kernel_size = 3L, causality_axis = causality_axis)
+},
+    forward = function(x) {
     x <- torch::nnf_interpolate(x, scale_factor = 2, mode = "nearest")
     x <- self$conv(x)
     if (self$causality_axis == "height") {
-      # Drop the first (causally padded) frame; Python [:, :, 1:, :]
-      x <- x$narrow(3L, 2L, x$shape[3] - 1L)
+        # Drop the first (causally padded) frame; Python [:, :, 1:, :]
+        x <- x$narrow(3L, 2L, x$shape[3] - 1L)
     } else if (self$causality_axis == "width") {
-      x <- x$narrow(4L, 2L, x$shape[4] - 1L)
+        x <- x$narrow(4L, 2L, x$shape[4] - 1L)
     }
     x
-  }
+}
 )
 
 #' LTX-2.3 audio VAE decoder
@@ -146,16 +145,16 @@ ltx23_audio_upsample <- torch::nn_module(
 #'
 #' @export
 ltx23_audio_decoder <- torch::nn_module(
-  "ltx23_audio_decoder",
-  initialize = function(
-    base_channels = 128L,
-    output_channels = 2L,
-    num_res_blocks = 2L,
-    latent_channels = 8L,
-    ch_mult = c(1L, 2L, 4L),
-    causality_axis = "height",
-    mel_bins = 64L
-  ) {
+                                        "ltx23_audio_decoder",
+                                        initialize = function(
+        base_channels = 128L,
+        output_channels = 2L,
+        num_res_blocks = 2L,
+        latent_channels = 8L,
+        ch_mult = c(1L, 2L, 4L),
+        causality_axis = "height",
+        mel_bins = 64L
+    ) {
     self$num_resolutions <- length(ch_mult)
     self$num_res_blocks <- num_res_blocks
     self$out_ch <- as.integer(output_channels)
@@ -164,22 +163,21 @@ ltx23_audio_decoder <- torch::nn_module(
 
     base_block_channels <- base_channels * ch_mult[length(ch_mult)]
 
-    self$conv_in <- ltx23_audio_causal_conv2d(
-      latent_channels, base_block_channels, kernel_size = 3L,
-      causality_axis = causality_axis
-    )
+    self$conv_in <- ltx23_audio_causal_conv2d(latent_channels,
+        base_block_channels, kernel_size = 3L,
+        causality_axis = causality_axis)
 
     mid_container <- torch::nn_module(
-      "ltx23_audio_mid",
-      initialize = function(channels, causality_axis) {
+                                      "ltx23_audio_mid",
+                                      initialize = function(channels, causality_axis) {
         self$block_1 <- ltx23_audio_resnet_block(channels, channels,
-          causality_axis = causality_axis)
+            causality_axis = causality_axis)
         self$block_2 <- ltx23_audio_resnet_block(channels, channels,
-          causality_axis = causality_axis)
-      },
-      forward = function(x) {
+            causality_axis = causality_axis)
+    },
+                                      forward = function(x) {
         self$block_2(self$block_1(x))
-      }
+    }
     )
     self$mid <- mid_container(base_block_channels, causality_axis)
 
@@ -188,51 +186,53 @@ ltx23_audio_decoder <- torch::nn_module(
     stages <- vector("list", self$num_resolutions)
     block_in <- base_block_channels
     for (level in rev(seq_len(self$num_resolutions))) {
-      block_out <- base_channels * ch_mult[level]
-      stage_blocks <- list()
-      for (j in seq_len(num_res_blocks + 1L)) {
-        stage_blocks[[j]] <- ltx23_audio_resnet_block(
-          block_in, block_out, causality_axis = causality_axis
-        )
-        block_in <- block_out
-      }
-      stage <- torch::nn_module(
-        "ltx23_audio_up_stage",
-        initialize = function(blocks, upsample) {
-          self$block <- torch::nn_module_list(blocks)
-          if (!is.null(upsample)) self$upsample <- upsample
-        },
-        forward = function(x) {
-          for (i in seq_along(self$block)) x <- self$block[[i]](x)
-          if (!is.null(self$upsample)) x <- self$upsample(x)
-          x
+        block_out <- base_channels * ch_mult[level]
+        stage_blocks <- list()
+        for (j in seq_len(num_res_blocks + 1L)) {
+            stage_blocks[[j]] <- ltx23_audio_resnet_block(
+                block_in, block_out, causality_axis = causality_axis
+            )
+            block_in <- block_out
         }
-      )
-      upsample <- if (level != 1L) {
-        ltx23_audio_upsample(block_in, causality_axis = causality_axis)
-      } else {
-        NULL
-      }
-      stages[[level]] <- stage(stage_blocks, upsample)
+        stage <- torch::nn_module(
+                                  "ltx23_audio_up_stage",
+                                  initialize = function(blocks, upsample) {
+            self$block <- torch::nn_module_list(blocks)
+            if (!is.null(upsample)) self$upsample <- upsample
+        },
+                                  forward = function(x) {
+            for (i in seq_along(self$block)) {
+                x <- self$block[[i]](x)
+            }
+            if (!is.null(self$upsample)) x <- self$upsample(x)
+            x
+        }
+        )
+        upsample <- if (level != 1L) {
+            ltx23_audio_upsample(block_in, causality_axis = causality_axis)
+        } else {
+            NULL
+        }
+        stages[[level]] <- stage(stage_blocks, upsample)
     }
     self$up <- torch::nn_module_list(stages)
 
     self$norm_out <- ltx23_per_channel_rms_norm(eps = 1e-6)
     self$conv_out <- ltx23_audio_causal_conv2d(
-      block_in, output_channels, kernel_size = 3L, causality_axis = causality_axis
+        block_in, output_channels, kernel_size = 3L, causality_axis = causality_axis
     )
-  },
-  forward = function(sample) {
+},
+                                        forward = function(sample) {
     frames <- sample$shape[3]
     target_frames <- frames * .ltx23_audio_latent_downsample_factor
     if (self$causal) {
-      target_frames <- max(target_frames - (.ltx23_audio_latent_downsample_factor - 1L), 1L)
+        target_frames <- max(target_frames - (.ltx23_audio_latent_downsample_factor - 1L), 1L)
     }
 
     h <- self$conv_in(sample)
     h <- self$mid(h)
     for (level in rev(seq_len(self$num_resolutions))) {
-      h <- self$up[[level]](h)
+        h <- self$up[[level]](h)
     }
 
     h <- self$norm_out(h)
@@ -249,10 +249,10 @@ ltx23_audio_decoder <- torch::nn_module(
     time_pad <- target_frames - h$shape[3]
     freq_pad <- self$mel_bins - h$shape[4]
     if (time_pad > 0L || freq_pad > 0L) {
-      h <- torch::nnf_pad(h, c(0L, max(freq_pad, 0L), 0L, max(time_pad, 0L)))
+        h <- torch::nnf_pad(h, c(0L, max(freq_pad, 0L), 0L, max(time_pad, 0L)))
     }
     h
-  }
+}
 )
 
 #' LTX-2.3 audio VAE
@@ -265,37 +265,35 @@ ltx23_audio_decoder <- torch::nn_module(
 #'
 #' @export
 ltx23_audio_vae <- torch::nn_module(
-  "ltx23_audio_vae",
-  initialize = function(
-    base_channels = 128L,
-    output_channels = 2L,
-    num_res_blocks = 2L,
-    latent_channels = 8L,
-    ch_mult = c(1L, 2L, 4L),
-    causality_axis = "height",
-    mel_bins = 64L
-  ) {
-    self$decoder <- ltx23_audio_decoder(
-      base_channels = base_channels,
-      output_channels = output_channels,
-      num_res_blocks = num_res_blocks,
-      latent_channels = latent_channels,
-      ch_mult = ch_mult,
-      causality_axis = causality_axis,
-      mel_bins = mel_bins
-    )
+                                    "ltx23_audio_vae",
+                                    initialize = function(
+        base_channels = 128L,
+        output_channels = 2L,
+        num_res_blocks = 2L,
+        latent_channels = 8L,
+        ch_mult = c(1L, 2L, 4L),
+        causality_axis = "height",
+        mel_bins = 64L
+    ) {
+    self$decoder <- ltx23_audio_decoder(base_channels = base_channels,
+                                        output_channels = output_channels,
+                                        num_res_blocks = num_res_blocks,
+                                        latent_channels = latent_channels,
+                                        ch_mult = ch_mult,
+                                        causality_axis = causality_axis,
+                                        mel_bins = mel_bins)
     # Statistics are stored at base_channels size in the checkpoint;
     # only the first latent_channels entries are meaningful
     self$latents_mean <- torch::nn_buffer(torch::torch_zeros(base_channels))
     self$latents_std <- torch::nn_buffer(torch::torch_ones(base_channels))
     self$latent_channels <- as.integer(latent_channels)
-  },
-  decode = function(z) {
+},
+                                    decode = function(z) {
     self$decoder(z)
-  },
-  forward = function(z) {
+},
+                                    forward = function(z) {
     self$decode(z)
-  }
+}
 )
 
 #' Map an official audio VAE checkpoint key to the R module name
@@ -309,11 +307,11 @@ ltx23_audio_vae <- torch::nn_module(
 #'
 #' @export
 ltx23_map_audio_vae_key <- function(key) {
-  key <- sub("^audio_vae\\.", "", key)
-  if (startsWith(key, "encoder.")) {
-    return(NA_character_)
-  }
-  key <- sub("^per_channel_statistics\\.mean-of-means$", "latents_mean", key)
-  key <- sub("^per_channel_statistics\\.std-of-means$", "latents_std", key)
-  key
+    key <- sub("^audio_vae\\.", "", key)
+    if (startsWith(key, "encoder.")) {
+        return(NA_character_)
+    }
+    key <- sub("^per_channel_statistics\\.mean-of-means$", "latents_mean", key)
+    key <- sub("^per_channel_statistics\\.std-of-means$", "latents_std", key)
+    key
 }

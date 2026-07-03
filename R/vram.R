@@ -21,25 +21,23 @@ NULL
 #' }
 #' }
 is_blackwell_gpu <- function() {
-  # Use gpuctl if available
-  if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-    return(gpu.ctl::gpu_is_blackwell())
-  }
-
-  # Fallback: check compute capability via torch
-  if (torch::cuda_is_available()) {
-    props <- tryCatch(
-      torch::cuda_get_device_properties(0L),
-      error = function(e) NULL
-    )
-    if (!is.null(props)) {
-      # Blackwell is compute 12.x
-      major <- props$major
-      return(major >= 12)
+    # Use gpuctl if available
+    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
+        return(gpu.ctl::gpu_is_blackwell())
     }
-  }
 
-  FALSE
+    # Fallback: check compute capability via torch
+    if (torch::cuda_is_available()) {
+        props <- tryCatch(torch::cuda_get_device_properties(0L),
+                          error = function(e) NULL)
+        if (!is.null(props)) {
+            # Blackwell is compute 12.x
+            major <- props$major
+            return(major >= 12)
+        }
+    }
+
+    FALSE
 }
 
 #' Detect Available VRAM
@@ -51,28 +49,28 @@ is_blackwell_gpu <- function() {
 #' @return Numeric. VRAM in GB, or 0 if no GPU detected.
 #' @keywords internal
 .detect_vram <- function(use_free = FALSE) {
-  # Try gpuctl (preferred - uses nvidia-smi)
-  if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-    info <- gpu.ctl::gpu_detect()
-    if (!is.null(info)) {
-      if (use_free && !is.null(info$vram_free_gb)) {
-        return(info$vram_free_gb)
-      }
-      if (!is.null(info$vram_total_gb)) {
-        return(info$vram_total_gb)
-      }
+    # Try gpuctl (preferred - uses nvidia-smi)
+    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
+        info <- gpu.ctl::gpu_detect()
+        if (!is.null(info)) {
+            if (use_free && !is.null(info$vram_free_gb)) {
+                return(info$vram_free_gb)
+            }
+            if (!is.null(info$vram_total_gb)) {
+                return(info$vram_total_gb)
+            }
+        }
     }
-  }
 
-  # Fallback: check if CUDA available but can't determine VRAM
-  if (torch::cuda_is_available()) {
-    # Conservative estimate - assume 8GB if we can't detect
-    message("Could not detect VRAM. Install gpuctl for accurate detection.")
-    return(8)
-  }
+    # Fallback: check if CUDA available but can't determine VRAM
+    if (torch::cuda_is_available()) {
+        # Conservative estimate - assume 8GB if we can't detect
+        message("Could not detect VRAM. Install gpuctl for accurate detection.")
+        return(8)
+    }
 
-  # No GPU detected
-  0
+    # No GPU detected
+    0
 }
 
 #' Offload Module to CPU
@@ -92,16 +90,13 @@ is_blackwell_gpu <- function() {
 #' output <- model(x)
 #' offload_to_cpu(model)
 #' }
-offload_to_cpu <- function(
-  module,
-  gc = TRUE
-) {
-  module$to(device = "cpu")
-  if (gc && torch::cuda_is_available()) {
-    gc()
-    torch::cuda_empty_cache()
-  }
-  invisible(module)
+offload_to_cpu <- function(module, gc = TRUE) {
+    module$to(device = "cpu")
+    if (gc && torch::cuda_is_available()) {
+        gc()
+        torch::cuda_empty_cache()
+    }
+    invisible(module)
 }
 
 #' Load Module to GPU
@@ -121,12 +116,9 @@ offload_to_cpu <- function(
 #' output <- model(x)
 #' offload_to_cpu(model)
 #' }
-load_to_gpu <- function(
-  module,
-  device = "cuda"
-) {
-  module$to(device = device)
-  invisible(module)
+load_to_gpu <- function(module, device = "cuda") {
+    module$to(device = device)
+    invisible(module)
 }
 
 #' Report VRAM Usage
@@ -144,25 +136,25 @@ load_to_gpu <- function(
 #' vram_report("After model load")
 #' }
 vram_report <- function(label = "") {
-  if (!torch::cuda_is_available()) {
-    message("[", label, "] No CUDA available")
-    return(invisible(list(used = 0, free = 0)))
-  }
-
-  # Use gpuctl for accurate reporting
-  if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-    info <- gpu.ctl::gpu_detect()
-    if (!is.null(info)) {
-      used <- info$vram_used_gb
-      free <- info$vram_free_gb
-      message(sprintf("[%s] VRAM: %.2f GB used, %.2f GB free",
-          label, used, free))
-      return(invisible(list(used = used, free = free)))
+    if (!torch::cuda_is_available()) {
+        message("[", label, "] No CUDA available")
+        return(invisible(list(used = 0, free = 0)))
     }
-  }
 
-  message("[", label, "] VRAM: (install gpuctl for detailed stats)")
-  invisible(list(used = NA, free = NA))
+    # Use gpuctl for accurate reporting
+    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
+        info <- gpu.ctl::gpu_detect()
+        if (!is.null(info)) {
+            used <- info$vram_used_gb
+            free <- info$vram_free_gb
+            message(sprintf("[%s] VRAM: %.2f GB used, %.2f GB free", label,
+                            used, free))
+            return(invisible(list(used = used, free = free)))
+        }
+    }
+
+    message("[", label, "] VRAM: (install gpuctl for detailed stats)")
+    invisible(list(used = NA, free = NA))
 }
 
 #' Clear VRAM Cache
@@ -180,23 +172,20 @@ vram_report <- function(label = "") {
 #' clear_vram()
 #' }
 clear_vram <- function(verbose = FALSE) {
-  if (!torch::cuda_is_available()) {
-    return(invisible(NULL))
-  }
+    if (!torch::cuda_is_available()) {
+        return(invisible(NULL))
+    }
 
-  if (verbose) {
-    vram_report("Before clear")
-  }
+    if (verbose) {
+        vram_report("Before clear")
+    }
 
-  gc()
-  tryCatch(
-    torch::cuda_empty_cache(),
-    error = function(e) NULL
-  )
+    gc()
+    tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
 
-  if (verbose) {
-    vram_report("After clear")
-  }
+    if (verbose) {
+        vram_report("After clear")
+    }
 
-  invisible(NULL)
+    invisible(NULL)
 }

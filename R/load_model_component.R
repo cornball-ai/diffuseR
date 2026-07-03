@@ -19,19 +19,20 @@
 #' \dontrun{
 #' unet <- load_model_component("unet", "sd21", "cpu")
 #' }
-load_model_component <- function (component, model_name = "sd21",
-                                  device = "cpu", unet_dtype_str = NULL,
-                                  download = TRUE, use_native = FALSE) {
+load_model_component <- function(component, model_name = "sd21",
+                                 device = "cpu", unet_dtype_str = NULL,
+                                 download = TRUE, use_native = FALSE) {
     # Set valid components based on model
     if (model_name == "sdxl") {
-        valid_components <- c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
+        valid_components <- c("unet", "decoder", "text_encoder",
+                              "text_encoder2", "encoder")
     } else {
         valid_components <- c("unet", "decoder", "text_encoder", "encoder")
     }
 
     if (!component %in% valid_components) {
         stop("Invalid component name for model '", model_name, "'. Must be one of: ",
-            paste(valid_components, collapse = ", "))
+             paste(valid_components, collapse = ", "))
     }
 
     # Determine filename for this component
@@ -56,7 +57,8 @@ load_model_component <- function (component, model_name = "sd21",
         } else {
             model <- unet_native_from_torchscript(file_path, verbose = FALSE)
         }
-        if (device == "cuda" && (is.null(unet_dtype_str) || unet_dtype_str == "float16")) {
+        if (device == "cuda" &&
+            (is.null(unet_dtype_str) || unet_dtype_str == "float16")) {
             model$to(device = torch::torch_device(device), dtype = torch::torch_float16())
         } else {
             model$to(device = torch::torch_device(device))
@@ -68,25 +70,25 @@ load_model_component <- function (component, model_name = "sd21",
     } else if (use_native && component == "text_encoder") {
         arch <- detect_text_encoder_architecture(file_path)
         model <- text_encoder_native(
-            vocab_size = arch$vocab_size,
-            context_length = arch$context_length,
-            embed_dim = arch$embed_dim,
-            num_layers = arch$num_layers,
-            num_heads = arch$num_heads,
-            mlp_dim = arch$mlp_dim,
-            apply_final_ln = arch$apply_final_ln
+                                     vocab_size = arch$vocab_size,
+                                     context_length = arch$context_length,
+                                     embed_dim = arch$embed_dim,
+                                     num_layers = arch$num_layers,
+                                     num_heads = arch$num_heads,
+                                     mlp_dim = arch$mlp_dim,
+                                     apply_final_ln = arch$apply_final_ln
         )
         load_text_encoder_weights(model, file_path, verbose = FALSE)
         model$to(device = torch::torch_device(device))
     } else if (use_native && component == "text_encoder2") {
         arch <- detect_text_encoder_architecture(file_path)
         model <- text_encoder2_native(
-            vocab_size = arch$vocab_size,
-            context_length = arch$context_length,
-            embed_dim = arch$embed_dim,
-            num_layers = arch$num_layers,
-            num_heads = arch$num_heads,
-            mlp_dim = arch$mlp_dim
+                                      vocab_size = arch$vocab_size,
+                                      context_length = arch$context_length,
+                                      embed_dim = arch$embed_dim,
+                                      num_layers = arch$num_layers,
+                                      num_heads = arch$num_heads,
+                                      mlp_dim = arch$mlp_dim
         )
         load_text_encoder2_weights(model, file_path, verbose = FALSE)
         model$to(device = torch::torch_device(device))
@@ -98,7 +100,7 @@ load_model_component <- function (component, model_name = "sd21",
 }
 
 # Build the expected filename for a component
-component_filename <- function (component, device, unet_dtype_str = NULL) {
+component_filename <- function(component, device, unet_dtype_str = NULL) {
     if (component == "unet" && device != "cpu") {
         dtype <- if (is.null(unet_dtype_str) || unet_dtype_str == "float16") {
             "float16"
@@ -114,20 +116,17 @@ component_filename <- function (component, device, unet_dtype_str = NULL) {
 }
 
 # Convenience function to load both text encoders for SDXL
-load_text_encoders <- function (model_name = "sdxl", device = "cpu",
-                                download = TRUE) {
+load_text_encoders <- function(model_name = "sdxl", device = "cpu",
+                               download = TRUE) {
     if (model_name != "sdxl") {
         return(list(
-                text_encoder = load_model_component("text_encoder", model_name, device, download = download)
+                    text_encoder = load_model_component("text_encoder",
+                    model_name, device, download = download)
             ))
     }
 
     text_encoder <- load_model_component("text_encoder", model_name, device, download = download)
     text_encoder2 <- load_model_component("text_encoder2", model_name, device, download = download)
 
-    list(
-        text_encoder = text_encoder,
-        text_encoder2 = text_encoder2
-    )
+    list(text_encoder = text_encoder, text_encoder2 = text_encoder2)
 }
-

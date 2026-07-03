@@ -20,7 +20,7 @@ NULL
 #'
 #' @export
 ltx23_distilled_sigmas <- function() {
-  c(1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0)
+    c(1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0)
 }
 
 #' Stage-2 distilled sigma schedule (two-stage refinement)
@@ -29,107 +29,106 @@ ltx23_distilled_sigmas <- function() {
 #'
 #' @export
 ltx23_stage2_distilled_sigmas <- function() {
-  c(0.909375, 0.725, 0.421875, 0.0)
+    c(0.909375, 0.725, 0.421875, 0.0)
 }
 
 # Pack video latents [B, C, F, H, W] -> [B, F*H*W, C] (patch sizes are 1
 # for the LTX transformer; kept general per the reference)
-ltx23_pack_video_latents <- function(latents, patch_size = 1L, patch_size_t = 1L) {
-  d <- latents$shape
-  pf <- d[3] %/% patch_size_t
-  ph <- d[4] %/% patch_size
-  pw <- d[5] %/% patch_size
-  latents <- latents$reshape(c(d[1], -1L, pf, patch_size_t, ph, patch_size, pw, patch_size))
-  # [B, C, F', pt, H', p, W', p] -> [B, F', H', W', C, pt, p, p]
-  latents <- latents$permute(c(1L, 3L, 5L, 7L, 2L, 4L, 6L, 8L))
-  latents$flatten(start_dim = 5L, end_dim = 8L)$flatten(start_dim = 2L, end_dim = 4L)
+ltx23_pack_video_latents <- function(latents, patch_size = 1L,
+                                     patch_size_t = 1L) {
+    d <- latents$shape
+    pf <- d[3] %/% patch_size_t
+    ph <- d[4] %/% patch_size
+    pw <- d[5] %/% patch_size
+    latents <- latents$reshape(c(d[1], -1L, pf, patch_size_t, ph,
+                                 patch_size, pw, patch_size))
+    # [B, C, F', pt, H', p, W', p] -> [B, F', H', W', C, pt, p, p]
+    latents <- latents$permute(c(1L, 3L, 5L, 7L, 2L, 4L, 6L, 8L))
+    latents$flatten(start_dim = 5L, end_dim = 8L)$flatten(start_dim = 2L, end_dim = 4L)
 }
 
 # Unpack video latents [B, S, D] -> [B, C, F, H, W]
 ltx23_unpack_video_latents <- function(latents, num_frames, height, width,
-  patch_size = 1L, patch_size_t = 1L) {
-  b <- latents$shape[1]
-  latents <- latents$reshape(c(b, num_frames, height, width, -1L,
-    patch_size_t, patch_size, patch_size))
-  latents <- latents$permute(c(1L, 5L, 2L, 6L, 3L, 7L, 4L, 8L))
-  latents$flatten(start_dim = 7L, end_dim = 8L)$
+                                       patch_size = 1L, patch_size_t = 1L) {
+    b <- latents$shape[1]
+    latents <- latents$reshape(c(b, num_frames, height, width, -1L,
+                                 patch_size_t, patch_size, patch_size))
+    latents <- latents$permute(c(1L, 5L, 2L, 6L, 3L, 7L, 4L, 8L))
+    latents$flatten(start_dim = 7L, end_dim = 8L)$
     flatten(start_dim = 5L, end_dim = 6L)$
     flatten(start_dim = 3L, end_dim = 4L)
 }
 
 # Pack audio latents [B, C, L, M] -> [B, L, C * M]
 ltx23_pack_audio_latents <- function(latents) {
-  latents$transpose(2L, 3L)$flatten(start_dim = 3L, end_dim = 4L)
+    latents$transpose(2L, 3L)$flatten(start_dim = 3L, end_dim = 4L)
 }
 
 # Unpack audio latents [B, L, C * M] -> [B, C, L, M]
 ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
-  latents$unflatten(3L, c(-1L, num_mel_bins))$transpose(2L, 3L)
+    latents$unflatten(3L, c(-1L, num_mel_bins))$transpose(2L, 3L)
 }
 
 # Audio statistics apply to the PACKED [B, L, C*M] representation
 # (broadcast over the trailing feature dim)
 .ltx23_denormalize_audio <- function(latents, latents_mean, latents_std) {
-  mean <- latents_mean$to(device = latents$device, dtype = latents$dtype)
-  std <- latents_std$to(device = latents$device, dtype = latents$dtype)
-  latents * std + mean
+    mean <- latents_mean$to(device = latents$device, dtype = latents$dtype)
+    std <- latents_std$to(device = latents$device, dtype = latents$dtype)
+    latents * std + mean
 }
 
 # Joint audio/video Euler denoise loop over a sigma schedule (CFG-free)
-.ltx23_denoise <- function(
-  transformer, latents, audio_latents, sigmas,
-  video_text_embeds, audio_text_embeds, text_mask,
-  latent_frames, latent_height, latent_width,
-  audio_num_frames, frame_rate,
-  device, compute_dtype, verbose = TRUE, stage = ""
-) {
-  f32 <- torch::torch_float32()
-  video_coords <- transformer$rope$prepare_video_coords(
-    latents$shape[1], latent_frames, latent_height, latent_width,
-    device, fps = frame_rate
-  )
-  audio_coords <- transformer$audio_rope$prepare_audio_coords(
-    audio_latents$shape[1], audio_num_frames, device
-  )
+.ltx23_denoise <- function(transformer, latents, audio_latents, sigmas,
+                           video_text_embeds, audio_text_embeds, text_mask,
+                           latent_frames, latent_height, latent_width,
+                           audio_num_frames, frame_rate, device,
+                           compute_dtype, verbose = TRUE, stage = "") {
+    f32 <- torch::torch_float32()
+    video_coords <- transformer$rope$prepare_video_coords(latents$shape[1],
+        latent_frames, latent_height, latent_width, device,
+        fps = frame_rate)
+    audio_coords <- transformer$audio_rope$prepare_audio_coords(
+        audio_latents$shape[1], audio_num_frames, device
+    )
 
-  n_steps <- length(sigmas) - 1L
-  scale_mult <- transformer$timestep_scale_multiplier
-  torch::with_no_grad({
-    for (i in seq_len(n_steps)) {
-      sigma <- sigmas[i]
-      t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
+    n_steps <- length(sigmas) - 1L
+    scale_mult <- transformer$timestep_scale_multiplier
+    torch::with_no_grad({
+        for (i in seq_len(n_steps)) {
+            sigma <- sigmas[i]
+            t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
 
-      out <- transformer(
-        hidden_states = latents$to(dtype = compute_dtype),
-        audio_hidden_states = audio_latents$to(dtype = compute_dtype),
-        encoder_hidden_states = video_text_embeds,
-        audio_encoder_hidden_states = audio_text_embeds,
-        timestep = t,
-        sigma = t,
-        encoder_attention_mask = text_mask,
-        audio_encoder_attention_mask = text_mask,
-        num_frames = latent_frames,
-        height = latent_height,
-        width = latent_width,
-        fps = frame_rate,
-        audio_num_frames = audio_num_frames,
-        video_coords = video_coords,
-        audio_coords = audio_coords,
-        use_cross_timestep = TRUE
-      )
+            out <- transformer(
+                               hidden_states = latents$to(dtype = compute_dtype),
+                               audio_hidden_states = audio_latents$to(dtype = compute_dtype),
+                               encoder_hidden_states = video_text_embeds,
+                               audio_encoder_hidden_states = audio_text_embeds,
+                               timestep = t,
+                               sigma = t,
+                               encoder_attention_mask = text_mask,
+                               audio_encoder_attention_mask = text_mask,
+                               num_frames = latent_frames,
+                               height = latent_height,
+                               width = latent_width,
+                               fps = frame_rate,
+                               audio_num_frames = audio_num_frames,
+                               video_coords = video_coords,
+                               audio_coords = audio_coords,
+                               use_cross_timestep = TRUE
+            )
 
-      # Euler velocity step in float32; dt is negative (sigma decreasing)
-      dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
-      latents <- latents + dt * out$sample$to(dtype = f32)
-      audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
-      rm(out)
-      gc(verbose = FALSE)
-      if (verbose) {
-        message(sprintf("  %sstep %d/%d (sigma %.4f)", stage, i, n_steps, sigma))
-      }
-    }
-  })
-  list(latents = latents, audio_latents = audio_latents)
+            # Euler velocity step in float32; dt is negative (sigma decreasing)
+            dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
+            latents <- latents + dt * out$sample$to(dtype = f32)
+            audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+            rm(out)
+            gc(verbose = FALSE)
+            if (verbose) {
+                message(sprintf("  %sstep %d/%d (sigma %.4f)", stage, i, n_steps, sigma))
+            }
+        }
+    })
+    list(latents = latents, audio_latents = audio_latents)
 }
 
 #' Load the LTX-2.3 generation components from a single-file checkpoint
@@ -159,90 +158,85 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   class \code{ltx23_pipeline}.
 #'
 #' @export
-ltx23_load_pipeline <- function(
-  checkpoint_path,
-  device = "cuda",
-  dtype = "bfloat16",
-  transformer_device = "cpu",
-  components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
-  pin = TRUE,
-  attn_chunk = NULL,
-  verbose = TRUE
-) {
-  fp8 <- dir.exists(checkpoint_path)
-  ckpt <- if (fp8) {
-    ltx23_open_fp8_checkpoint(checkpoint_path)
-  } else {
-    ltx23_open_checkpoint(checkpoint_path)
-  }
-  groups <- ltx23_split_keys(ckpt$keys)
-  torch_dtype <- switch(dtype,
-    bfloat16 = torch::torch_bfloat16(),
-    float16 = torch::torch_float16(),
-    float32 = torch::torch_float32(),
-    stop("Unsupported dtype: ", dtype)
-  )
-
-  pipe <- list(config = ckpt$config, checkpoint_path = ckpt$path)
-
-  load_component <- function(name, module, map_key, dev) {
-    if (verbose) message("Loading ", name, " (", length(groups[[name]]), " tensors)...")
-    module$to(dtype = torch_dtype)
-    res <- ltx23_load_group(ckpt, groups[[name]], module,
-      map_key = map_key, verbose = verbose)
-    if (length(res$unmapped) || length(res$unfilled)) {
-      stop(name, ": incomplete load (", length(res$unmapped), " unmapped, ",
-        length(res$unfilled), " unfilled)")
-    }
-    module$to(device = dev)
-    module$eval()
-    module
-  }
-
-  if ("dit" %in% components) {
-    if (fp8) {
-      pipe$transformer <- ltx23_load_transformer_fp8(
-        ckpt, device = device, pin = pin, verbose = verbose
-      )
+ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
+                                dtype = "bfloat16",
+                                transformer_device = "cpu",
+                                components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
+                                pin = TRUE, attn_chunk = NULL, verbose = TRUE) {
+    fp8 <- dir.exists(checkpoint_path)
+    ckpt <- if (fp8) {
+        ltx23_open_fp8_checkpoint(checkpoint_path)
     } else {
-      pipe$transformer <- load_component(
-        "dit", ltx23_transformer(), ltx23_map_dit_key, transformer_device
-      )
+        ltx23_open_checkpoint(checkpoint_path)
     }
-    if (!is.null(attn_chunk)) {
-      ltx23_set_attn_chunk(pipe$transformer, as.integer(attn_chunk))
-    }
-  }
-  if ("connectors" %in% components) {
-    pipe$connectors <- load_component(
-      "connectors", ltx23_text_connectors(), ltx23_map_connector_key, device
-    )
-  }
-  if ("vae" %in% components) {
-    pipe$vae <- load_component(
-      "vae", ltx23_video_vae(), ltx23_map_vae_key, device
-    )
-  }
-  if ("audio_vae" %in% components) {
-    pipe$audio_vae <- load_component(
-      "audio_vae", ltx23_audio_vae(), ltx23_map_audio_vae_key, device
-    )
-  }
-  if ("vocoder" %in% components) {
-    # The vocoder is small and precision-sensitive: run in float32
-    voc <- ltx23_vocoder_with_bwe()
-    voc$to(dtype = torch_dtype)
-    res <- ltx23_load_group(ckpt, groups$vocoder, voc,
-      map_key = ltx23_map_vocoder_key, verbose = verbose)
-    if (length(res$unmapped) || length(res$unfilled)) {
-      stop("vocoder: incomplete load")
-    }
-    voc$to(device = device, dtype = torch::torch_float32())
-    voc$eval()
-    pipe$vocoder <- voc
-  }
+    groups <- ltx23_split_keys(ckpt$keys)
+    torch_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
+                          float16 = torch::torch_float16(),
+                          float32 = torch::torch_float32(),
+                          stop("Unsupported dtype: ", dtype))
 
-  structure(pipe, class = "ltx23_pipeline")
+    pipe <- list(config = ckpt$config, checkpoint_path = ckpt$path)
+
+    load_component <- function(name, module, map_key, dev) {
+        if (verbose) {
+            message("Loading ", name, " (", length(groups[[name]]), " tensors)...")
+        }
+        module$to(dtype = torch_dtype)
+        res <- ltx23_load_group(ckpt, groups[[name]], module,
+                                map_key = map_key, verbose = verbose)
+        if (length(res$unmapped) || length(res$unfilled)) {
+            stop(name, ": incomplete load (", length(res$unmapped), " unmapped, ",
+                 length(res$unfilled), " unfilled)")
+        }
+        module$to(device = dev)
+        module$eval()
+        module
+    }
+
+    if ("dit" %in% components) {
+        if (fp8) {
+            pipe$transformer <- ltx23_load_transformer_fp8(
+                ckpt, device = device, pin = pin, verbose = verbose
+            )
+        } else {
+            pipe$transformer <- load_component(
+                "dit", ltx23_transformer(), ltx23_map_dit_key, transformer_device
+            )
+        }
+        if (!is.null(attn_chunk)) {
+            ltx23_set_attn_chunk(pipe$transformer, as.integer(attn_chunk))
+        }
+    }
+    if ("connectors" %in% components) {
+        pipe$connectors <- load_component(
+            "connectors", ltx23_text_connectors(), ltx23_map_connector_key, device
+        )
+    }
+    if ("vae" %in% components) {
+        pipe$vae <- load_component(
+                                   "vae", ltx23_video_vae(), ltx23_map_vae_key, device
+        )
+    }
+    if ("audio_vae" %in% components) {
+        pipe$audio_vae <- load_component(
+            "audio_vae", ltx23_audio_vae(), ltx23_map_audio_vae_key, device
+        )
+    }
+    if ("vocoder" %in% components) {
+        # The vocoder is small and precision-sensitive: run in float32
+        voc <- ltx23_vocoder_with_bwe()
+        voc$to(dtype = torch_dtype)
+        res <- ltx23_load_group(ckpt, groups$vocoder, voc,
+                                map_key = ltx23_map_vocoder_key, verbose = verbose)
+        if (length(res$unmapped) || length(res$unfilled)) {
+            stop("vocoder: incomplete load")
+        }
+        voc$to(device = device, dtype = torch::torch_float32())
+        voc$eval()
+        pipe$vocoder <- voc
+    }
+
+    structure(pipe, class = "ltx23_pipeline")
 }
 
 #' Generate video (and audio) with LTX-2.3
@@ -295,244 +289,245 @@ ltx23_load_pipeline <- function(
 #'   [2, samples] in [-1, 1]), \code{sample_rate}, and the raw latents.
 #'
 #' @export
-txt2vid_ltx2 <- function(
-  prompt,
-  pipeline,
-  text_encoder = NULL,
-  tokenizer = NULL,
-  prompt_embeds = NULL,
-  width = 768L,
-  height = 512L,
-  num_frames = 121L,
-  frame_rate = 24,
-  sigmas = ltx23_distilled_sigmas(),
-  guidance_scale = 1,
-  seed = NULL,
-  device = "cuda",
-  dtype = "bfloat16",
-  filename = NULL,
-  max_sequence_length = 1024L,
-  decode_video = TRUE,
-  decode_audio = TRUE,
-  two_stage = FALSE,
-  upsampler = NULL,
-  adain_factor = 1.0,
-  tone_map_compression = 0,
-  verbose = TRUE
-) {
-  stopifnot(inherits(pipeline, "ltx23_pipeline"))
-  if (guidance_scale != 1) {
-    stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
-  }
-  if (two_stage) {
-    if (is.null(upsampler)) {
-      stop("two_stage = TRUE requires an upsampler (see ltx23_load_upsampler).")
+txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
+                         tokenizer = NULL, prompt_embeds = NULL,
+                         width = 768L, height = 512L, num_frames = 121L,
+                         frame_rate = 24, sigmas = ltx23_distilled_sigmas(),
+                         guidance_scale = 1, seed = NULL, device = "cuda",
+                         dtype = "bfloat16", filename = NULL,
+                         max_sequence_length = 1024L, decode_video = TRUE,
+                         decode_audio = TRUE, two_stage = FALSE,
+                         upsampler = NULL, adain_factor = 1.0,
+                         tone_map_compression = 0, verbose = TRUE) {
+    stopifnot(inherits(pipeline, "ltx23_pipeline"))
+    if (guidance_scale != 1) {
+        stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
     }
-    if (width %% 64L != 0L || height %% 64L != 0L) {
-      stop("width and height must be multiples of 64 for two-stage generation")
+    if (two_stage) {
+        if (is.null(upsampler)) {
+            stop("two_stage = TRUE requires an upsampler (see ltx23_load_upsampler).")
+        }
+        if (width %% 64L != 0L || height %% 64L != 0L) {
+            stop("width and height must be multiples of 64 for two-stage generation")
+        }
     }
-  }
-  if (width %% 32L != 0L || height %% 32L != 0L) {
-    stop("width and height must be multiples of 32")
-  }
-  if ((num_frames - 1L) %% 8L != 0L) {
-    stop("num_frames must be 8k + 1 (e.g. 121)")
-  }
-  if (utils::tail(sigmas, 1) != 0) {
-    stop("sigmas must end with 0")
-  }
-  if (!is.null(seed)) torch::torch_manual_seed(seed)
-
-  compute_dtype <- switch(dtype,
-    bfloat16 = torch::torch_bfloat16(),
-    float16 = torch::torch_float16(),
-    float32 = torch::torch_float32(),
-    stop("Unsupported dtype: ", dtype)
-  )
-  f32 <- torch::torch_float32()
-
-  # --- Phase 1: text encoding -------------------------------------------------
-  if (is.null(prompt_embeds)) {
-    if (is.null(text_encoder) || is.null(tokenizer)) {
-      stop("Supply text_encoder + tokenizer, or precomputed prompt_embeds.")
+    if (width %% 32L != 0L || height %% 32L != 0L) {
+        stop("width and height must be multiples of 32")
     }
-    if (verbose) message("Encoding prompt...")
-    prompt_embeds <- encode_with_gemma3(
-      prompt,
-      model = text_encoder, tokenizer = tokenizer,
-      max_sequence_length = max_sequence_length,
-      device = if (is.character(text_encoder)) device else "cpu",
-      verbose = verbose
-    )
-  }
+    if ((num_frames - 1L) %% 8L != 0L) {
+        stop("num_frames must be 8k + 1 (e.g. 121)")
+    }
+    if (utils::tail(sigmas, 1) != 0) {
+        stop("sigmas must end with 0")
+    }
+    if (!is.null(seed)) {
+        torch::torch_manual_seed(seed)
+    }
 
-  connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
-  torch::with_no_grad({
-    conn <- pipeline$connectors(
-      prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
-      prompt_embeds$prompt_attention_mask$to(device = connectors_device)
-    )
-  })
-  video_text_embeds <- conn$video_text_embedding
-  audio_text_embeds <- conn$audio_text_embedding
-  text_mask <- conn$attention_mask
-  rm(conn)
-  gc(verbose = FALSE)
+    compute_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
+                            float16 = torch::torch_float16(),
+                            float32 = torch::torch_float32(),
+                            stop("Unsupported dtype: ", dtype))
+    f32 <- torch::torch_float32()
 
-  # --- Phase 2: latent preparation ---------------------------------------------
-  latent_frames <- (num_frames - 1L) %/% 8L + 1L
-  latent_height <- height %/% 32L
-  latent_width <- width %/% 32L
-  # Two-stage: stage 1 generates at half resolution
-  s1_height <- if (two_stage) latent_height %/% 2L else latent_height
-  s1_width <- if (two_stage) latent_width %/% 2L else latent_width
-
-  # 25 audio latent frames per second: sampling_rate / hop / downsample
-  audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
-  latent_mel_bins <- 16L# 64 mel bins / 4
-
-  latents <- torch::torch_randn(
-    c(1L, 128L, latent_frames, s1_height, s1_width),
-    device = device, dtype = f32
-  )
-  latents <- ltx23_pack_video_latents(latents)
-
-  audio_latents <- torch::torch_randn(
-    c(1L, 8L, audio_num_frames, latent_mel_bins),
-    device = device, dtype = f32
-  )
-  audio_latents <- ltx23_pack_audio_latents(audio_latents)
-
-  # --- Phase 3: denoising -------------------------------------------------------
-  transformer <- pipeline$transformer
-  if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
-    length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
-    height %/% (if (two_stage) 2L else 1L), num_frames))
-
-  denoised <- .ltx23_denoise(
-    transformer, latents, audio_latents, sigmas,
-    video_text_embeds, audio_text_embeds, text_mask,
-    latent_frames, s1_height, s1_width,
-    audio_num_frames, frame_rate,
-    device, compute_dtype, verbose = verbose,
-    stage = if (two_stage) "stage 1 " else ""
-  )
-  latents <- denoised$latents
-  audio_latents <- denoised$audio_latents
-
-  if (two_stage) {
-    vae <- pipeline$vae
-    if (verbose) message("Upsampling latents 2x...")
-    torch::with_no_grad({
-      up_device <- upsampler$final_conv$weight$device
-      up_dtype <- upsampler$final_conv$weight$dtype
-      s1_latents <- ltx23_unpack_video_latents(
-        latents, latent_frames, s1_height, s1_width
-      )$to(device = up_device)
-      # The upsampler operates on unnormalized latents
-      s1_latents <- ltx23_denormalize_latents(
-        s1_latents, vae$latents_mean, vae$latents_std
-      )
-      up_latents <- upsampler(s1_latents$to(dtype = up_dtype))$to(dtype = f32)
-      if (adain_factor != 0) {
-        up_latents <- ltx23_adain_filter_latent(
-          up_latents, s1_latents$to(dtype = f32), adain_factor
+    # --- Phase 1: text encoding -------------------------------------------------
+    if (is.null(prompt_embeds)) {
+        if (is.null(text_encoder) || is.null(tokenizer)) {
+            stop("Supply text_encoder + tokenizer, or precomputed prompt_embeds.")
+        }
+        if (verbose) {
+            message("Encoding prompt...")
+        }
+        prompt_embeds <- encode_with_gemma3(
+            prompt,
+            model = text_encoder, tokenizer = tokenizer,
+            max_sequence_length = max_sequence_length,
+            device = if (is.character(text_encoder)) device else "cpu",
+            verbose = verbose
         )
-      }
-      if (tone_map_compression > 0) {
-        up_latents <- ltx23_tone_map_latents(up_latents, tone_map_compression)
-      }
-      up_latents <- ltx23_normalize_latents(
-        up_latents, vae$latents_mean, vae$latents_std
-      )
-      latents <- ltx23_pack_video_latents(up_latents$to(device = device))
-      rm(s1_latents, up_latents)
+    }
+
+    connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
+    torch::with_no_grad({
+        conn <- pipeline$connectors(
+                                    prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
+                                    prompt_embeds$prompt_attention_mask$to(device = connectors_device)
+        )
     })
+    video_text_embeds <- conn$video_text_embedding
+    audio_text_embeds <- conn$audio_text_embedding
+    text_mask <- conn$attention_mask
+    rm(conn)
     gc(verbose = FALSE)
 
-    # Re-noise BOTH modalities at the stage-2 entry sigma
-    s2_sigmas <- ltx23_stage2_distilled_sigmas()
-    noise_scale <- s2_sigmas[1]
-    torch::with_no_grad({
-      latents <- torch::torch_randn_like(latents)$mul(noise_scale) +
-        latents$mul(1 - noise_scale)
-      audio_latents <- torch::torch_randn_like(audio_latents)$mul(noise_scale) +
-        audio_latents$mul(1 - noise_scale)
-    })
+    # --- Phase 2: latent preparation ---------------------------------------------
+    latent_frames <- (num_frames - 1L) %/% 8L + 1L
+    latent_height <- height %/% 32L
+    latent_width <- width %/% 32L
+    # Two-stage: stage 1 generates at half resolution
+    if (two_stage) {
+        s1_height <- latent_height %/% 2L
+    } else {
+        s1_height <- latent_height
+    }
+    if (two_stage) {
+        s1_width <- latent_width %/% 2L
+    } else {
+        s1_width <- latent_width
+    }
 
-    if (verbose) message(sprintf("Refining: %d steps at %dx%d...",
-      length(s2_sigmas) - 1L, width, height))
+    # 25 audio latent frames per second: sampling_rate / hop / downsample
+    audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
+    latent_mel_bins <- 16L # 64 mel bins / 4
+
+    latents <- torch::torch_randn(
+                                  c(1L, 128L, latent_frames, s1_height, s1_width),
+                                  device = device, dtype = f32
+    )
+    latents <- ltx23_pack_video_latents(latents)
+
+    audio_latents <- torch::torch_randn(
+                                        c(1L, 8L, audio_num_frames, latent_mel_bins),
+                                        device = device, dtype = f32
+    )
+    audio_latents <- ltx23_pack_audio_latents(audio_latents)
+
+    # --- Phase 3: denoising -------------------------------------------------------
+    transformer <- pipeline$transformer
+    if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
+                                 length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
+                                 height %/% (if (two_stage) 2L else 1L), num_frames))
+
     denoised <- .ltx23_denoise(
-      transformer, latents, audio_latents, s2_sigmas,
-      video_text_embeds, audio_text_embeds, text_mask,
-      latent_frames, latent_height, latent_width,
-      audio_num_frames, frame_rate,
-      device, compute_dtype, verbose = verbose, stage = "stage 2 "
+                               transformer, latents, audio_latents, sigmas,
+                               video_text_embeds, audio_text_embeds, text_mask,
+                               latent_frames, s1_height, s1_width,
+                               audio_num_frames, frame_rate,
+                               device, compute_dtype, verbose = verbose,
+                               stage = if (two_stage) "stage 1 " else ""
     )
     latents <- denoised$latents
     audio_latents <- denoised$audio_latents
-  }
 
-  result <- list(
-    latents = latents,
-    audio_latents = audio_latents,
-    sample_rate = 48000L
-  )
+    if (two_stage) {
+        vae <- pipeline$vae
+        if (verbose) {
+            message("Upsampling latents 2x...")
+        }
+        torch::with_no_grad({
+            up_device <- upsampler$final_conv$weight$device
+            up_dtype <- upsampler$final_conv$weight$dtype
+            s1_latents <- ltx23_unpack_video_latents(
+                latents, latent_frames, s1_height, s1_width
+            )$to(device = up_device)
+            # The upsampler operates on unnormalized latents
+            s1_latents <- ltx23_denormalize_latents(
+                s1_latents, vae$latents_mean, vae$latents_std
+            )
+            up_latents <- upsampler(s1_latents$to(dtype = up_dtype))$to(dtype = f32)
+            if (adain_factor != 0) {
+                up_latents <- ltx23_adain_filter_latent(
+                    up_latents, s1_latents$to(dtype = f32), adain_factor
+                )
+            }
+            if (tone_map_compression > 0) {
+                up_latents <- ltx23_tone_map_latents(up_latents, tone_map_compression)
+            }
+            up_latents <- ltx23_normalize_latents(
+                up_latents, vae$latents_mean, vae$latents_std
+            )
+            latents <- ltx23_pack_video_latents(up_latents$to(device = device))
+            rm(s1_latents, up_latents)
+        })
+        gc(verbose = FALSE)
 
-  # --- Phase 4: decoding -----------------------------------------------------------
-  if (decode_video) {
-    if (verbose) message("Decoding video...")
-    vae <- pipeline$vae
-    vae_device <- vae$latents_mean$device
-    vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
-    torch::with_no_grad({
-      video_latents <- ltx23_unpack_video_latents(
-        latents, latent_frames, latent_height, latent_width
-      )$to(device = vae_device)
-      video_latents <- ltx23_denormalize_latents(
-        video_latents, vae$latents_mean, vae$latents_std
-      )
-      video <- vae$decode(video_latents$to(dtype = vae_dtype))
-      # [-1, 1] -> [0, 1], [B, 3, F, H, W] -> [F, H, W, 3]
-      video <- ((video$to(dtype = f32) / 2 + 0.5)$clamp(0, 1))[1, , , , ]
-      video <- video$permute(c(2L, 3L, 4L, 1L))$cpu()
-    })
-    result$video <- as.array(video)
-    rm(video, video_latents)
-    gc(verbose = FALSE)
-  }
+        # Re-noise BOTH modalities at the stage-2 entry sigma
+        s2_sigmas <- ltx23_stage2_distilled_sigmas()
+        noise_scale <- s2_sigmas[1]
+        torch::with_no_grad({
+            latents <- torch::torch_randn_like(latents)$mul(noise_scale) +
+            latents$mul(1 - noise_scale)
+            audio_latents <- torch::torch_randn_like(audio_latents)$mul(noise_scale) +
+            audio_latents$mul(1 - noise_scale)
+        })
 
-  if (decode_audio) {
-    if (verbose) message("Decoding audio...")
-    audio_vae <- pipeline$audio_vae
-    av_device <- audio_vae$latents_mean$device
-    av_dtype <- audio_vae$decoder$conv_in$conv$weight$dtype
-    torch::with_no_grad({
-      audio_packed <- .ltx23_denormalize_audio(
-        audio_latents$to(device = av_device),
-        audio_vae$latents_mean, audio_vae$latents_std
-      )
-      audio_lat <- ltx23_unpack_audio_latents(audio_packed, latent_mel_bins)
-      mel <- audio_vae$decode(audio_lat$to(dtype = av_dtype))
-      waveform <- pipeline$vocoder(mel$to(dtype = torch::torch_float32()))
-      waveform <- waveform[1, , ]$cpu()
-    })
-    result$audio <- as.matrix(as.array(waveform))
-    rm(waveform, mel, audio_lat, audio_packed)
-    gc(verbose = FALSE)
-  }
+        if (verbose) message(sprintf("Refining: %d steps at %dx%d...",
+                                     length(s2_sigmas) - 1L, width, height))
+        denoised <- .ltx23_denoise(
+                                   transformer, latents, audio_latents, s2_sigmas,
+                                   video_text_embeds, audio_text_embeds, text_mask,
+                                   latent_frames, latent_height, latent_width,
+                                   audio_num_frames, frame_rate,
+                                   device, compute_dtype, verbose = verbose, stage = "stage 2 "
+        )
+        latents <- denoised$latents
+        audio_latents <- denoised$audio_latents
+    }
 
-  if (!is.null(filename) && decode_video) {
-    save_video_ltx23(result$video, filename,
-      fps = frame_rate,
-      audio = if (decode_audio) result$audio else NULL,
-      sample_rate = result$sample_rate,
-      verbose = verbose
+    result <- list(
+                   latents = latents,
+                   audio_latents = audio_latents,
+                   sample_rate = 48000L
     )
-    result$filename <- filename
-  }
 
-  invisible(result)
+    # --- Phase 4: decoding -----------------------------------------------------------
+    if (decode_video) {
+        if (verbose) {
+            message("Decoding video...")
+        }
+        vae <- pipeline$vae
+        vae_device <- vae$latents_mean$device
+        vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
+        torch::with_no_grad({
+            video_latents <- ltx23_unpack_video_latents(
+                latents, latent_frames, latent_height, latent_width
+            )$to(device = vae_device)
+            video_latents <- ltx23_denormalize_latents(
+                video_latents, vae$latents_mean, vae$latents_std
+            )
+            video <- vae$decode(video_latents$to(dtype = vae_dtype))
+            # [-1, 1] -> [0, 1], [B, 3, F, H, W] -> [F, H, W, 3]
+            video <- ((video$to(dtype = f32) / 2 + 0.5)$clamp(0, 1))[1,,,,]
+            video <- video$permute(c(2L, 3L, 4L, 1L))$cpu()
+        })
+        result$video <- as.array(video)
+        rm(video, video_latents)
+        gc(verbose = FALSE)
+    }
+
+    if (decode_audio) {
+        if (verbose) {
+            message("Decoding audio...")
+        }
+        audio_vae <- pipeline$audio_vae
+        av_device <- audio_vae$latents_mean$device
+        av_dtype <- audio_vae$decoder$conv_in$conv$weight$dtype
+        torch::with_no_grad({
+            audio_packed <- .ltx23_denormalize_audio(
+                audio_latents$to(device = av_device),
+                audio_vae$latents_mean, audio_vae$latents_std
+            )
+            audio_lat <- ltx23_unpack_audio_latents(audio_packed, latent_mel_bins)
+            mel <- audio_vae$decode(audio_lat$to(dtype = av_dtype))
+            waveform <- pipeline$vocoder(mel$to(dtype = torch::torch_float32()))
+            waveform <- waveform[1,,]$cpu()
+        })
+        result$audio <- as.matrix(as.array(waveform))
+        rm(waveform, mel, audio_lat, audio_packed)
+        gc(verbose = FALSE)
+    }
+
+    if (!is.null(filename) && decode_video) {
+        save_video_ltx23(result$video, filename,
+                         fps = frame_rate,
+                         audio = if (decode_audio) result$audio else NULL,
+                         sample_rate = result$sample_rate,
+                         verbose = verbose
+        )
+        result$filename <- filename
+    }
+
+    invisible(result)
 }
 
 #' Write a 16-bit PCM WAV file
@@ -547,31 +542,33 @@ txt2vid_ltx2 <- function(
 #'
 #' @export
 write_wav <- function(audio, path, sample_rate = 48000L) {
-  if (is.null(dim(audio))) audio <- matrix(audio, nrow = 1L)
-  n_channels <- nrow(audio)
-  n_samples <- ncol(audio)
+    if (is.null(dim(audio))) {
+        audio <- matrix(audio, nrow = 1L)
+    }
+    n_channels <- nrow(audio)
+    n_samples <- ncol(audio)
 
-  # Interleave channels, scale to int16
-  pcm <- as.integer(round(pmax(pmin(as.vector(audio), 1), -1) * 32767))
-  byte_rate <- sample_rate * n_channels * 2L
-  data_size <- n_samples * n_channels * 2L
+    # Interleave channels, scale to int16
+    pcm <- as.integer(round(pmax(pmin(as.vector(audio), 1), -1) * 32767))
+    byte_rate <- sample_rate * n_channels * 2L
+    data_size <- n_samples * n_channels * 2L
 
-  con <- file(path, "wb")
-  on.exit(close(con), add = TRUE)
-  writeChar("RIFF", con, eos = NULL)
-  writeBin(as.integer(36L + data_size), con, size = 4, endian = "little")
-  writeChar("WAVEfmt ", con, eos = NULL)
-  writeBin(16L, con, size = 4, endian = "little")
-  writeBin(1L, con, size = 2, endian = "little")# PCM
-  writeBin(n_channels, con, size = 2, endian = "little")
-  writeBin(as.integer(sample_rate), con, size = 4, endian = "little")
-  writeBin(byte_rate, con, size = 4, endian = "little")
-  writeBin(n_channels * 2L, con, size = 2, endian = "little")# block align
-  writeBin(16L, con, size = 2, endian = "little")# bits per sample
-  writeChar("data", con, eos = NULL)
-  writeBin(data_size, con, size = 4, endian = "little")
-  writeBin(pcm, con, size = 2, endian = "little")
-  invisible(path)
+    con <- file(path, "wb")
+    on.exit(close(con), add = TRUE)
+    writeChar("RIFF", con, eos = NULL)
+    writeBin(as.integer(36L + data_size), con, size = 4, endian = "little")
+    writeChar("WAVEfmt ", con, eos = NULL)
+    writeBin(16L, con, size = 4, endian = "little")
+    writeBin(1L, con, size = 2, endian = "little") # PCM
+    writeBin(n_channels, con, size = 2, endian = "little")
+    writeBin(as.integer(sample_rate), con, size = 4, endian = "little")
+    writeBin(byte_rate, con, size = 4, endian = "little")
+    writeBin(n_channels * 2L, con, size = 2, endian = "little") # block align
+    writeBin(16L, con, size = 2, endian = "little") # bits per sample
+    writeChar("data", con, eos = NULL)
+    writeBin(data_size, con, size = 4, endian = "little")
+    writeBin(pcm, con, size = 2, endian = "little")
+    invisible(path)
 }
 
 #' Save an LTX video (optionally with audio) to MP4
@@ -590,29 +587,31 @@ write_wav <- function(audio, path, sample_rate = 48000L) {
 #'
 #' @export
 save_video_ltx23 <- function(video, filename, fps = 24, audio = NULL,
-  sample_rate = 48000L, verbose = TRUE) {
-  if (!requireNamespace("av", quietly = TRUE)) {
-    stop("The av package is required to write video files.")
-  }
-  tmp_dir <- tempfile("ltx23_frames_")
-  dir.create(tmp_dir)
-  on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
+                             sample_rate = 48000L, verbose = TRUE) {
+    if (!requireNamespace("av", quietly = TRUE)) {
+        stop("The av package is required to write video files.")
+    }
+    tmp_dir <- tempfile("ltx23_frames_")
+    dir.create(tmp_dir)
+    on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
 
-  n_frames <- dim(video)[1]
-  frame_paths <- character(n_frames)
-  for (i in seq_len(n_frames)) {
-    frame_paths[i] <- file.path(tmp_dir, sprintf("frame_%05d.png", i))
-    png::writePNG(video[i, , , ], frame_paths[i])
-  }
+    n_frames <- dim(video)[1]
+    frame_paths <- character(n_frames)
+    for (i in seq_len(n_frames)) {
+        frame_paths[i] <- file.path(tmp_dir, sprintf("frame_%05d.png", i))
+        png::writePNG(video[i,,,], frame_paths[i])
+    }
 
-  audio_path <- NULL
-  if (!is.null(audio)) {
-    audio_path <- file.path(tmp_dir, "audio.wav")
-    write_wav(audio, audio_path, sample_rate = sample_rate)
-  }
+    audio_path <- NULL
+    if (!is.null(audio)) {
+        audio_path <- file.path(tmp_dir, "audio.wav")
+        write_wav(audio, audio_path, sample_rate = sample_rate)
+    }
 
-  av::av_encode_video(frame_paths, output = filename, framerate = fps,
-    audio = audio_path, verbose = verbose)
-  if (verbose) message("Wrote ", filename)
-  invisible(filename)
+    av::av_encode_video(frame_paths, output = filename, framerate = fps,
+                        audio = audio_path, verbose = verbose)
+    if (verbose) {
+        message("Wrote ", filename)
+    }
+    invisible(filename)
 }

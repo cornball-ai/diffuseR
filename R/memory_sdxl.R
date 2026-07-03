@@ -33,86 +33,82 @@
 #' profile <- sdxl_memory_profile(vram_gb = 8)
 #' }
 sdxl_memory_profile <- function(vram_gb = NULL) {
-  # Auto-detect free VRAM if not provided
-  if (is.null(vram_gb)) {
-    vram_gb <- .detect_vram(use_free = TRUE)
-    message(sprintf("Detected %.1f GB free VRAM", vram_gb))
-  }
+    # Auto-detect free VRAM if not provided
+    if (is.null(vram_gb)) {
+        vram_gb <- .detect_vram(use_free = TRUE)
+        message(sprintf("Detected %.1f GB free VRAM", vram_gb))
+    }
 
-  # Determine profile level
-  if (vram_gb >= 16) {
-    profile <- "full_gpu"
-  } else if (vram_gb >= 10) {
-    profile <- "balanced"
-  } else if (vram_gb >= 6) {
-    profile <- "unet_gpu"
-  } else {
-    profile <- "cpu_only"
-  }
+    # Determine profile level
+    if (vram_gb >= 16) {
+        profile <- "full_gpu"
+    } else if (vram_gb >= 10) {
+        profile <- "balanced"
+    } else if (vram_gb >= 6) {
+        profile <- "unet_gpu"
+    } else {
+        profile <- "cpu_only"
+    }
 
-  # Build profile config
-  profiles <- list(
-    full_gpu = list(
-      name = "full_gpu",
-      devices = list(
-        unet = "cuda",
-        decoder = "cuda",
-        text_encoder = "cuda",
-        text_encoder2 = "cuda",
-        encoder = "cuda"
-      ),
-      dtype = "float16",
-      cfg_mode = "batched",
-      cleanup = "none",
-      max_resolution = 1536L,
-      step_cleanup_interval = 0L# No step cleanup
-    ),
-    balanced = list(
-      name = "balanced",
-      devices = list(
-        unet = "cuda",
-        decoder = "cuda",
-        text_encoder = "cpu",
-        text_encoder2 = "cpu",
-        encoder = "cpu"
-      ),
-      dtype = "float16",
-      cfg_mode = "batched",
-      cleanup = "phase", # Cleanup between text encoding and denoising
-      max_resolution = 1024L,
-      step_cleanup_interval = 0L
-    ),
-    unet_gpu = list(
-      name = "unet_gpu",
-      devices = list(
-        unet = "cuda",
-        decoder = "cpu",
-        text_encoder = "cpu",
-        text_encoder2 = "cpu",
-        encoder = "cpu"
-      ),
-      dtype = "float16",
-      cfg_mode = "sequential", # Sequential CFG halves peak memory
-      cleanup = "phase",
-      max_resolution = 1024L,
-      step_cleanup_interval = 10L# Cleanup every 10 steps
-    ),
-    cpu_only = list(
-      name = "cpu_only",
-      devices = list(
-        unet = "cpu",
-        decoder = "cpu",
-        text_encoder = "cpu",
-        text_encoder2 = "cpu",
-        encoder = "cpu"
-      ),
-      dtype = "float32", # CPU often faster with float32
-      cfg_mode = "sequential",
-      cleanup = "none", # No GPU to clean
-      max_resolution = 768L,
-      step_cleanup_interval = 0L
+    # Build profile config
+    profiles <- list(
+                     full_gpu = list(
+                                     name = "full_gpu",
+                                     devices = list(unet = "cuda", decoder = "cuda",
+                text_encoder = "cuda", text_encoder2 = "cuda",
+                encoder = "cuda"),
+                                     dtype = "float16",
+                                     cfg_mode = "batched",
+                                     cleanup = "none",
+                                     max_resolution = 1536L,
+                                     step_cleanup_interval = 0L # No step cleanup
+        ),
+                     balanced = list(
+                                     name = "balanced",
+                                     devices = list(
+                unet = "cuda",
+                decoder = "cuda",
+                text_encoder = "cpu",
+                text_encoder2 = "cpu",
+                encoder = "cpu"
+            ),
+                                     dtype = "float16",
+                                     cfg_mode = "batched",
+                                     cleanup = "phase", # Cleanup between text encoding and denoising
+                                     max_resolution = 1024L,
+                                     step_cleanup_interval = 0L
+        ),
+                     unet_gpu = list(
+                                     name = "unet_gpu",
+                                     devices = list(
+                unet = "cuda",
+                decoder = "cpu",
+                text_encoder = "cpu",
+                text_encoder2 = "cpu",
+                encoder = "cpu"
+            ),
+                                     dtype = "float16",
+                                     cfg_mode = "sequential", # Sequential CFG halves peak memory
+                                     cleanup = "phase",
+                                     max_resolution = 1024L,
+                                     step_cleanup_interval = 10L # Cleanup every 10 steps
+        ),
+                     cpu_only = list(
+                                     name = "cpu_only",
+                                     devices = list(
+                unet = "cpu",
+                decoder = "cpu",
+                text_encoder = "cpu",
+                text_encoder2 = "cpu",
+                encoder = "cpu"
+            ),
+                                     dtype = "float32", # CPU often faster with float32
+                                     cfg_mode = "sequential",
+                                     cleanup = "none", # No GPU to clean
+                                     max_resolution = 768L,
+                                     step_cleanup_interval = 0L
+        )
     )
-  )
 
-  profiles[[profile]]
+    profiles[[profile]]
 }

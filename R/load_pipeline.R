@@ -24,59 +24,51 @@
 #' pipeline <- load_pipeline("my_model", device = "cuda")
 #' }
 #'
-load_pipeline <- function(
-  model_name,
-  m2d,
-  i2i = FALSE,
-  unet_dtype_str,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  ...
-) {
-  # Create an environment to store the pipeline components
-  # pipeline <- new.env(parent = emptyenv())
-  devices <- m2d$devices
-  unet_dtype <- m2d$unet_dtype
-  device_cpu <- m2d$device_cpu
-  device_cuda <- m2d$device_cuda
+load_pipeline <- function(model_name, m2d, i2i = FALSE, unet_dtype_str,
+                          use_native_decoder = FALSE,
+                          use_native_text_encoder = FALSE,
+                          use_native_unet = FALSE, ...) {
+    # Create an environment to store the pipeline components
+    # pipeline <- new.env(parent = emptyenv())
+    devices <- m2d$devices
+    unet_dtype <- m2d$unet_dtype
+    device_cpu <- m2d$device_cpu
+    device_cuda <- m2d$device_cuda
 
-  pipeline <- list()
-  # Load models into the environment
-  if (i2i) {
-    message("Loading image encoder...")
-    pipeline$encoder <- load_model_component(component = "encoder",
-      model_name,
-      devices$encoder)
-  }
-  message("Loading text_encoder...")
-  pipeline$text_encoder <- load_model_component("text_encoder", model_name,
-    devices$text_encoder,
-    use_native = use_native_text_encoder)
-  if (model_name == "sdxl") {
-    message("Loading text_encoder2...")
-    pipeline$text_encoder2 <- load_model_component(component = "text_encoder2",
-      model_name,
-      devices$text_encoder2,
-      use_native = use_native_text_encoder)
-  }
-  message("Loading unet...")
-  pipeline$unet <- load_model_component("unet", model_name,
-    device = devices$unet,
-    unet_dtype_str = unet_dtype_str,
-    use_native = use_native_unet)
+    pipeline <- list()
+    # Load models into the environment
+    if (i2i) {
+        message("Loading image encoder...")
+        pipeline$encoder <- load_model_component(component = "encoder",
+            model_name, devices$encoder)
+    }
+    message("Loading text_encoder...")
+    pipeline$text_encoder <- load_model_component("text_encoder", model_name,
+        devices$text_encoder,
+        use_native = use_native_text_encoder)
+    if (model_name == "sdxl") {
+        message("Loading text_encoder2...")
+        pipeline$text_encoder2 <- load_model_component(component = "text_encoder2",
+            model_name,
+            devices$text_encoder2,
+            use_native = use_native_text_encoder)
+    }
+    message("Loading unet...")
+    pipeline$unet <- load_model_component("unet", model_name,
+        device = devices$unet,
+        unet_dtype_str = unet_dtype_str,
+        use_native = use_native_unet)
 
-  message("Loading image decoder...")
-  pipeline$decoder <- load_model_component("decoder", model_name,
-    devices$decoder,
-    use_native = use_native_decoder)
+    message("Loading image decoder...")
+    pipeline$decoder <- load_model_component("decoder", model_name,
+        devices$decoder,
+        use_native = use_native_decoder)
 
-  # Store configuration
-  pipeline$devices <- devices
+    # Store configuration
+    pipeline$devices <- devices
 
-  # Add a class for S3 method dispatch if needed
-  # class(pipeline) <- c("diffusion_pipeline", "environment")
+    # Add a class for S3 method dispatch if needed
+    # class(pipeline) <- c("diffusion_pipeline", "environment")
 
-  return(pipeline)
+    return(pipeline)
 }
-
