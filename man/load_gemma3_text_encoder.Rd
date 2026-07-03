@@ -3,12 +3,8 @@
 \alias{load_gemma3_text_encoder}
 \title{Load Gemma3 Text Model from safetensors}
 \usage{
-load_gemma3_text_encoder(
-  model_path,
-  device = "cpu",
-  dtype = "float16",
-  verbose = TRUE
-)
+load_gemma3_text_encoder(model_path, device = "cpu", dtype = "float16",
+                         verbose = TRUE)
 }
 \arguments{
 \item{model_path}{Character. Path to directory containing model files.}

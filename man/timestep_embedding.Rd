@@ -3,12 +3,8 @@
 \alias{timestep_embedding}
 \title{Sinusoidal Timestep Embedding}
 \usage{
-timestep_embedding(
-  timesteps,
-  dim,
-  flip_sin_to_cos = TRUE,
-  downscale_freq_shift = 0L
-)
+timestep_embedding(timesteps, dim, flip_sin_to_cos = TRUE,
+                   downscale_freq_shift = 0L)
 }
 \arguments{
 \item{timesteps}{Tensor of timesteps (batch_size,)}

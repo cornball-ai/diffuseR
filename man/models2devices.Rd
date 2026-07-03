@@ -3,12 +3,8 @@
 \alias{models2devices}
 \title{models2devices}
 \usage{
-models2devices(
-  model_name,
-  devices = "cpu",
-  unet_dtype_str = NULL,
-  download_models = FALSE
-)
+models2devices(model_name, devices = "cpu", unet_dtype_str = NULL,
+               download_models = FALSE)
 }
 \arguments{
 \item{model_name}{A character string representing the name of the model to be used.}

@@ -3,14 +3,8 @@
 \alias{flowmatch_set_timesteps}
 \title{Set timesteps for inference}
 \usage{
-flowmatch_set_timesteps(
-  schedule,
-  num_inference_steps = 50L,
-  device = "cpu",
-  mu = NULL,
-  sigmas = NULL,
-  timesteps = NULL
-)
+flowmatch_set_timesteps(schedule, num_inference_steps = 50L, device = "cpu",
+                        mu = NULL, sigmas = NULL, timesteps = NULL)
 }
 \arguments{
 \item{schedule}{List. The FlowMatch scheduler object.}

@@ -1,8 +1,0 @@
-% tinyrox says don't edit this manually, but it can't stop you!
-\name{gpu_poor}
-\alias{gpu_poor}
-\title{GPU-Poor Memory Management for LTX-2}
-\description{
-wan2GP-style memory optimizations for running LTX-2 video generation
-on limited VRAM (6-16GB).
-}

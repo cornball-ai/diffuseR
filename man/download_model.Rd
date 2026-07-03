@@ -3,14 +3,10 @@
 \alias{download_model}
 \title{Download TorchScript model files for Stable Diffusion}
 \usage{
-download_model(
-  model_name = "sd21",
-  devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
-  unet_dtype_str = NULL,
-  overwrite = FALSE,
-  show_progress = TRUE,
-  download_models = FALSE
-)
+download_model(model_name = "sd21",
+               devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
+               unet_dtype_str = NULL, overwrite = FALSE, show_progress = TRUE,
+               download_models = FALSE)
 }
 \arguments{
 \item{model_name}{Name of the model (e.g., "sd21" for stable-diffusion-2-1)}
@@ -31,8 +27,11 @@ A named list of full file paths, keyed by component name.
 \description{
 Downloads the required model files (e.g., UNet, decoder, text encoder)
 for a given Stable Diffusion model using \code{hfhub::hub_download()}.
+}
+\details{
 Files are cached by hfhub (typically \code{~/.cache/huggingface/hub/}).
 Legacy files in the old \code{R_user_dir()} location are also recognized.
+
 }
 \examples{
 \dontrun{

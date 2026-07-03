@@ -3,15 +3,8 @@
 \alias{encode_bpe}
 \title{Encode text to token IDs}
 \usage{
-encode_bpe(
-  tokenizer,
-  text,
-  add_special_tokens = TRUE,
-  max_length = NULL,
-  padding = "none",
-  truncation = FALSE,
-  return_tensors = "list"
-)
+encode_bpe(tokenizer, text, add_special_tokens = TRUE, max_length = NULL,
+           padding = "none", truncation = FALSE, return_tensors = "list")
 }
 \arguments{
 \item{tokenizer}{A bpe_tokenizer object.}

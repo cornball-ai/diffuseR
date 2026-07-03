@@ -3,13 +3,8 @@
 \alias{download_component}
 \title{Download a single TorchScript model component}
 \usage{
-download_component(
-  model_name = "sd21",
-  component,
-  device = "cpu",
-  overwrite = FALSE,
-  show_progress = TRUE
-)
+download_component(model_name = "sd21", component, device = "cpu",
+                   overwrite = FALSE, show_progress = TRUE)
 }
 \arguments{
 \item{model_name}{Character string, the name of the model (e.g., \code{"sd21"}).}

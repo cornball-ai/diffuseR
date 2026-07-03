@@ -3,30 +3,14 @@
 \alias{txt2img_sdxl}
 \title{Generate an image from a text prompt using SDXL}
 \usage{
-txt2img_sdxl(
-  prompt,
-  negative_prompt = NULL,
-  img_dim = 1024,
-  pipeline = NULL,
-  devices = "auto",
-  memory_profile = NULL,
-  unet_dtype_str = NULL,
-  download_models = FALSE,
-  scheduler = "ddim",
-  timesteps = NULL,
-  initial_latents = NULL,
-  num_inference_steps = 30,
-  guidance_scale = 7.5,
-  seed = NULL,
-  save_file = TRUE,
-  filename = NULL,
-  metadata_path = NULL,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  verbose = TRUE,
-  ...
-)
+txt2img_sdxl(prompt, negative_prompt = NULL, img_dim = 1024, pipeline = NULL,
+             devices = "auto", memory_profile = NULL, unet_dtype_str = NULL,
+             download_models = FALSE, scheduler = "ddim", timesteps = NULL,
+             initial_latents = NULL, num_inference_steps = 30,
+             guidance_scale = 7.5, seed = NULL, save_file = TRUE,
+             filename = NULL, metadata_path = NULL, use_native_decoder = FALSE,
+             use_native_text_encoder = FALSE, use_native_unet = FALSE,
+             verbose = TRUE, ...)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}

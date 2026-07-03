@@ -3,14 +3,8 @@
 \alias{save_video_ffmpeg}
 \title{Save Video using FFmpeg}
 \usage{
-save_video_ffmpeg(
-  video,
-  file,
-  fps = 24,
-  format = "mp4",
-  quality = 85,
-  verbose = TRUE
-)
+save_video_ffmpeg(video, file, fps = 24, format = "mp4", quality = 85,
+                  verbose = TRUE)
 }
 \arguments{
 \item{video}{Array of video frames [T, H, W, C].}

@@ -3,15 +3,8 @@
 \alias{save_video}
 \title{Save Video to File}
 \usage{
-save_video(
-  video,
-  file,
-  fps = 24,
-  format = NULL,
-  backend = "auto",
-  quality = 85,
-  verbose = TRUE
-)
+save_video(video, file, fps = 24, format = NULL, backend = "auto",
+           quality = 85, verbose = TRUE)
 }
 \arguments{
 \item{video}{Array of video frames with shape [T, H, W, C] where C is 3 (RGB).

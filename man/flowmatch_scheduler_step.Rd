@@ -3,13 +3,8 @@
 \alias{flowmatch_scheduler_step}
 \title{Perform a FlowMatch scheduler step}
 \usage{
-flowmatch_scheduler_step(
-  model_output,
-  timestep,
-  sample,
-  schedule,
-  generator = NULL
-)
+flowmatch_scheduler_step(model_output, timestep, sample, schedule,
+                         generator = NULL)
 }
 \arguments{
 \item{model_output}{torch tensor. The output from the diffusion model

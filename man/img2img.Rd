@@ -3,29 +3,13 @@
 \alias{img2img}
 \title{Image-to-Image Generation with Stable Diffusion}
 \usage{
-img2img(
-  input_image,
-  prompt,
-  negative_prompt = NULL,
-  img_dim = 512,
-  model_name = c("sd21", "sdxl"),
-  pipeline = NULL,
-  devices = "auto",
-  unet_dtype_str = "float16",
-  download_models = FALSE,
-  scheduler = "ddim",
-  num_inference_steps = 50,
-  strength = 0.8,
-  guidance_scale = 7.5,
-  seed = NULL,
-  save_file = TRUE,
-  filename = NULL,
-  metadata_path = NULL,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  ...
-)
+img2img(input_image, prompt, negative_prompt = NULL, img_dim = 512,
+        model_name = c("sd21", "sdxl"), pipeline = NULL, devices = "auto",
+        unet_dtype_str = "float16", download_models = FALSE,
+        scheduler = "ddim", num_inference_steps = 50, strength = 0.8,
+        guidance_scale = 7.5, seed = NULL, save_file = TRUE, filename = NULL,
+        metadata_path = NULL, use_native_decoder = FALSE,
+        use_native_text_encoder = FALSE, use_native_unet = FALSE, ...)
 }
 \arguments{
 \item{input_image}{Path to the input image or a tensor representing the image.}

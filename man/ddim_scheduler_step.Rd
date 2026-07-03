@@ -3,22 +3,12 @@
 \alias{ddim_scheduler_step}
 \title{Perform a DDIM scheduler step}
 \usage{
-ddim_scheduler_step(
-  model_output,
-  timestep,
-  sample,
-  schedule,
-  eta = 0,
-  use_clipped_model_output = FALSE,
-  thresholding = FALSE,
-  generator = NULL,
-  variance_noise = NULL,
-  clip_sample = FALSE,
-  set_alpha_to_one = FALSE,
-  prediction_type = c("epsilon", "sample", "v_prediction"),
-  dtype = torch::torch_float32(),
-  device = "cpu"
-)
+ddim_scheduler_step(model_output, timestep, sample, schedule, eta = 0,
+                    use_clipped_model_output = FALSE, thresholding = FALSE,
+                    generator = NULL, variance_noise = NULL,
+                    clip_sample = FALSE, set_alpha_to_one = FALSE,
+                    prediction_type = c("epsilon", "sample", "v_prediction"),
+                    dtype = torch::torch_float32(), device = "cpu")
 }
 \arguments{
 \item{model_output}{Numeric array. The output from the diffusion model, typically

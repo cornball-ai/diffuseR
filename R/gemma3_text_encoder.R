@@ -796,24 +796,26 @@ tokenize_gemma3 <- function(
 #' Encode text with Gemma3 for LTX-2
 #'
 #' Full pipeline for encoding text prompts using Gemma3 text encoder.
-#' Returns packed embeddings ready for LTX-2 connectors.
+#' Returns the raw stacked per-layer hidden states (embedding layer plus all
+#' transformer layers) for downstream connector modules, which handle
+#' normalization and projection themselves.
 #'
 #' @param prompts Character vector of prompts.
 #' @param model Gemma3 text model (or path to load from).
 #' @param tokenizer Gemma3 tokenizer (or path to load from).
 #' @param max_sequence_length Integer. Maximum sequence length.
-#' @param scale_factor Numeric. Scale factor for packing (default 8).
 #' @param device Character. Device for computation.
 #' @param dtype Character. Data type.
 #' @param verbose Logical. Print progress.
-#' @return List with prompt_embeds and prompt_attention_mask.
+#' @return List with prompt_embeds (raw stacked hidden states,
+#'   shape \code{[batch, seq_len, hidden_size, num_layers + 1]}) and
+#'   prompt_attention_mask.
 #' @export
 encode_with_gemma3 <- function(
   prompts,
   model = NULL,
   tokenizer = NULL,
   max_sequence_length = 1024L,
-  scale_factor = 8,
   device = "cuda",
   dtype = "float16",
   verbose = TRUE
@@ -852,29 +854,15 @@ encode_with_gemma3 <- function(
       output <- model(input_ids, attention_mask = attention_mask, output_hidden_states = TRUE)
     })
 
-  # Stack hidden states from transformer layers (skip embedding layer at index 1)
+  # Stack ALL hidden states: embedding layer + every transformer layer.
+  # The LTX connectors consume the full stack (their projection expects
+  # hidden_size * (num_layers + 1) inputs) and normalize it themselves.
   hidden_states_list <- output$hidden_states
-  # hidden_states_list[[1]] is embedding layer, [[2]] onwards are transformer layers
-  # LTX-2 connectors expect 49 layers (text_proj_in_factor=49)
-  transformer_hidden_states <- hidden_states_list[2:length(hidden_states_list)]
-  # Stack: [batch, seq_len, hidden_size, num_layers]
-  hidden_states_stacked <- torch::torch_stack(transformer_hidden_states, dim = - 1L)
-
-  # Compute sequence lengths from attention mask
-  sequence_lengths <- as.integer(attention_mask$sum(dim = 2L)$cpu())
-
-  # Pack embeddings
-  if (verbose) message("Packing embeddings...")
-  prompt_embeds <- pack_text_embeds(
-    hidden_states_stacked,
-    sequence_lengths = sequence_lengths,
-    padding_side = "left",
-    scale_factor = scale_factor,
-    device = device
-  )
+  # Stack: [batch, seq_len, hidden_size, num_layers + 1]
+  hidden_states_stacked <- torch::torch_stack(hidden_states_list, dim = - 1L)
 
   list(
-    prompt_embeds = prompt_embeds,
+    prompt_embeds = hidden_states_stacked,
     prompt_attention_mask = attention_mask
   )
 }
