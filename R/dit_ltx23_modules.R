@@ -136,14 +136,56 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
 }
 )
 
+# torch_matmul_out / torch_softmax_out are unexported torch internals;
+# resolve them once and fall back to allocating ops if they disappear
+.ltx23_attn_out_fns <- local({
+    fns <- NULL
+    function() {
+        if (is.null(fns)) {
+            fns <<- tryCatch(
+                list(
+                     matmul = get("torch_matmul_out", envir = asNamespace("torch")),
+                     softmax = get("torch_softmax_out", envir = asNamespace("torch"))
+                ),
+                error = function(e) FALSE
+            )
+        }
+        fns
+    }
+})
+
+# Persistent attention scratch (score matrix + context output), keyed by
+# shape/dtype/device like the dequant buffers: attention temporaries are
+# the dominant per-block garbage at high resolution
+.ltx23_attn_scratch <- new.env(parent = emptyenv())
+
+.ltx23_get_attn_buffer <- function(shape, dtype, device) {
+    key <- paste(paste(shape, collapse = "x"), dtype$.type(),
+                 paste(device$type, device$index %||% 0L), sep = "|")
+    buf <- .ltx23_attn_scratch[[key]]
+    if (is.null(buf)) {
+        buf <- torch::torch_empty(shape, dtype = dtype, device = device)
+        .ltx23_attn_scratch[[key]] <- buf
+    }
+    buf
+}
+
 # Scaled dot-product attention on [B, H, S, D] tensors. R torch has no
-# fused SDPA, so the [B, H, Sq, Sk] attention matrix materializes; at high
-# resolution chunk the queries to bound peak memory.
+# fused SDPA, so the [B, H, Sq, Sk] score matrix materializes; queries
+# are chunked adaptively against a memory budget and all large
+# temporaries live in reusable scratch buffers.
 .ltx23_sdpa <- function(query, key, value, attention_mask = NULL,
                         chunk_size = NULL) {
     head_dim <- query$shape[length(query$shape)]
     scale <- 1.0 / sqrt(head_dim)
     key_t <- key$transpose(-2L, -1L)
+    fns <- .ltx23_attn_out_fns()
+
+    b <- query$shape[1]
+    heads <- query$shape[2]
+    n_q <- query$shape[3]
+    n_k <- key$shape[3]
+    d_v <- value$shape[4]
 
     attend <- function(q, mask) {
         attn <- torch::torch_matmul(q$mul(scale), key_t)
@@ -154,19 +196,53 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
         torch::torch_matmul(attn, value)
     }
 
-    n_q <- query$shape[3]
-    # Adaptive query chunking: bound the [B, H, chunk, S_k] attention
-    # matrix to a memory budget regardless of sequence length
-    n_k <- key$shape[3]
-    heads <- query$shape[2]
-    budget <- getOption("diffuseR.attn_budget", 1e9)
-    auto_chunk <- max(256L, as.integer(budget / (heads * n_k * 2)))
-    chunk_size <- if (is.null(chunk_size)) auto_chunk else min(chunk_size, auto_chunk)
-    if (n_q <= chunk_size) {
-        return(attend(query, attention_mask))
+    # Buffered variant: score matrix and context reuse persistent scratch
+    attend_into <- function(q, mask, attn_buf, out_buf) {
+        fns$matmul(attn_buf, q$mul(scale), key_t)
+        if (!is.null(mask)) {
+            attn_buf$add_(mask)
+        }
+        fns$softmax(attn_buf, attn_buf, dim = -1L, dtype = attn_buf$dtype)
+        fns$matmul(out_buf, attn_buf, value)
+        out_buf
     }
 
-    outs <- list()
+    # Adaptive query chunking: bound the [B, H, chunk, S_k] score matrix
+    # to a memory budget regardless of sequence length
+    budget <- getOption("diffuseR.attn_budget", 5e8)
+    auto_chunk <- max(256L, as.integer(budget / (b * heads * n_k * 2)))
+    chunk_size <- if (is.null(chunk_size)) auto_chunk else min(chunk_size, auto_chunk)
+
+    if (isFALSE(fns)) {
+        # Fallback: allocating path
+        if (n_q <= chunk_size) {
+            return(attend(query, attention_mask))
+        }
+        outs <- list()
+        start <- 1L
+        while (start <= n_q) {
+            len <- min(chunk_size, n_q - start + 1L)
+            q_chunk <- query$narrow(3L, start, len)
+            mask_chunk <- attention_mask
+            if (!is.null(mask_chunk) && mask_chunk$shape[3] > 1L) {
+                mask_chunk <- mask_chunk$narrow(3L, start, len)
+            }
+            outs[[length(outs) + 1L]] <- attend(q_chunk, mask_chunk)
+            start <- start + len
+        }
+        return(torch::torch_cat(outs, dim = 3L))
+    }
+
+    rows <- min(n_q, chunk_size)
+    attn_buf <- .ltx23_get_attn_buffer(c(b, heads, rows, n_k), query$dtype,
+                                       query$device)
+    out_buf <- .ltx23_get_attn_buffer(c(b, heads, n_q, d_v), query$dtype,
+                                      query$device)
+
+    if (n_q <= chunk_size) {
+        return(attend_into(query, attention_mask, attn_buf, out_buf))
+    }
+
     start <- 1L
     while (start <= n_q) {
         len <- min(chunk_size, n_q - start + 1L)
@@ -175,10 +251,24 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
         if (!is.null(mask_chunk) && mask_chunk$shape[3] > 1L) {
             mask_chunk <- mask_chunk$narrow(3L, start, len)
         }
-        outs[[length(outs) + 1L]] <- attend(q_chunk, mask_chunk)
+        attend_into(
+            q_chunk, mask_chunk,
+            attn_buf$narrow(3L, 1L, len),
+            out_buf$narrow(3L, start, len)
+        )
         start <- start + len
     }
-    torch::torch_cat(outs, dim = 3L)
+    out_buf
+}
+
+#' Release the attention scratch buffers
+#'
+#' @return Invisibly, NULL.
+#'
+#' @keywords internal
+.ltx23_release_attn_buffers <- function() {
+    rm(list = ls(.ltx23_attn_scratch), envir = .ltx23_attn_scratch)
+    invisible(NULL)
 }
 
 #' LTX-2 attention layer

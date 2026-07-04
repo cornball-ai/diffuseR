@@ -202,6 +202,7 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
 ltx23_release_dequant_buffers <- function() {
     rm(list = ls(.ltx23_dequant_buffers), envir = .ltx23_dequant_buffers)
     rm(list = ls(.ltx23_dequant_scratch), envir = .ltx23_dequant_scratch)
+    .ltx23_release_attn_buffers()
     gc(verbose = FALSE)
     if (torch::cuda_is_available()) {
         tryCatch(torch::cuda_empty_cache(), error = function(e) NULL)
