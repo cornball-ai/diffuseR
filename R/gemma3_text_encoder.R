@@ -488,24 +488,22 @@ gemma3_text_model <- torch::nn_module(
         causal_mask <- (causal_mask$unsqueeze(1L)$unsqueeze(1L) + padding_mask)$to(dtype = hidden_states$dtype) * (-1e9)
     }
 
-    # Collect hidden states if requested
-    if (output_hidden_states) {
-        all_hidden_states <- list(hidden_states)
-    } else {
-        all_hidden_states <- NULL
-    }
+    # HF transformers hidden-state semantics: record the state BEFORE
+    # each layer, then the post-final-norm output — num_layers + 1
+    # entries total. (The un-normed last-layer output never appears;
+    # the LTX connectors expect exactly this 49-state stack.)
+    all_hidden_states <- NULL
 
     # Apply decoder layers
     for (i in seq_along(self$layers)) {
+        if (output_hidden_states) {
+            all_hidden_states <- c(all_hidden_states, list(hidden_states))
+        }
         layer <- self$layers[[i]]
         hidden_states <- layer(hidden_states,
                                attention_mask = causal_mask,
                                position_embeddings_global = position_embeddings_global,
                                position_embeddings_local = position_embeddings_local)
-
-        if (output_hidden_states) {
-            all_hidden_states <- c(all_hidden_states, list(hidden_states))
-        }
     }
 
     # Final normalization
