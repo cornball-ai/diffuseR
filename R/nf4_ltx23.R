@@ -460,7 +460,9 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
     # Everything (packed weights included, as buffers) onto the GPU
     model$to(device = device)
     model$eval()
-    options(diffuseR.use_fp8 = TRUE) # same per-block gc for dequant temporaries
+    # Block intermediates (norms, projections, FF activations) are still
+    # ~1.5GB per block at high resolution; per-block gc keeps them bounded
+    options(diffuseR.block_gc = TRUE)
     if (verbose) {
         message("Transformer ready: NF4 weights resident on ", device)
     }

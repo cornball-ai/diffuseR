@@ -246,7 +246,7 @@ ltx23_open_fp8_checkpoint <- function(dir) {
 #' Builds the transformer, swaps the official cast-set linears for
 #' \code{\link{ltx23_fp8_linear}}, loads fp8 weights CPU-side (optionally
 #' pinned) and everything else as bfloat16 on \code{device}. Sets
-#' \code{options(diffuseR.use_fp8 = TRUE)} so the transformer runs
+#' \code{options(diffuseR.block_gc = TRUE)} so the transformer runs
 #' per-block garbage collection over the dequantized temporaries.
 #'
 #' @param ckpt An fp8 \code{ltx23_checkpoint}
@@ -339,7 +339,9 @@ ltx23_load_transformer_fp8 <- function(ckpt, device = "cuda", pin = TRUE,
     # fp8 fields stay on the CPU because they are plain fields
     model$to(device = device)
     model$eval()
-    options(diffuseR.use_fp8 = TRUE)
+    # fp8 dequant allocates a full weight per linear; per-block gc
+    # keeps those temporaries from accumulating
+    options(diffuseR.block_gc = TRUE)
     if (verbose) {
         message("Transformer ready: fp8 weights CPU-resident, rest on ", device)
     }

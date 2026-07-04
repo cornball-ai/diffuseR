@@ -34,3 +34,6 @@ package are R ports of, or derived from, third-party work:
    Model weights are downloaded by the user under their respective
    licenses (CreativeML Open RAIL++-M and similar) and are not part of,
    nor redistributed with, this package.
+
+See inst/REFERENCES.md for a technique-by-technique account of where
+each implementation idea comes from.

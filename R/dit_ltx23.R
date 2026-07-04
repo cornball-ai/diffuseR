@@ -317,7 +317,7 @@ ltx23_transformer <- torch::nn_module(
     }
 
     # 5. Transformer blocks
-    fp8_mode <- isTRUE(getOption("diffuseR.use_fp8"))
+    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (block_idx in seq_along(self$transformer_blocks)) {
         is_stg_block <- (block_idx - 1L) %in% stg_blocks # reference indices are 0-based
         res <- self$transformer_blocks[[block_idx]](
@@ -354,8 +354,9 @@ ltx23_transformer <- torch::nn_module(
                             ms$allocated_bytes$all$current / 1e9,
                             ms$reserved_bytes$all$current / 1e9))
         }
-        if (fp8_mode) {
-            # Dequantized fp8 temporaries only free once R's GC finalizes them
+        if (block_gc) {
+            # Only needed when the quantized linears allocate per call
+            # (buffered scratch makes per-block garbage negligible)
             gc(verbose = FALSE)
         }
     }

@@ -334,6 +334,8 @@ LTX-2.3 implementation written from the Apache-2.0 diffusers reference only
 **Rules:**
 - Never derive code from Wan2GP (WanGP Community License 2.0 restricts
   commercial embedding). Do not open Wan2GP source or conversions of it.
+- Every technique must have a documented public source independent of
+  Wan2GP: record it in `inst/REFERENCES.md` when adding one.
 - Model weights are downloaded by the user from `Lightricks/LTX-2.3` under the
   LTX-2 Community License and never redistributed with the package.
 - Kept support files with independent provenance: `gemma3_text_encoder.R`

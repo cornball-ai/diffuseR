@@ -3,24 +3,26 @@
 \alias{ltx23_tune_gc}
 \title{Tune the torch CUDA allocator for large-resident inference}
 \usage{
-ltx23_tune_gc(allocated_rate = 0.7)
+ltx23_tune_gc(footprint_gb = 12, total_gb = NULL)
 }
 \arguments{
-\item{allocated_rate}{Numeric. Allocated/total ratio above which the
-allocator requests a full R collection (torch default 0.8).}
+\item{footprint_gb}{Numeric. Expected resident GPU footprint in GB
+(NF4 transformer: ~12).}
+
+\item{total_gb}{Numeric or NULL (auto-detect total VRAM).}
 }
 \value{
-Invisibly, NULL.
+Invisibly, the applied reserved rate (NULL if skipped).
 }
 \description{
-Configures the torch CUDA allocator for pipelines that keep most of
-the GPU occupied by resident weights (cf. the mlverse torch
-memory-management article). \code{torch.cuda_allocator_reserved_rate}
-is deliberately left at its default: raising it (a common recipe for
-small-resident models) disables R garbage collection while reserved
-memory is below the rate, which starves garbage-heavy inference. This
-instead lowers \code{torch.cuda_allocator_allocated_rate} so full
-collections engage earlier under pressure, and defaults
-\code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments (must run
-before the first CUDA allocation). User-set options are respected.
+Stops the allocator GC storm (cf. ~/skills/torch
+torch-jit-gc-performance.md): lantern proactively calls R's gc()
+whenever reserved memory exceeds \code{torch.cuda_allocator_reserved_rate}
+(default 0.20) of the card. With ~75\\% of VRAM occupied by resident
+weights that fires on nearly every allocation. Raising the rate to the
+actual footprint is safe here because the LTX hot loops compute into
+persistent scratch buffers (near-zero per-step garbage). Also raises
+the host-allocation GC threshold and defaults
+\code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. Must run before
+the first CUDA op; user-set options win.
 }

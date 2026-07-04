@@ -95,29 +95,44 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
 
 #' Tune the torch CUDA allocator for large-resident inference
 #'
-#' Configures the torch CUDA allocator for pipelines that keep most of
-#' the GPU occupied by resident weights (cf. the mlverse torch
-#' memory-management article). \code{torch.cuda_allocator_reserved_rate}
-#' is deliberately left at its default: raising it (a common recipe for
-#' small-resident models) disables R garbage collection while reserved
-#' memory is below the rate, which starves garbage-heavy inference. This
-#' instead lowers \code{torch.cuda_allocator_allocated_rate} so full
-#' collections engage earlier under pressure, and defaults
-#' \code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments (must run
-#' before the first CUDA allocation). User-set options are respected.
+#' Stops the allocator GC storm (cf. ~/skills/torch
+#' torch-jit-gc-performance.md): lantern proactively calls R's gc()
+#' whenever reserved memory exceeds \code{torch.cuda_allocator_reserved_rate}
+#' (default 0.20) of the card. With ~75\% of VRAM occupied by resident
+#' weights that fires on nearly every allocation. Raising the rate to the
+#' actual footprint is safe here because the LTX hot loops compute into
+#' persistent scratch buffers (near-zero per-step garbage). Also raises
+#' the host-allocation GC threshold and defaults
+#' \code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. Must run before
+#' the first CUDA op; user-set options win.
 #'
-#' @param allocated_rate Numeric. Allocated/total ratio above which the
-#'   allocator requests a full R collection (torch default 0.8).
+#' @param footprint_gb Numeric. Expected resident GPU footprint in GB
+#'   (NF4 transformer: ~12).
+#' @param total_gb Numeric or NULL (auto-detect total VRAM).
 #'
-#' @return Invisibly, NULL.
+#' @return Invisibly, the applied reserved rate (NULL if skipped).
 #'
 #' @export
-ltx23_tune_gc <- function(allocated_rate = 0.7) {
+ltx23_tune_gc <- function(footprint_gb = 12, total_gb = NULL) {
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True")
     }
-    if (is.null(getOption("torch.cuda_allocator_allocated_rate"))) {
-        options(torch.cuda_allocator_allocated_rate = allocated_rate)
+    if (!torch::cuda_is_available()) {
+        return(invisible(NULL))
     }
-    invisible(NULL)
+    if (is.null(total_gb)) {
+        total_gb <- .detect_vram(use_free = FALSE)
+        if (!isTRUE(total_gb > 0)) {
+            return(invisible(NULL))
+        }
+    }
+    if (is.null(getOption("torch.threshold_call_gc"))) {
+        options(torch.threshold_call_gc = 16000)
+    }
+    rate <- NULL
+    if (is.null(getOption("torch.cuda_allocator_reserved_rate"))) {
+        rate <- min(0.92, max(0.20, footprint_gb / total_gb))
+        options(torch.cuda_allocator_reserved_rate = rate)
+    }
+    invisible(rate)
 }

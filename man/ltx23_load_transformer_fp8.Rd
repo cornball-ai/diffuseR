@@ -25,6 +25,6 @@ The loaded \code{ltx23_transformer}.
 Builds the transformer, swaps the official cast-set linears for
 \code{\link{ltx23_fp8_linear}}, loads fp8 weights CPU-side (optionally
 pinned) and everything else as bfloat16 on \code{device}. Sets
-\code{options(diffuseR.use_fp8 = TRUE)} so the transformer runs
+\code{options(diffuseR.block_gc = TRUE)} so the transformer runs
 per-block garbage collection over the dequantized temporaries.
 }
