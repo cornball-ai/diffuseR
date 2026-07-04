@@ -238,6 +238,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         pipe$vae <- load_component(
                                    "vae", ltx23_video_vae(), ltx23_map_vae_key, component_device
         )
+        pipe$vae$enable_tiling()
     }
     if ("audio_vae" %in% components) {
         pipe$audio_vae <- load_component(

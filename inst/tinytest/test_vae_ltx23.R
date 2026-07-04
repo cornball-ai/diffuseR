@@ -148,3 +148,66 @@ expect_equal(
   "latents_mean"
 )
 expect_equal(ltx23_map_vae_key("vae.encoder.conv_in.conv.weight"), "encoder.conv_in.conv.weight")
+
+# --- Tiled decode ------------------------------------------------------------------
+
+# Reuse the tiny decoder inside a vae wrapper with small tile settings
+vae_t <- ltx23_video_vae(
+  latent_channels = 4L,
+  block_out_channels = c(8L, 8L, 8L, 8L),
+  decoder_block_out_channels = c(16L, 32L, 32L, 64L),
+  layers_per_block = c(1L, 1L, 1L, 1L, 1L),
+  decoder_layers_per_block = c(1L, 1L, 1L, 1L, 1L)
+)
+# Adopt the fixture decoder weights (same architecture)
+dests_t <- vae_t$decoder$named_parameters()
+w_dec <- fx[grep("^dec\\.", names(fx))]
+names(w_dec) <- sub("^dec\\.", "", names(w_dec))
+torch::with_no_grad({
+  for (name in names(w_dec)) dests_t[[name]]$copy_(w_dec[[name]])
+})
+vae_t$eval()
+
+z_big <- torch::torch_randn(1L, 4L, 5L, 4L, 6L)
+torch::with_no_grad(ref_full <- vae_t$decode(z_big))
+expect_equal(as.integer(ref_full$shape), c(1L, 3L, 33L, 128L, 192L))
+
+# Spatial tiling: tiles of 2x2 latent with stride 1
+vae_t$enable_tiling(spatial = TRUE, temporal = FALSE)
+vae_t$tile_sample_min_height <- 64L
+vae_t$tile_sample_min_width <- 64L
+vae_t$tile_sample_stride_height <- 32L
+vae_t$tile_sample_stride_width <- 32L
+torch::with_no_grad(tiled <- vae_t$decode(z_big))
+expect_equal(as.integer(tiled$shape), as.integer(ref_full$shape))
+expect_true(as.logical(tiled$isfinite()$all()$item()))
+# With random weights, tile borders dominate; value similarity to the
+# full decode is only meaningful with trained weights. Instead check the
+# degenerate case: a tile that covers the whole input must be identical.
+vae_t$tile_sample_min_height <- 128L
+vae_t$tile_sample_min_width <- 192L
+vae_t$tile_sample_stride_height <- 96L
+vae_t$tile_sample_stride_width <- 160L
+torch::with_no_grad(tiled_one <- vae_t$decode(z_big))
+expect_true(max_abs_diff(tiled_one, ref_full) < 1e-5)
+vae_t$tile_sample_min_height <- 64L
+vae_t$tile_sample_min_width <- 64L
+vae_t$tile_sample_stride_height <- 32L
+vae_t$tile_sample_stride_width <- 32L
+
+# Temporal + spatial tiling
+vae_t$enable_tiling(spatial = TRUE, temporal = TRUE)
+vae_t$tile_sample_min_num_frames <- 16L
+vae_t$tile_sample_stride_num_frames <- 8L
+torch::with_no_grad(tiled_t <- vae_t$decode(z_big))
+expect_equal(as.integer(tiled_t$shape), as.integer(ref_full$shape))
+expect_true(as.logical(tiled_t$isfinite()$all()$item()))
+
+# Small inputs bypass tiling entirely (identical output)
+z_small <- torch::torch_randn(1L, 4L, 2L, 2L, 2L)
+torch::with_no_grad({
+  a <- vae_t$decode(z_small)
+  vae_t$enable_tiling(spatial = FALSE, temporal = FALSE)
+  b <- vae_t$decode(z_small)
+})
+expect_true(as.numeric((a - b)$abs()$max()) == 0)

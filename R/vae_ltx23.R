@@ -309,6 +309,16 @@ ltx23_video_vae <- torch::nn_module(
 
     self$latents_mean <- torch::nn_buffer(torch::torch_zeros(latent_channels))
     self$latents_std <- torch::nn_buffer(torch::torch_ones(latent_channels))
+
+    # Tiled decoding (reference defaults, in sample/pixel space)
+    self$use_tiling <- FALSE
+    self$use_framewise_decoding <- FALSE
+    self$tile_sample_min_height <- 512L
+    self$tile_sample_min_width <- 512L
+    self$tile_sample_min_num_frames <- 16L
+    self$tile_sample_stride_height <- 448L
+    self$tile_sample_stride_width <- 448L
+    self$tile_sample_stride_num_frames <- 8L
 },
                                     encode = function(x, causal = NULL) {
     moments <- self$encoder(x, causal = causal)
@@ -318,13 +328,177 @@ ltx23_video_vae <- torch::nn_module(
          logvar = moments$narrow(2L, n + 1L, n)
     )
 },
+                                    enable_tiling = function(spatial = TRUE, temporal = TRUE) {
+    self$use_tiling <- spatial
+    self$use_framewise_decoding <- temporal
+    invisible(self)
+},
                                     decode = function(z, causal = NULL) {
+    num_frames <- z$shape[3]
+    height <- z$shape[4]
+    width <- z$shape[5]
+    tile_lat_h <- self$tile_sample_min_height %/% 32L
+    tile_lat_w <- self$tile_sample_min_width %/% 32L
+    tile_lat_f <- self$tile_sample_min_num_frames %/% 8L
+
+    if (self$use_framewise_decoding && num_frames > tile_lat_f) {
+        return(.ltx23_temporal_tiled_decode(self, z, causal = causal))
+    }
+    if (self$use_tiling && (width > tile_lat_w || height > tile_lat_h)) {
+        return(.ltx23_tiled_decode(self, z, causal = causal))
+    }
     self$decoder(z, causal = causal)
 },
                                     forward = function(z) {
     self$decode(z)
 }
 )
+
+# Linear crossfade of tile b's leading rows/columns/frames with tile a's
+# trailing ones (in-place on b), per the diffusers reference
+.ltx23_blend_v <- function(a, b, blend_extent) {
+    blend_extent <- min(a$shape[4], b$shape[4], blend_extent)
+    if (blend_extent <= 0L) {
+        return(b)
+    }
+    a_h <- a$shape[4]
+    for (y in seq_len(blend_extent)) {
+        w <- (y - 1) / blend_extent
+        b[, , , y, ] <- a[, , , a_h - blend_extent + y, ]$mul(1 - w) +
+        b[, , , y, ]$mul(w)
+    }
+    b
+}
+
+.ltx23_blend_h <- function(a, b, blend_extent) {
+    blend_extent <- min(a$shape[5], b$shape[5], blend_extent)
+    if (blend_extent <= 0L) {
+        return(b)
+    }
+    a_w <- a$shape[5]
+    for (x in seq_len(blend_extent)) {
+        w <- (x - 1) / blend_extent
+        b[, , , , x] <- a[, , , , a_w - blend_extent + x]$mul(1 - w) +
+        b[, , , , x]$mul(w)
+    }
+    b
+}
+
+.ltx23_blend_t <- function(a, b, blend_extent) {
+    blend_extent <- min(a$shape[3], b$shape[3], blend_extent)
+    if (blend_extent <= 0L) {
+        return(b)
+    }
+    a_f <- a$shape[3]
+    for (x in seq_len(blend_extent)) {
+        w <- (x - 1) / blend_extent
+        b[, , x, , ] <- a[, , a_f - blend_extent + x, , ]$mul(1 - w) +
+        b[, , x, , ]$mul(w)
+    }
+    b
+}
+
+# Spatially tiled decode: overlapping latent tiles, decoded separately,
+# crossfaded at the seams (diffusers AutoencoderKLLTX2Video.tiled_decode)
+.ltx23_tiled_decode <- function(vae, z, causal = NULL) {
+    height <- z$shape[4]
+    width <- z$shape[5]
+    sample_height <- height * 32L
+    sample_width <- width * 32L
+
+    tile_lat_h <- vae$tile_sample_min_height %/% 32L
+    tile_lat_w <- vae$tile_sample_min_width %/% 32L
+    stride_lat_h <- vae$tile_sample_stride_height %/% 32L
+    stride_lat_w <- vae$tile_sample_stride_width %/% 32L
+
+    blend_height <- vae$tile_sample_min_height - vae$tile_sample_stride_height
+    blend_width <- vae$tile_sample_min_width - vae$tile_sample_stride_width
+
+    rows <- list()
+    for (i in seq(0L, height - 1L, by = stride_lat_h)) {
+        row <- list()
+        for (j in seq(0L, width - 1L, by = stride_lat_w)) {
+            h_len <- min(tile_lat_h, height - i)
+            w_len <- min(tile_lat_w, width - j)
+            tile <- vae$decoder(
+                z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
+                causal = causal
+            )
+            row[[length(row) + 1L]] <- tile
+            gc(verbose = FALSE)
+        }
+        rows[[length(rows) + 1L]] <- row
+    }
+
+    result_rows <- list()
+    for (i in seq_along(rows)) {
+        result_row <- list()
+        for (j in seq_along(rows[[i]])) {
+            tile <- rows[[i]][[j]]
+            if (i > 1L) {
+                tile <- .ltx23_blend_v(rows[[i - 1L]][[j]], tile, blend_height)
+            }
+            if (j > 1L) {
+                tile <- .ltx23_blend_h(rows[[i]][[j - 1L]], tile, blend_width)
+            }
+            keep_h <- min(vae$tile_sample_stride_height, tile$shape[4])
+            keep_w <- min(vae$tile_sample_stride_width, tile$shape[5])
+            result_row[[length(result_row) + 1L]] <-
+                tile$narrow(4L, 1L, keep_h)$narrow(5L, 1L, keep_w)
+        }
+        result_rows[[length(result_rows) + 1L]] <- torch::torch_cat(result_row, dim = 5L)
+    }
+
+    dec <- torch::torch_cat(result_rows, dim = 4L)
+    dec$narrow(4L, 1L, min(sample_height, dec$shape[4]))$
+    narrow(5L, 1L, min(sample_width, dec$shape[5]))
+}
+
+# Temporally tiled decode: overlapping latent frame windows (spatially
+# tiled inside when the tile is large), crossfaded over time
+# (diffusers AutoencoderKLLTX2Video._temporal_tiled_decode)
+.ltx23_temporal_tiled_decode <- function(vae, z, causal = NULL) {
+    num_frames <- z$shape[3]
+    num_sample_frames <- (num_frames - 1L) * 8L + 1L
+
+    tile_lat_h <- vae$tile_sample_min_height %/% 32L
+    tile_lat_w <- vae$tile_sample_min_width %/% 32L
+    tile_lat_f <- vae$tile_sample_min_num_frames %/% 8L
+    stride_lat_f <- vae$tile_sample_stride_num_frames %/% 8L
+    blend_num_frames <- vae$tile_sample_min_num_frames - vae$tile_sample_stride_num_frames
+
+    row <- list()
+    for (i in seq(0L, num_frames - 1L, by = stride_lat_f)) {
+        f_len <- min(tile_lat_f + 1L, num_frames - i)
+        tile <- z$narrow(3L, i + 1L, f_len)
+        if (vae$use_tiling && (tile$shape[5] > tile_lat_w || tile$shape[4] > tile_lat_h)) {
+            decoded <- .ltx23_tiled_decode(vae, tile, causal = causal)
+        } else {
+            decoded <- vae$decoder(tile, causal = causal)
+        }
+        if (i > 0L) {
+            decoded <- decoded$narrow(3L, 1L, decoded$shape[3] - 1L)
+        }
+        row[[length(row) + 1L]] <- decoded
+        gc(verbose = FALSE)
+    }
+
+    result_row <- list()
+    for (i in seq_along(row)) {
+        tile <- row[[i]]
+        if (i > 1L) {
+            tile <- .ltx23_blend_t(row[[i - 1L]], tile, blend_num_frames)
+            keep <- min(vae$tile_sample_stride_num_frames, tile$shape[3])
+            result_row[[length(result_row) + 1L]] <- tile$narrow(3L, 1L, keep)
+        } else {
+            keep <- min(vae$tile_sample_stride_num_frames + 1L, tile$shape[3])
+            result_row[[length(result_row) + 1L]] <- tile$narrow(3L, 1L, keep)
+        }
+    }
+
+    dec <- torch::torch_cat(result_row, dim = 3L)
+    dec$narrow(3L, 1L, min(num_sample_frames, dec$shape[3]))
+}
 
 #' Normalize latents with the VAE's per-channel statistics
 #'
