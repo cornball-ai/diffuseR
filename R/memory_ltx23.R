@@ -22,7 +22,7 @@ NULL
 #'
 #' \describe{
 #'   \item{precision "nf4"}{Weights resident on the GPU; fastest steps;
-#'     ~9\% weight round-trip error.}
+#'     about 9 percent weight round-trip error.}
 #'   \item{precision "fp8"}{Weights CPU-resident, streamed per linear;
 #'     near-bf16 quality; each step pays the PCIe transfer.}
 #' }

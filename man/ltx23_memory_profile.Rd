@@ -25,7 +25,7 @@ renders 1280x704x121 with audio in ~23 min at a 15.7 GB peak
 \details{
 \describe{
 \item{precision "nf4"}{Weights resident on the GPU; fastest steps;
-~9\\% weight round-trip error.}
+about 9 percent weight round-trip error.}
 \item{precision "fp8"}{Weights CPU-resident, streamed per linear;
 near-bf16 quality; each step pays the PCIe transfer.}
 }

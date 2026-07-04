@@ -126,23 +126,28 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
 
 # torch_index_select_out is not exported from torch; fall back to an
 # allocating index_select if it ever disappears
-.ltx23_index_select_into <- local({
+.ltx23_index_select_fn <- local({
     fn <- NULL
-    function(out, table, idx) {
+    function() {
         if (is.null(fn)) {
             fn <<- tryCatch(
                             get("torch_index_select_out", envir = asNamespace("torch")),
                             error = function(e) FALSE
             )
         }
-        if (isFALSE(fn)) {
-            out$copy_(torch::torch_index_select(table, 1L, idx))
-        } else {
-            fn(out, table, 1L, idx)
-        }
-        invisible(out)
+        fn
     }
 })
+
+.ltx23_index_select_into <- function(out, table, idx) {
+    fn <- .ltx23_index_select_fn()
+    if (isFALSE(fn)) {
+        out$copy_(torch::torch_index_select(table, 1L, idx))
+    } else {
+        fn(out, table, 1L, idx)
+    }
+    invisible(out)
+}
 
 # Persistent per-device dequantization scratch (nibbles, indices, values,
 # and the level table), sized to the chunk length
