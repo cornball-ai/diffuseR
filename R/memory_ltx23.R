@@ -49,9 +49,9 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
     profiles <- list(
                      high = list(name = "high", device = "cuda", dtype = "bfloat16",
                                  precision = "nf4", phase_offload = TRUE,
-                                 pin_weights = FALSE, attn_chunk = 8192L,
+                                 pin_weights = FALSE, attn_chunk = NULL,
                                  text_device = "cpu",
-                                 max_resolution = c(704L, 1280L),
+                                 max_resolution = c(512L, 768L),
                                  max_frames = 121L),
                      medium = list(
                                    name = "medium",

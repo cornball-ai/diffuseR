@@ -93,6 +93,7 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 
     n_steps <- length(sigmas) - 1L
     scale_mult <- transformer$timestep_scale_multiplier
+    step_t0 <- Sys.time()
     torch::with_no_grad({
         for (i in seq_len(n_steps)) {
             sigma <- sigmas[i]
@@ -124,7 +125,10 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
             rm(out)
             gc(verbose = FALSE)
             if (verbose) {
-                message(sprintf("  %sstep %d/%d (sigma %.4f)", stage, i, n_steps, sigma))
+                message(sprintf("  %sstep %d/%d (sigma %.4f, %.1fs)",
+                                stage, i, n_steps, sigma,
+                                as.numeric(difftime(Sys.time(), step_t0, units = "secs"))))
+                step_t0 <- Sys.time()
             }
         }
     })
@@ -168,6 +172,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 pin = TRUE, attn_chunk = NULL,
                                 phase_offload = TRUE, verbose = TRUE) {
     component_device <- if (phase_offload) "cpu" else device
+    if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
+        # Reduces caching-allocator fragmentation; must be set before the
+        # first CUDA allocation
+        Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True")
+    }
     fp8 <- dir.exists(checkpoint_path)
     ckpt <- if (fp8) {
         ltx23_open_fp8_checkpoint(checkpoint_path)
