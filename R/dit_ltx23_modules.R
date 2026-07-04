@@ -209,8 +209,11 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     }
 
     # Adaptive query chunking: bound the [B, H, chunk, S_k] score matrix
-    # to a memory budget regardless of sequence length
-    budget <- getOption("diffuseR.attn_budget", 5e8)
+    # to a memory budget regardless of sequence length. The default is
+    # sized so the self+cross scratch pair stays under ~400MB at
+    # 1280x704x121 (14080 video tokens), the validated ceiling of the
+    # 16GB NF4-resident profile; below ~2000 tokens it has no effect.
+    budget <- getOption("diffuseR.attn_budget", 1.5e8)
     auto_chunk <- max(256L, as.integer(budget / (b * heads * n_k * 2)))
     if (is.null(chunk_size)) {
         chunk_size <- auto_chunk
