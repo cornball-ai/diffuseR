@@ -65,10 +65,21 @@ def rmsn_w(x: Tensor, w: Tensor) -> Tensor:
     return (x * torch.rsqrt(v + 1e-6)).type_as(w) * w
 
 def rope(x: Tensor, cs: Tensor, sn: Tensor) -> Tensor:
-    r = x.size(-1) // 2
-    xf = x.narrow(-1, 0, r).float()
-    xs = x.narrow(-1, r, r).float()
-    return torch.cat([xf * cs - xs * sn, xs * cs + xf * sn], -1).type_as(x)
+    if cs.dim() == 4:
+        # Per-head split layout [B, H, T, r]: x [B, T, H*D] -> [B, H, T, D]
+        b = cs.size(0)
+        hh = cs.size(1)
+        t = cs.size(2)
+        xh = x.reshape([b, t, hh, -1]).transpose(1, 2)
+        r = xh.size(-1) // 2
+        xf = xh.narrow(-1, 0, r).float()
+        xs = xh.narrow(-1, r, r).float()
+        o = torch.cat([xf * cs - xs * sn, xs * cs + xf * sn], -1)
+        return o.transpose(1, 2).reshape([b, t, -1]).type_as(x)
+    r2 = x.size(-1) // 2
+    xf2 = x.narrow(-1, 0, r2).float()
+    xs2 = x.narrow(-1, r2, r2).float()
+    return torch.cat([xf2 * cs - xs2 * sn, xs2 * cs + xf2 * sn], -1).type_as(x)
 
 def mods(tbl: Tensor, temb: Tensor, num: int) -> Tensor:
     b = temb.size(0)
@@ -285,7 +296,9 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
                                  encoder_attention_mask = NULL,
                                  audio_encoder_attention_mask = NULL) {
     unit <- .ltx23_jit_unit()
-    ws <- do.call(c, lapply(blocks, .ltx23_jit_pack_block))
+    # unname: an nn_module_list yields named children, and a named R
+    # list marshals to TorchScript as Dict[str, Tensor], not List[Tensor]
+    ws <- unname(do.call(c, lapply(blocks, .ltx23_jit_pack_block)))
     table <- .ltx23_jit_table(hidden_states$device)
     heads <- blocks[[1]]$attn1$heads
     aheads <- blocks[[1]]$audio_attn1$heads

@@ -54,8 +54,9 @@ blk1 <- make_block()
 blk2 <- make_block()
 expect_true(diffuseR:::.ltx23_jit_block_ok(blk1))
 
-rope_pair <- function(s, r) {
-  ang <- torch::torch_rand(1L, s, r) * 6.28
+# The model's split-rope embedder emits per-head 4D freqs [B, H, T, r]
+rope_pair <- function(s, n_heads, r) {
+  ang <- torch::torch_rand(B, n_heads, s, r) * 6.28
   list(torch::torch_cos(ang), torch::torch_sin(ang))
 }
 
@@ -71,10 +72,10 @@ tcg <- torch::torch_randn(B, 1L, dim)
 tcag <- torch::torch_randn(B, 1L, adim)
 tp <- torch::torch_randn(B, 1L, 2L * dim)
 tpa <- torch::torch_randn(B, 1L, 2L * adim)
-v_rope <- rope_pair(Sv, (heads * head_dim) %/% 2L)
-a_rope <- rope_pair(Sa, (aheads * ahead_dim) %/% 2L)
-cav_rope <- rope_pair(Sv, (aheads * ahead_dim) %/% 2L)
-caa_rope <- rope_pair(Sa, (aheads * ahead_dim) %/% 2L)
+v_rope <- rope_pair(Sv, heads, head_dim %/% 2L)
+a_rope <- rope_pair(Sa, aheads, ahead_dim %/% 2L)
+cav_rope <- rope_pair(Sv, aheads, ahead_dim %/% 2L)
+caa_rope <- rope_pair(Sa, aheads, ahead_dim %/% 2L)
 # Additive [B, 1, S] mask with one text token masked out
 enc_mask <- torch::torch_zeros(B, 1L, St)
 enc_mask[, , St] <- -10000
@@ -160,3 +161,32 @@ torch::with_no_grad({
 })
 expect_true(max_abs_diff(out_nm[[1]], ref_nm[[1]]) < 1e-4)
 expect_true(max_abs_diff(out_nm[[2]], ref_nm[[2]]) < 1e-4)
+
+# 3D whole-vector rope layout (the apply fn's other branch) also matches
+rope3 <- function(s, r) {
+  ang <- torch::torch_rand(1L, s, r) * 6.28
+  list(torch::torch_cos(ang), torch::torch_sin(ang))
+}
+v3 <- rope3(Sv, (heads * head_dim) %/% 2L)
+a3 <- rope3(Sa, (aheads * ahead_dim) %/% 2L)
+cav3 <- rope3(Sv, (aheads * ahead_dim) %/% 2L)
+caa3 <- rope3(Sa, (aheads * ahead_dim) %/% 2L)
+torch::with_no_grad({
+  ref3 <- blk1(
+    hidden_states = h, audio_hidden_states = ah,
+    encoder_hidden_states = enc, audio_encoder_hidden_states = aenc,
+    temb = temb, temb_audio = temb_a,
+    temb_ca_scale_shift = tcss, temb_ca_audio_scale_shift = tcass,
+    temb_ca_gate = tcg, temb_ca_audio_gate = tcag,
+    temb_prompt = tp, temb_prompt_audio = tpa,
+    video_rotary_emb = v3, audio_rotary_emb = a3,
+    ca_video_rotary_emb = cav3, ca_audio_rotary_emb = caa3
+  )
+  out3 <- diffuseR:::.ltx23_jit_run_stack(
+    list(blk1), h, ah, enc, aenc,
+    temb, temb_a, tcss, tcass, tcg, tcag, tp, tpa,
+    v3, a3, cav3, caa3
+  )
+})
+expect_true(max_abs_diff(out3[[1]], ref3[[1]]) < 1e-4)
+expect_true(max_abs_diff(out3[[2]], ref3[[2]]) < 1e-4)
