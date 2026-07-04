@@ -143,11 +143,12 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     function() {
         if (is.null(fns)) {
             fns <<- tryCatch(
-                list(
-                     matmul = get("torch_matmul_out", envir = asNamespace("torch")),
-                     softmax = get("torch_softmax_out", envir = asNamespace("torch"))
+                             list(
+                                  matmul = get("torch_matmul_out",
+                        envir = asNamespace("torch")),
+                                  softmax = get("torch_softmax_out", envir = asNamespace("torch"))
                 ),
-                error = function(e) FALSE
+                             error = function(e) FALSE
             )
         }
         fns
@@ -211,7 +212,11 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     # to a memory budget regardless of sequence length
     budget <- getOption("diffuseR.attn_budget", 5e8)
     auto_chunk <- max(256L, as.integer(budget / (b * heads * n_k * 2)))
-    chunk_size <- if (is.null(chunk_size)) auto_chunk else min(chunk_size, auto_chunk)
+    if (is.null(chunk_size)) {
+        chunk_size <- auto_chunk
+    } else {
+        chunk_size <- min(chunk_size, auto_chunk)
+    }
 
     if (isFALSE(fns)) {
         # Fallback: allocating path
@@ -252,9 +257,9 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
             mask_chunk <- mask_chunk$narrow(3L, start, len)
         }
         attend_into(
-            q_chunk, mask_chunk,
-            attn_buf$narrow(3L, 1L, len),
-            out_buf$narrow(3L, start, len)
+                    q_chunk, mask_chunk,
+                    attn_buf$narrow(3L, 1L, len),
+                    out_buf$narrow(3L, start, len)
         )
         start <- start + len
     }

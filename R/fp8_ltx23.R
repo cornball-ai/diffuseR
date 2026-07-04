@@ -236,8 +236,7 @@ ltx23_open_fp8_checkpoint <- function(dir) {
     structure(
               list(handle = handle, keys = names(key_to_handle),
                    version = manifest$model_version, config = manifest$config,
-                   format = manifest$format %||% "fp8",
-                   path = dir),
+                   format = manifest$format %||% "fp8", path = dir),
               class = "ltx23_checkpoint"
     )
 }

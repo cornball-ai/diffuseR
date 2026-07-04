@@ -171,7 +171,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
                                 pin = TRUE, attn_chunk = NULL,
                                 phase_offload = TRUE, verbose = TRUE) {
-    component_device <- if (phase_offload) "cpu" else device
+    if (phase_offload) {
+        component_device <- "cpu"
+    } else {
+        component_device <- device
+    }
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         # Reduces caching-allocator fragmentation; must be set before the
         # first CUDA allocation
@@ -374,7 +378,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     # phase and back off afterwards
     phase_offload <- phase_offload && device != "cpu"
     onload <- function(module) {
-        if (phase_offload) module$to(device = device)
+        if (phase_offload) {
+            module$to(device = device)
+        }
         module
     }
     offload <- function(module) {

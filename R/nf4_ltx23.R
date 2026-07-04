@@ -12,13 +12,13 @@
 NULL
 
 # The 16 NF4 quantile levels (QLoRA, Dettmers et al. 2023)
-.ltx23_nf4_table <- c(
-    -1.0, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453,
-    -0.28444138169288635, -0.18477343022823334, -0.09105003625154495, 0.0,
-    0.07958029955625534, 0.16093020141124725, 0.24611230194568634,
-    0.33791524171829224, 0.44070982933044434, 0.5626170039176941,
-    0.7229568362236023, 1.0
-)
+.ltx23_nf4_table <- c(-1.0, -0.6961928009986877, -0.5250730514526367,
+                      -0.39491748809814453, -0.28444138169288635,
+                      -0.18477343022823334, -0.09105003625154495, 0.0,
+                      0.07958029955625534, 0.16093020141124725,
+                      0.24611230194568634, 0.33791524171829224,
+                      0.44070982933044434, 0.5626170039176941,
+                      0.7229568362236023, 1.0)
 
 .ltx23_nf4_block_size <- 64L
 
@@ -49,7 +49,7 @@ ltx23_nf4_quantize <- function(x) {
     absmax <- blocks$abs()$amax(dim = 2L)$clamp(min = 1e-12)
     normalized <- blocks / absmax$unsqueeze(2L)
 
-    idx <- torch::torch_bucketize(normalized$flatten(), midpoints)# 0..15
+    idx <- torch::torch_bucketize(normalized$flatten(), midpoints) # 0..15
     idx <- idx$to(dtype = torch::torch_uint8())
 
     # Pack pairs: first index in the high nibble
@@ -76,8 +76,7 @@ ltx23_nf4_quantize <- function(x) {
 #' @export
 ltx23_nf4_dequantize <- function(packed, absmax, shape,
                                  dtype = torch::torch_bfloat16(),
-                                 chunk_elements = 8388608L,
-                                 out = NULL) {
+                                 chunk_elements = 8388608L, out = NULL) {
     block <- .ltx23_nf4_block_size
 
     if (is.null(out)) {
@@ -88,7 +87,7 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     n_bytes <- packed$shape[1]
     bytes_per_chunk <- max(chunk_elements %/% 2L, block)
     scratch <- .ltx23_get_dequant_scratch(min(bytes_per_chunk, n_bytes),
-                                          packed$device)
+        packed$device)
 
     start <- 1L
     torch::with_no_grad({
@@ -132,8 +131,8 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     function(out, table, idx) {
         if (is.null(fn)) {
             fn <<- tryCatch(
-                get("torch_index_select_out", envir = asNamespace("torch")),
-                error = function(e) FALSE
+                            get("torch_index_select_out", envir = asNamespace("torch")),
+                            error = function(e) FALSE
             )
         }
         if (isFALSE(fn)) {
@@ -154,20 +153,20 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     scratch <- .ltx23_dequant_scratch[[key]]
     if (is.null(scratch) || scratch$n_bytes < n_bytes) {
         scratch <- list(
-            n_bytes = n_bytes,
-            hi = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
-                                    device = device),
-            lo = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
-                                    device = device),
-            idx = torch::torch_empty(n_bytes * 2L,
-                                     dtype = torch::torch_long(),
-                                     device = device),
-            vals = torch::torch_empty(n_bytes * 2L,
-                                      dtype = torch::torch_float32(),
-                                      device = device),
-            table = torch::torch_tensor(.ltx23_nf4_table,
-                                        dtype = torch::torch_float32(),
-                                        device = device)
+                        n_bytes = n_bytes,
+                        hi = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
+                device = device),
+                        lo = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
+                device = device),
+                        idx = torch::torch_empty(n_bytes * 2L,
+                dtype = torch::torch_long(),
+                device = device),
+                        vals = torch::torch_empty(n_bytes * 2L,
+                dtype = torch::torch_float32(),
+                device = device),
+                        table = torch::torch_tensor(.ltx23_nf4_table,
+                dtype = torch::torch_float32(),
+                device = device)
         )
         .ltx23_dequant_scratch[[key]] <- scratch
     }
@@ -221,41 +220,41 @@ ltx23_release_dequant_buffers <- function() {
 #'
 #' @export
 ltx23_nf4_linear <- torch::nn_module(
-    "ltx23_nf4_linear",
-    initialize = function(out_features, in_features, bias = TRUE) {
-        self$out_features <- as.integer(out_features)
-        self$in_features <- as.integer(in_features)
-        n <- self$out_features * self$in_features
-        self$weight_nf4 <- torch::nn_buffer(
-            torch::torch_zeros(n %/% 2L, dtype = torch::torch_uint8())
-        )
-        self$weight_absmax <- torch::nn_buffer(
-            torch::torch_ones(n %/% .ltx23_nf4_block_size,
-                              dtype = torch::torch_float32())
-        )
-        if (bias) {
-            self$bias <- torch::nn_parameter(torch::torch_zeros(out_features))
-        }
-    },
-    set_nf4_weight = function(packed, absmax) {
-        torch::with_no_grad({
-            self$weight_nf4$copy_(packed)
-            self$weight_absmax$copy_(absmax)
-        })
-        invisible(self)
-    },
-    forward = function(x) {
-        w <- .ltx23_get_dequant_buffer(
-            c(self$out_features, self$in_features), x$dtype,
-            self$weight_nf4$device
-        )
-        ltx23_nf4_dequantize(
-            self$weight_nf4, self$weight_absmax,
-            c(self$out_features, self$in_features),
-            dtype = x$dtype, out = w
-        )
-        torch::nnf_linear(x, w, self$bias)
+                                     "ltx23_nf4_linear",
+                                     initialize = function(out_features, in_features, bias = TRUE) {
+    self$out_features <- as.integer(out_features)
+    self$in_features <- as.integer(in_features)
+    n <- self$out_features * self$in_features
+    self$weight_nf4 <- torch::nn_buffer(
+                                        torch::torch_zeros(n %/% 2L, dtype = torch::torch_uint8())
+    )
+    self$weight_absmax <- torch::nn_buffer(
+        torch::torch_ones(n %/% .ltx23_nf4_block_size,
+                          dtype = torch::torch_float32())
+    )
+    if (bias) {
+        self$bias <- torch::nn_parameter(torch::torch_zeros(out_features))
     }
+},
+                                     set_nf4_weight = function(packed, absmax) {
+    torch::with_no_grad({
+        self$weight_nf4$copy_(packed)
+        self$weight_absmax$copy_(absmax)
+    })
+    invisible(self)
+},
+                                     forward = function(x) {
+    w <- .ltx23_get_dequant_buffer(
+                                   c(self$out_features, self$in_features), x$dtype,
+                                   self$weight_nf4$device
+    )
+    ltx23_nf4_dequantize(
+                         self$weight_nf4, self$weight_absmax,
+                         c(self$out_features, self$in_features),
+                         dtype = x$dtype, out = w
+    )
+    torch::nnf_linear(x, w, self$bias)
+}
 )
 
 #' Quantize an LTX-2.3 checkpoint to NF4 shards
@@ -303,7 +302,8 @@ ltx23_quantize_nf4 <- function(checkpoint_path,
         if (!length(shard)) {
             return()
         }
-        fname <- sprintf("ltx2.3-nf4-%05d.safetensors", length(shard_files) + 1L)
+        fname <- sprintf("ltx2.3-nf4-%05d.safetensors",
+                         length(shard_files) + 1L)
         safetensors::safe_save_file(shard, file.path(output_dir, fname))
         shard_files[[length(shard_files) + 1L]] <<- fname
         if (verbose) {
@@ -321,7 +321,8 @@ ltx23_quantize_nf4 <- function(checkpoint_path,
         tensor <- ckpt$handle$get_tensor(key)
 
         mapped <- ltx23_map_dit_key(key)
-        if (startsWith(key, "model.diffusion_model.") && ltx23_is_fp8_cast_key(mapped)) {
+        if (startsWith(key, "model.diffusion_model.") &&
+            ltx23_is_fp8_cast_key(mapped)) {
             torch::with_no_grad({
                 q <- ltx23_nf4_quantize(tensor)
                 shard[[key]] <- q$packed
@@ -400,7 +401,8 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
             key <- main_keys[[i]]
             mapped <- ltx23_map_dit_key(key)
 
-            if (ltx23_is_fp8_cast_key(mapped) && paste0(key, "_absmax") %in% absmax_keys) {
+            if (ltx23_is_fp8_cast_key(mapped) &&
+                        paste0(key, "_absmax") %in% absmax_keys) {
                 segments <- strsplit(mapped, ".", fixed = TRUE)[[1]]
                 parent <- .ltx23_walk_module(model, utils::head(segments, -2L))
                 leaf <- segments[length(segments) - 1L]
@@ -411,15 +413,15 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                 }
                 w_shape <- old$weight$shape
                 nf4_mod <- ltx23_nf4_linear(w_shape[1], w_shape[2],
-                                            bias = !is.null(old$bias))
+                    bias = !is.null(old$bias))
                 if (!is.null(old$bias)) {
                     # Adopt the original bias parameter; its checkpoint key
                     # loads through the pre-swap destination map
                     nf4_mod$bias <- old$bias
                 }
                 nf4_mod$set_nf4_weight(
-                    ckpt$handle$get_tensor(key),
-                    ckpt$handle$get_tensor(paste0(key, "_absmax"))
+                                       ckpt$handle$get_tensor(key),
+                                       ckpt$handle$get_tensor(paste0(key, "_absmax"))
                 )
                 do.call(`$<-`, list(parent, leaf, nf4_mod))
                 filled <- c(filled, mapped)
@@ -458,7 +460,7 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
     # Everything (packed weights included, as buffers) onto the GPU
     model$to(device = device)
     model$eval()
-    options(diffuseR.use_fp8 = TRUE)# same per-block gc for dequant temporaries
+    options(diffuseR.use_fp8 = TRUE) # same per-block gc for dequant temporaries
     if (verbose) {
         message("Transformer ready: NF4 weights resident on ", device)
     }
