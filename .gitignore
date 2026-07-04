@@ -52,3 +52,4 @@ rsconnect/
 # Upstream reference checkouts and working notes (never committed)
 ref/
 tasks/
+.venv/
