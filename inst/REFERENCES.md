@@ -36,6 +36,7 @@ this file documents the actual lineage, idea by idea.
 | R-level allocator GC tuning (`torch.cuda_allocator_reserved_rate`, `torch.threshold_call_gc`) | mlverse torch memory-management article (`vignettes/articles/memory-management.Rmd`); A/B methodology and measurements from our own whisper/chatterbox work (both public cornball-ai packages) |
 | Persistent scratch buffers for dequantization and attention temporaries | Our own engineering, driven by R's lazy garbage collection of tensor handles (documented in the mlverse article above) |
 | Per-block `gc()` for streamed-weight temporaries | Our own engineering (see whisper/chatterbox inference loops) |
+| TorchScript-compiled block stack (`torch::jit_compile`, weights as `List[Tensor]`, fused `scaled_dot_product_attention`) | mlverse torch JIT API; the JIT-decode pattern from our own whisper (`decode_jit.R`) and chatterbox (`t3_jit.R`) work, both public cornball-ai packages |
 
 ## Measured on our hardware (RTX 5060 Ti 16GB)
 
