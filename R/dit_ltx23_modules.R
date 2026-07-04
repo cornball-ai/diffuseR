@@ -155,7 +155,14 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     }
 
     n_q <- query$shape[3]
-    if (is.null(chunk_size) || n_q <= chunk_size) {
+    # Adaptive query chunking: bound the [B, H, chunk, S_k] attention
+    # matrix to a memory budget regardless of sequence length
+    n_k <- key$shape[3]
+    heads <- query$shape[2]
+    budget <- getOption("diffuseR.attn_budget", 1e9)
+    auto_chunk <- max(256L, as.integer(budget / (heads * n_k * 2)))
+    chunk_size <- if (is.null(chunk_size)) auto_chunk else min(chunk_size, auto_chunk)
+    if (n_q <= chunk_size) {
         return(attend(query, attention_mask))
     }
 
