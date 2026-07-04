@@ -407,6 +407,27 @@ ltx23_attention <- torch::nn_module(
 }
 )
 
+# In-place tanh GELU for large activations: nnf_gelu allocates a second
+# copy of its input, which at high resolution doubles the feed-forward
+# intermediate (the single largest transient in a block). Uses the
+# internal in-place kernel when available, chunked so any internal
+# temporaries stay small; falls back to the allocating path.
+.ltx23_gelu_tanh_inplace <- function(x, chunk_elements = 2^24) {
+    fn <- get0("torch_gelu_", envir = asNamespace("torch"))
+    if (is.null(fn)) {
+        return(torch::nnf_gelu(x, approximate = "tanh"))
+    }
+    flat <- x$view(-1L)
+    n <- flat$numel()
+    start <- 1
+    while (start <= n) {
+        len <- min(chunk_elements, n - start + 1)
+        fn(flat$narrow(1L, start, len), approximate = "tanh")
+        start <- start + len
+    }
+    x
+}
+
 #' LTX feed-forward layer
 #'
 #' Linear -> GELU (tanh approximation) -> Linear with 4x hidden dim,
@@ -427,7 +448,11 @@ ltx23_feed_forward <- torch::nn_module(
         self$proj <- torch::nn_linear(dim_in, dim_out)
     },
                                   forward = function(x) {
-        torch::nnf_gelu(self$proj(x), approximate = "tanh")
+        h <- self$proj(x)
+        if (h$numel() > getOption("diffuseR.gelu_inplace_min", 1e8)) {
+            return(.ltx23_gelu_tanh_inplace(h))
+        }
+        torch::nnf_gelu(h, approximate = "tanh")
     }
     )
     self$net <- torch::nn_module_list(list(

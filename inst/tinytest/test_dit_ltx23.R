@@ -181,3 +181,24 @@ expect_equal(
   "transformer_blocks.0.ff.net.0.proj.weight"
 )
 expect_equal(ltx23_map_dit_key("model.diffusion_model.scale_shift_table"), "scale_shift_table")
+
+# --- In-place tanh GELU (large-activation feed-forward path) ------------------------
+
+ff <- ltx23_feed_forward(8L)
+x_ff <- torch::torch_randn(1L, 37L, 8L)
+torch::with_no_grad({
+  ref_ff <- ff(x_ff)
+  # Force the in-place chunked path (threshold below this tensor's numel,
+  # chunk smaller than the intermediate so several chunks run)
+  op <- options(diffuseR.gelu_inplace_min = 1)
+  inp_ff <- ff(x_ff)
+  options(op)
+})
+expect_true(as.numeric((ref_ff - inp_ff)$abs()$max()) < 1e-6)
+
+h_g <- torch::torch_randn(3L, 41L)
+g_ref <- torch::nnf_gelu(h_g, approximate = "tanh")
+torch::with_no_grad(
+  g_inp <- diffuseR:::.ltx23_gelu_tanh_inplace(h_g$clone(), chunk_elements = 16)
+)
+expect_true(as.numeric((g_ref - g_inp)$abs()$max()) < 1e-6)
