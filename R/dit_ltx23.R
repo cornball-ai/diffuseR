@@ -317,8 +317,41 @@ ltx23_transformer <- torch::nn_module(
     }
 
     # 5. Transformer blocks
+    # Compiled path: the entire block stack in one TorchScript call (no
+    # per-op R dispatch, no R-side garbage, fused SDPA, no per-block
+    # gc). Requires the NF4-quantized 2.3 configuration and none of the
+    # STG/masking extras the script doesn't model.
+    use_jit <- isTRUE(getOption("diffuseR.jit_blocks", TRUE)) &&
+    length(spatio_temporal_guidance_blocks %||% integer(0)) == 0L &&
+    is.null(perturbation_mask) &&
+    is.null(video_self_attention_mask) &&
+    !isolate_modalities &&
+    self$prompt_modulation &&
+    !is.null(video_rotary_emb) && !is.null(audio_rotary_emb) &&
+    !is.null(video_ca_rotary_emb) && !is.null(audio_ca_rotary_emb) &&
+    .ltx23_jit_block_ok(self$transformer_blocks[[1]])
+
+    if (use_jit) {
+        res <- .ltx23_jit_run_stack(
+                                    self$transformer_blocks,
+                                    hidden_states, audio_hidden_states,
+                                    encoder_hidden_states, audio_encoder_hidden_states,
+                                    temb, temb_audio,
+                                    video_ca_scale_shift, audio_ca_scale_shift,
+                                    video_ca_a2v_gate, audio_ca_v2a_gate,
+                                    temb_prompt, temb_prompt_audio,
+                                    video_rotary_emb, audio_rotary_emb,
+                                    video_ca_rotary_emb, audio_ca_rotary_emb,
+                                    encoder_attention_mask,
+                                    audio_encoder_attention_mask
+        )
+        hidden_states <- res[[1]]
+        audio_hidden_states <- res[[2]]
+    }
+
     block_gc <- isTRUE(getOption("diffuseR.block_gc"))
-    for (block_idx in seq_along(self$transformer_blocks)) {
+    eager_blocks <- if (use_jit) integer(0) else seq_along(self$transformer_blocks)
+    for (block_idx in eager_blocks) {
         is_stg_block <- (block_idx - 1L) %in% stg_blocks # reference indices are 0-based
         res <- self$transformer_blocks[[block_idx]](
                                       hidden_states = hidden_states,
