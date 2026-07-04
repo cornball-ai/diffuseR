@@ -415,7 +415,7 @@ ltx23_attention <- torch::nn_module(
 # intermediate (the single largest transient in a block). Uses the
 # internal in-place kernel when available, chunked so any internal
 # temporaries stay small; falls back to the allocating path.
-.ltx23_gelu_tanh_inplace <- function(x, chunk_elements = 2^24) {
+.ltx23_gelu_tanh_inplace <- function(x, chunk_elements = 2 ^ 24) {
     fn <- get0("torch_gelu_", envir = asNamespace("torch"))
     if (is.null(fn)) {
         return(torch::nnf_gelu(x, approximate = "tanh"))

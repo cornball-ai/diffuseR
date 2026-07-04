@@ -364,8 +364,8 @@ ltx23_video_vae <- torch::nn_module(
     a_h <- a$shape[4]
     for (y in seq_len(blend_extent)) {
         w <- (y - 1) / blend_extent
-        b[, , , y, ] <- a[, , , a_h - blend_extent + y, ]$mul(1 - w) +
-        b[, , , y, ]$mul(w)
+        b[,,, y,] <- a[,,, a_h - blend_extent + y,]$mul(1 - w) +
+        b[,,, y,]$mul(w)
     }
     b
 }
@@ -378,8 +378,8 @@ ltx23_video_vae <- torch::nn_module(
     a_w <- a$shape[5]
     for (x in seq_len(blend_extent)) {
         w <- (x - 1) / blend_extent
-        b[, , , , x] <- a[, , , , a_w - blend_extent + x]$mul(1 - w) +
-        b[, , , , x]$mul(w)
+        b[,,,, x] <- a[,,,, a_w - blend_extent + x]$mul(1 - w) +
+        b[,,,, x]$mul(w)
     }
     b
 }
@@ -392,8 +392,8 @@ ltx23_video_vae <- torch::nn_module(
     a_f <- a$shape[3]
     for (x in seq_len(blend_extent)) {
         w <- (x - 1) / blend_extent
-        b[, , x, , ] <- a[, , a_f - blend_extent + x, , ]$mul(1 - w) +
-        b[, , x, , ]$mul(w)
+        b[,, x,,] <- a[,, a_f - blend_extent + x,,]$mul(1 - w) +
+        b[,, x,,]$mul(w)
     }
     b
 }
@@ -421,8 +421,8 @@ ltx23_video_vae <- torch::nn_module(
             h_len <- min(tile_lat_h, height - i)
             w_len <- min(tile_lat_w, width - j)
             tile <- vae$decoder(
-                z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
-                causal = causal
+                                z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
+                                causal = causal
             )
             row[[length(row) + 1L]] <- tile
             gc(verbose = FALSE)
@@ -444,9 +444,10 @@ ltx23_video_vae <- torch::nn_module(
             keep_h <- min(vae$tile_sample_stride_height, tile$shape[4])
             keep_w <- min(vae$tile_sample_stride_width, tile$shape[5])
             result_row[[length(result_row) + 1L]] <-
-                tile$narrow(4L, 1L, keep_h)$narrow(5L, 1L, keep_w)
+            tile$narrow(4L, 1L, keep_h)$narrow(5L, 1L, keep_w)
         }
-        result_rows[[length(result_rows) + 1L]] <- torch::torch_cat(result_row, dim = 5L)
+        result_rows[[length(result_rows) + 1L]] <- torch::torch_cat(result_row,
+            dim = 5L)
     }
 
     dec <- torch::torch_cat(result_rows, dim = 4L)
@@ -471,7 +472,8 @@ ltx23_video_vae <- torch::nn_module(
     for (i in seq(0L, num_frames - 1L, by = stride_lat_f)) {
         f_len <- min(tile_lat_f + 1L, num_frames - i)
         tile <- z$narrow(3L, i + 1L, f_len)
-        if (vae$use_tiling && (tile$shape[5] > tile_lat_w || tile$shape[4] > tile_lat_h)) {
+        if (vae$use_tiling &&
+            (tile$shape[5] > tile_lat_w || tile$shape[4] > tile_lat_h)) {
             decoded <- .ltx23_tiled_decode(vae, tile, causal = causal)
         } else {
             decoded <- vae$decoder(tile, causal = causal)
