@@ -201,11 +201,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     if ("dit" %in% components) {
         if (fp8 && identical(ckpt$format, "nf4")) {
             pipe$transformer <- ltx23_load_transformer_nf4(
-                ckpt, device = device, verbose = verbose
+                ckpt, device = component_device, verbose = verbose
             )
         } else if (fp8) {
             pipe$transformer <- ltx23_load_transformer_fp8(
-                ckpt, device = device, pin = pin, verbose = verbose
+                ckpt, device = component_device, pin = pin, verbose = verbose
             )
         } else {
             pipe$transformer <- load_component(
@@ -424,7 +424,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     audio_latents <- ltx23_pack_audio_latents(audio_latents)
 
     # --- Phase 3: denoising -------------------------------------------------------
-    transformer <- pipeline$transformer
+    transformer <- onload(pipeline$transformer)
     if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
                                  length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
                                  height %/% (if (two_stage) 2L else 1L), num_frames))
@@ -497,8 +497,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         audio_latents <- denoised$audio_latents
     }
 
-    # Weight dequant buffers are not needed past denoising; free them
-    # before the decoders claim VRAM
+    # The transformer and its dequant buffers are not needed past
+    # denoising; free the VRAM before the decoders claim it
+    offload(pipeline$transformer)
     ltx23_release_dequant_buffers()
 
     result <- list(
