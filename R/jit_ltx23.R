@@ -203,23 +203,18 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 
 # Flat List[Tensor] for one attention module (16 slots)
 .ltx23_jit_pack_attn <- function(attn) {
-    list(
-         attn$to_gate_logits$weight, attn$to_gate_logits$bias,
+    list(attn$to_gate_logits$weight, attn$to_gate_logits$bias,
          attn$to_q$weight_nf4, attn$to_q$weight_absmax, attn$to_q$bias,
          attn$to_k$weight_nf4, attn$to_k$weight_absmax, attn$to_k$bias,
          attn$to_v$weight_nf4, attn$to_v$weight_absmax, attn$to_v$bias,
          attn$to_out[[1]]$weight_nf4, attn$to_out[[1]]$weight_absmax,
-         attn$to_out[[1]]$bias,
-         attn$norm_q$weight, attn$norm_k$weight
-    )
+         attn$to_out[[1]]$bias, attn$norm_q$weight, attn$norm_k$weight)
 }
 
 .ltx23_jit_pack_ff <- function(ff) {
-    list(
-         ff$net[[1]]$proj$weight_nf4, ff$net[[1]]$proj$weight_absmax,
-         ff$net[[1]]$proj$bias,
-         ff$net[[3]]$weight_nf4, ff$net[[3]]$weight_absmax, ff$net[[3]]$bias
-    )
+    list(ff$net[[1]]$proj$weight_nf4, ff$net[[1]]$proj$weight_absmax,
+         ff$net[[1]]$proj$bias, ff$net[[3]]$weight_nf4,
+         ff$net[[3]]$weight_absmax, ff$net[[3]]$bias)
 }
 
 #' Pack a transformer block's weights for the JIT stack
@@ -235,20 +230,19 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 #' @keywords internal
 .ltx23_jit_pack_block <- function(block) {
     c(
-      .ltx23_jit_pack_attn(block$attn1),
-      .ltx23_jit_pack_attn(block$audio_attn1),
-      .ltx23_jit_pack_attn(block$attn2),
-      .ltx23_jit_pack_attn(block$audio_attn2),
-      .ltx23_jit_pack_attn(block$audio_to_video_attn),
-      .ltx23_jit_pack_attn(block$video_to_audio_attn),
-      .ltx23_jit_pack_ff(block$ff),
-      .ltx23_jit_pack_ff(block$audio_ff),
-      list(
-           block$scale_shift_table, block$audio_scale_shift_table,
-           block$prompt_scale_shift_table, block$audio_prompt_scale_shift_table,
-           block$video_a2v_cross_attn_scale_shift_table,
-           block$audio_a2v_cross_attn_scale_shift_table
-      )
+        .ltx23_jit_pack_attn(block$attn1),
+        .ltx23_jit_pack_attn(block$audio_attn1),
+        .ltx23_jit_pack_attn(block$attn2),
+        .ltx23_jit_pack_attn(block$audio_attn2),
+        .ltx23_jit_pack_attn(block$audio_to_video_attn),
+        .ltx23_jit_pack_attn(block$video_to_audio_attn),
+        .ltx23_jit_pack_ff(block$ff),
+        .ltx23_jit_pack_ff(block$audio_ff),
+        list(block$scale_shift_table, block$audio_scale_shift_table,
+             block$prompt_scale_shift_table,
+             block$audio_prompt_scale_shift_table,
+             block$video_a2v_cross_attn_scale_shift_table,
+             block$audio_a2v_cross_attn_scale_shift_table)
     )
 }
 
@@ -286,13 +280,14 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 #'
 #' @keywords internal
 .ltx23_jit_run_stack <- function(blocks, hidden_states, audio_hidden_states,
-                                 encoder_hidden_states, audio_encoder_hidden_states,
-                                 temb, temb_audio,
-                                 temb_ca_scale_shift, temb_ca_audio_scale_shift,
-                                 temb_ca_gate, temb_ca_audio_gate,
-                                 temb_prompt, temb_prompt_audio,
-                                 video_rotary_emb, audio_rotary_emb,
-                                 ca_video_rotary_emb, ca_audio_rotary_emb,
+                                 encoder_hidden_states,
+                                 audio_encoder_hidden_states, temb,
+                                 temb_audio, temb_ca_scale_shift,
+                                 temb_ca_audio_scale_shift, temb_ca_gate,
+                                 temb_ca_audio_gate, temb_prompt,
+                                 temb_prompt_audio, video_rotary_emb,
+                                 audio_rotary_emb, ca_video_rotary_emb,
+                                 ca_audio_rotary_emb,
                                  encoder_attention_mask = NULL,
                                  audio_encoder_attention_mask = NULL) {
     unit <- .ltx23_jit_unit()
@@ -306,26 +301,26 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
     # Eager attention takes [B, 1, S] additive masks and unsqueezes to
     # [B, 1, 1, S]; SDPA wants them pre-broadcast
     fix_mask <- function(m) {
-        if (!is.null(m) && m$ndim == 3L) m$unsqueeze(2L) else m
+        if (!is.null(m) && m$ndim == 3L) {
+            m$unsqueeze(2L)
+        } else {
+            m
+        }
     }
 
-    res <- unit$stack_nf4(
-                          hidden_states, audio_hidden_states,
+    res <- unit$stack_nf4(hidden_states, audio_hidden_states,
                           encoder_hidden_states, audio_encoder_hidden_states,
-                          temb, temb_audio,
-                          temb_ca_scale_shift, temb_ca_audio_scale_shift,
-                          temb_ca_gate, temb_ca_audio_gate,
-                          temb_prompt, temb_prompt_audio,
+                          temb, temb_audio, temb_ca_scale_shift,
+                          temb_ca_audio_scale_shift, temb_ca_gate,
+                          temb_ca_audio_gate, temb_prompt, temb_prompt_audio,
                           video_rotary_emb[[1]], video_rotary_emb[[2]],
                           audio_rotary_emb[[1]], audio_rotary_emb[[2]],
                           ca_video_rotary_emb[[1]], ca_video_rotary_emb[[2]],
                           ca_audio_rotary_emb[[1]], ca_audio_rotary_emb[[2]],
                           fix_mask(encoder_attention_mask),
-                          fix_mask(audio_encoder_attention_mask),
-                          ws, table,
+                          fix_mask(audio_encoder_attention_mask), ws, table,
                           torch::jit_scalar(length(blocks)),
                           torch::jit_scalar(as.integer(heads)),
-                          torch::jit_scalar(as.integer(aheads))
-    )
+                          torch::jit_scalar(as.integer(aheads)))
     list(res[[1]], res[[2]])
 }
