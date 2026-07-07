@@ -312,7 +312,8 @@ clip_pooled_output <- function(hidden_states, input_ids) {
     eos_indices <- torch::torch_argmax(input_ids, dim = 2L, keepdim = TRUE)
     hidden_states$gather(
                          dim = 2L,
-                         index = eos_indices$unsqueeze(-1L)$expand(c(-1L, -1L, hidden_states$shape[3]))
+                         index = eos_indices$unsqueeze(-1L)$expand(c(-1L, -1L,
+                hidden_states$shape[3]))
     )$squeeze(2L)
 }
 
@@ -330,7 +331,7 @@ clip_pooled_output <- function(hidden_states, input_ids) {
 #' @return The native encoder with loaded weights (invisibly)
 #' @export
 load_text_encoder_safetensors <- function(native_encoder, path,
-                                          verbose = TRUE) {
+    verbose = TRUE) {
     path <- path.expand(path)
     if (dir.exists(path)) {
         path <- file.path(path, "model.safetensors")

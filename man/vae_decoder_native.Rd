@@ -3,12 +3,20 @@
 \alias{vae_decoder_native}
 \title{Native VAE Decoder}
 \usage{
-vae_decoder_native(latent_channels = 4, out_channels = 3)
+vae_decoder_native(latent_channels = 4, out_channels = 3,
+                   block_channels = c(512, 512, 256, 128), norm_groups = 32)
 }
 \arguments{
-\item{latent_channels}{Number of latent channels (default 4)}
+\item{latent_channels}{Number of latent channels (4 for SD/SDXL,
+16 for FLUX/SD3)}
 
 \item{out_channels}{Number of output channels (default 3 for RGB)}
+
+\item{block_channels}{Decoder block channels (reversed encoder
+block_out_channels; default matches SD/SDXL and FLUX)}
+
+\item{norm_groups}{Group norm groups (default 32; must divide every
+entry of \code{block_channels})}
 }
 \value{
 An nn_module representing the VAE decoder

@@ -164,7 +164,7 @@ VAEMidBlock <- torch::nn_module(
             VAEResnetBlock(channels, channels, norm_groups)
         ))
     self$attentions <- torch::nn_module_list(list(VAEAttentionBlock(channels,
-        norm_groups)))
+                norm_groups)))
 },
 
                                 forward = function(x) {
@@ -320,9 +320,9 @@ vae_decoder_native <- torch::nn_module(
     for (i in seq_len(n_blocks)) {
         in_ch <- block_channels[max(i - 1, 1)]
         self$up_blocks$append(VAEUpBlock(in_ch, block_channels[i],
-            num_resnets = 3,
-            add_upsample = i < n_blocks,
-            norm_groups = norm_groups))
+                num_resnets = 3,
+                add_upsample = i < n_blocks,
+                norm_groups = norm_groups))
     }
 
     last <- block_channels[n_blocks]

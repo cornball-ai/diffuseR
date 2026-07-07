@@ -3,7 +3,8 @@
 \alias{VAEUpBlock}
 \title{VAE Up Block}
 \usage{
-VAEUpBlock(in_channels, out_channels, num_resnets = 3, add_upsample = TRUE)
+VAEUpBlock(in_channels, out_channels, num_resnets = 3, add_upsample = TRUE,
+           norm_groups = 32)
 }
 \arguments{
 \item{in_channels}{Input channels}

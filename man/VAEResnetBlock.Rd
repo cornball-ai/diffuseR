@@ -3,7 +3,7 @@
 \alias{VAEResnetBlock}
 \title{VAE ResNet Block}
 \usage{
-VAEResnetBlock(in_channels, out_channels)
+VAEResnetBlock(in_channels, out_channels, norm_groups = 32)
 }
 \arguments{
 \item{in_channels}{Input channels}

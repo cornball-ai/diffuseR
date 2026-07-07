@@ -5,7 +5,7 @@
 \usage{
 text_encoder_native(vocab_size = 49408, context_length = 77, embed_dim = 768,
                     num_layers = 12, num_heads = 12, mlp_dim = 3072,
-                    apply_final_ln = TRUE)
+                    apply_final_ln = TRUE, gelu_type = "tanh")
 }
 \arguments{
 \item{vocab_size}{Vocabulary size (default 49408)}
@@ -22,6 +22,9 @@ text_encoder_native(vocab_size = 49408, context_length = 77, embed_dim = 768,
 
 \item{apply_final_ln}{Whether to apply final layer norm (default TRUE).
 Set to FALSE to match TorchScript exports that don't include final LN.}
+
+\item{gelu_type}{GELU variant: "tanh" (matches the TorchScript exports),
+"quick" (HF CLIP ViT-L, used by FLUX), or "exact"}
 }
 \value{
 An nn_module representing the text encoder
