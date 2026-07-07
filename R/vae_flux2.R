@@ -131,3 +131,112 @@ flux2_bn_normalize <- function(latents, bn_mean, bn_var, eps = 1e-4,
         latents$sub(mean)$div(std)
     }
 }
+
+#' FLUX.2 VAE decoder
+#'
+#' The AutoencoderKLFlux2 decode path: post_quant_conv (1x1, 32
+#' channels) followed by the standard AutoencoderKL decoder body
+#' (reused from \code{\link{vae_decoder_native}}), plus the BatchNorm
+#' running statistics used for latent (de)normalization. Reference:
+#' src/diffusers/models/autoencoders/autoencoder_kl_flux2.py.
+#'
+#' @param latent_channels Integer (32 for FLUX.2).
+#' @param block_channels Decoder block channels (reversed encoder
+#'   block_out_channels).
+#' @param norm_groups Integer. Group norm groups.
+#'
+#' @return Module whose forward(z) decodes [B, 32, H, W] latents to
+#'   [B, 3, 8H, 8W] images; \code{$bn$running_mean} /
+#'   \code{$bn$running_var} carry the normalization statistics.
+#'
+#' @export
+flux2_vae_decoder <- torch::nn_module(
+    "flux2_vae_decoder",
+    initialize = function(latent_channels = 32L,
+                          block_channels = c(512L, 512L, 256L, 128L),
+                          norm_groups = 32L) {
+    self$post_quant_conv <- torch::nn_conv2d(latent_channels,
+                                             latent_channels,
+                                             kernel_size = 1)
+    self$decoder <- vae_decoder_native(
+                                       latent_channels = latent_channels,
+                                       block_channels = block_channels,
+                                       norm_groups = norm_groups
+    )
+    bn_stats <- torch::nn_module(
+                                 "flux2_bn_stats",
+                                 initialize = function(n) {
+        self$running_mean <- torch::nn_buffer(torch::torch_zeros(n))
+        self$running_var <- torch::nn_buffer(torch::torch_ones(n))
+    },
+                                 forward = function(x) x
+    )
+    self$bn <- bn_stats(latent_channels * 4L)
+},
+    forward = function(z) {
+    self$decoder(self$post_quant_conv(z))
+}
+)
+
+#' Load the FLUX.2 VAE decoder from safetensors
+#'
+#' Loads the decoder half plus post_quant_conv and the BatchNorm running
+#' statistics; encoder and quant_conv keys are skipped (txt2img needs no
+#' encoder).
+#'
+#' @param path Path to the VAE .safetensors file (or a directory
+#'   containing diffusion_pytorch_model.safetensors).
+#' @param latent_channels,block_channels,norm_groups Constructor
+#'   arguments for \code{\link{flux2_vae_decoder}}.
+#' @param verbose Logical.
+#'
+#' @return The loaded \code{flux2_vae_decoder} in eval mode.
+#'
+#' @export
+load_flux2_vae_decoder <- function(path, latent_channels = 32L,
+                                   block_channels = c(512L, 512L, 256L, 128L),
+                                   norm_groups = 32L, verbose = TRUE) {
+    path <- path.expand(path)
+    if (dir.exists(path)) {
+        path <- file.path(path, "diffusion_pytorch_model.safetensors")
+    }
+    dec <- flux2_vae_decoder(latent_channels = latent_channels,
+                             block_channels = block_channels,
+                             norm_groups = norm_groups)
+
+    handle <- safetensors::safetensors$new(path, framework = "torch")
+    keys <- setdiff(handle$keys(), "__metadata__")
+    keep <- keys[!startsWith(keys, "encoder.") &
+    !startsWith(keys, "quant_conv.") &
+    keys != "bn.num_batches_tracked"]
+
+    dests <- c(dec$named_parameters(), dec$named_buffers())
+    filled <- character(0)
+    unmapped <- character(0)
+    torch::with_no_grad({
+        for (key in keep) {
+            dest <- dests[[key]]
+            if (is.null(dest)) {
+                unmapped <- c(unmapped, key)
+                next
+            }
+            dest$copy_(handle$get_tensor(key))
+            filled <- c(filled, key)
+        }
+    })
+    unfilled <- setdiff(names(dests), filled)
+    if (length(unmapped)) {
+        stop("FLUX.2 VAE load: ", length(unmapped), " unmapped keys, e.g. ",
+             paste(utils::head(unmapped, 3), collapse = ", "))
+    }
+    if (length(unfilled)) {
+        stop("FLUX.2 VAE load: ", length(unfilled),
+             " unfilled params, e.g. ",
+             paste(utils::head(unfilled, 3), collapse = ", "))
+    }
+    if (verbose) {
+        message("Loaded ", length(filled), " FLUX.2 VAE tensors from ", path)
+    }
+    dec$eval()
+    dec
+}
