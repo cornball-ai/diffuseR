@@ -137,3 +137,55 @@ if (requireNamespace("av", quietly = TRUE)) {
   expect_true(file.exists(mp4) && file.size(mp4) > 0)
   unlink(mp4)
 }
+
+# --- Prefix conditioning smoke tests -------------------------------------------------
+
+# i2v: start image conditions frame 0; pipeline runs end to end
+start_img <- array(runif(64 * 64 * 3), dim = c(64L, 64L, 3L))
+res_i2v <- txt2vid_ltx2(
+  prompt = "tiny i2v",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  image = start_img,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_i2v$video), c(9L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_i2v$video)))
+
+# Same seed without conditioning gives a different video (mask engaged)
+res_t2v <- txt2vid_ltx2(
+  prompt = "tiny i2v",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_true(max(abs(res_i2v$video - res_t2v$video)) > 1e-4)
+
+# Continuation: 9-frame tail array as the frozen prefix
+tail_arr <- array(runif(9 * 64 * 64 * 3), dim = c(9L, 64L, 64L, 3L))
+res_cont <- txt2vid_ltx2(
+  prompt = "tiny continuation",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 17L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  condition_video = tail_arr, conditioning_frames = 9L,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_cont$video), c(17L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_cont$video)))
+
+# Guardrails
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+    image = start_img, condition_video = tail_arr,
+    device = "cpu", dtype = "float32"),
+  pattern = "not both"
+)

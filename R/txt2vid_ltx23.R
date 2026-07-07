@@ -77,13 +77,22 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     latents * std + mean
 }
 
-# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free)
+# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free).
+# With a conditioning_mask [B, S] (prefix conditioning), conditioned
+# video tokens see a per-token timestep of zero and are frozen through
+# the Euler updates (reference i2v semantics at strength 1).
 .ltx23_denoise <- function(transformer, latents, audio_latents, sigmas,
                            video_text_embeds, audio_text_embeds, text_mask,
                            latent_frames, latent_height, latent_width,
                            audio_num_frames, frame_rate, device,
-                           compute_dtype, verbose = TRUE, stage = "") {
+                           compute_dtype, verbose = TRUE, stage = "",
+                           conditioning_mask = NULL) {
     f32 <- torch::torch_float32()
+    keep_mask <- if (!is.null(conditioning_mask)) {
+        conditioning_mask$unsqueeze(3L) # [B, S, 1] for latent blending
+    } else {
+        NULL
+    }
     video_coords <- transformer$rope$prepare_video_coords(latents$shape[1],
         latent_frames, latent_height, latent_width, device,
         fps = frame_rate)
@@ -98,13 +107,20 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
         for (i in seq_len(n_steps)) {
             sigma <- sigmas[i]
             t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
+            t_video <- if (is.null(conditioning_mask)) {
+                t
+            } else {
+                # Per-token video timestep: conditioned tokens see zero
+                t * (1 - conditioning_mask)
+            }
 
             out <- transformer(
                                hidden_states = latents$to(dtype = compute_dtype),
                                audio_hidden_states = audio_latents$to(dtype = compute_dtype),
                                encoder_hidden_states = video_text_embeds,
                                audio_encoder_hidden_states = audio_text_embeds,
-                               timestep = t,
+                               timestep = t_video,
+                               audio_timestep = t,
                                sigma = t,
                                encoder_attention_mask = text_mask,
                                audio_encoder_attention_mask = text_mask,
@@ -120,7 +136,13 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 
             # Euler velocity step in float32; dt is negative (sigma decreasing)
             dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
-            latents <- latents + dt * out$sample$to(dtype = f32)
+            stepped <- latents + dt * out$sample$to(dtype = f32)
+            latents <- if (is.null(keep_mask)) {
+                stepped
+            } else {
+                # Conditioned tokens stay clean
+                latents * keep_mask + stepped * (1 - keep_mask)
+            }
             audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
             rm(out)
             gc(verbose = FALSE)
@@ -367,6 +389,18 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   device only for its phase (text encoding, upsampling, decoding) and
 #'   back to the CPU afterwards, keeping the denoise phase as the sole
 #'   GPU tenant.
+#' @param image Optional start image for image-to-video: a PNG/JPEG path
+#'   or an [H, W, 3] array in [0, 1]. The image conditions the first
+#'   frame; the rest of the video is generated (reference i2v).
+#' @param condition_video Optional continuation source: a video path
+#'   (its trailing \code{conditioning_frames} frames are used) or an
+#'   [F, H, W, 3] array. The clip's tail becomes the frozen prefix of
+#'   the new video, so the output's first \code{conditioning_frames}
+#'   frames overlap the source (trim or crossfade when concatenating).
+#' @param conditioning_frames Integer. Trailing pixel frames taken from
+#'   \code{condition_video} (8k + 1, default 9 = 2 latent frames).
+#' @param cond_noise_scale Numeric in [0, 1]. Optional partial noising
+#'   of the conditioned tokens (0 = keep them exactly).
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{video} (array
@@ -384,10 +418,19 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          decode_audio = TRUE, two_stage = FALSE,
                          upsampler = NULL, adain_factor = 1.0,
                          tone_map_compression = 0, phase_offload = TRUE,
+                         image = NULL, condition_video = NULL,
+                         conditioning_frames = 9L, cond_noise_scale = 0,
                          verbose = TRUE) {
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
+    }
+    if (!is.null(image) && !is.null(condition_video)) {
+        stop("Provide either image (i2v) or condition_video (continuation), not both.")
+    }
+    conditioned <- !is.null(image) || !is.null(condition_video)
+    if (conditioned && two_stage) {
+        stop("Prefix conditioning with two_stage = TRUE is not supported yet.")
     }
     if (two_stage) {
         if (is.null(upsampler)) {
@@ -525,11 +568,48 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
     latent_mel_bins <- 16L # 64 mel bins / 4
 
-    latents <- torch::torch_randn(
-                                  c(1L, 128L, latent_frames, s1_height, s1_width),
-                                  device = device, dtype = f32
+    # Prefix conditioning: encode the start image (i2v) or the tail of
+    # a previous clip (continuation) into normalized latents
+    cond_latents <- NULL
+    if (conditioned) {
+        vae <- onload("vae")
+        cond_frames <- if (!is.null(image)) {
+            ltx23_preprocess_frames(image, height, width)
+        } else {
+            arr <- if (is.character(condition_video)) {
+                ltx23_read_tail_frames(condition_video, conditioning_frames)
+            } else {
+                condition_video
+            }
+            ltx23_preprocess_frames(arr, height, width)
+        }
+        if (verbose) {
+            message(sprintf("Encoding %d conditioning frame(s)...",
+                            cond_frames$shape[3]))
+        }
+        cond_latents <- ltx23_encode_video_frames(vae, cond_frames)$
+        to(device = device)
+        offload("vae")
+        gc(verbose = FALSE)
+    }
+
+    noise <- torch::torch_randn(
+                                c(1L, 128L, latent_frames, s1_height, s1_width),
+                                device = device, dtype = f32
     )
-    latents <- ltx23_pack_video_latents(latents)
+    conditioning_mask <- NULL
+    if (conditioned) {
+        prep <- ltx23_prepare_conditioned_latents(
+                                                  cond_latents, latent_frames, s1_height, s1_width,
+                                                  noise, cond_noise_scale = cond_noise_scale
+        )
+        latents <- prep$latents
+        conditioning_mask <- prep$conditioning_mask
+        rm(prep, cond_latents)
+    } else {
+        latents <- ltx23_pack_video_latents(noise)
+    }
+    rm(noise)
 
     audio_latents <- torch::torch_randn(
                                         c(1L, 8L, audio_num_frames, latent_mel_bins),
@@ -549,7 +629,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                latent_frames, s1_height, s1_width,
                                audio_num_frames, frame_rate,
                                device, compute_dtype, verbose = verbose,
-                               stage = if (two_stage) "stage 1 " else ""
+                               stage = if (two_stage) "stage 1 " else "",
+                               conditioning_mask = conditioning_mask
     )
     latents <- denoised$latents
     audio_latents <- denoised$audio_latents
