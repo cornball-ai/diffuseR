@@ -21,7 +21,7 @@ NULL
     inv_freq <- 1.0 / torch::torch_pow(
                                        theta,
                                        torch::torch_arange(start = 0, end = head_dim - 2, step = 2,
-                                                           dtype = f32, device = device) / head_dim
+            dtype = f32, device = device) / head_dim
     )
     pos <- torch::torch_arange(start = 0, end = seq_len - 1, dtype = f32,
                                device = device)
@@ -34,9 +34,9 @@ NULL
 }
 
 .qwen3_attention <- torch::nn_module(
-    "qwen3_attention",
-    initialize = function(hidden_size, num_heads, num_kv_heads, head_dim,
-                          eps = 1e-6) {
+                                     "qwen3_attention",
+                                     initialize = function(hidden_size, num_heads, num_kv_heads, head_dim,
+        eps = 1e-6) {
     self$num_heads <- num_heads
     self$num_kv_heads <- num_kv_heads
     self$head_dim <- head_dim
@@ -51,7 +51,7 @@ NULL
     self$q_norm <- ltx23_rms_norm(head_dim, eps = eps)
     self$k_norm <- ltx23_rms_norm(head_dim, eps = eps)
 },
-    forward = function(x, rope, mask = NULL) {
+                                     forward = function(x, rope, mask = NULL) {
     shape <- x$shape
     b <- shape[1]
     s <- shape[2]
@@ -81,8 +81,8 @@ NULL
 )
 
 .qwen3_mlp <- torch::nn_module(
-    "qwen3_mlp",
-    initialize = function(hidden_size, intermediate_size) {
+                               "qwen3_mlp",
+                               initialize = function(hidden_size, intermediate_size) {
     self$gate_proj <- torch::nn_linear(hidden_size, intermediate_size,
                                        bias = FALSE)
     self$up_proj <- torch::nn_linear(hidden_size, intermediate_size,
@@ -90,22 +90,22 @@ NULL
     self$down_proj <- torch::nn_linear(intermediate_size, hidden_size,
                                        bias = FALSE)
 },
-    forward = function(x) {
+                               forward = function(x) {
     self$down_proj(torch::nnf_silu(self$gate_proj(x)) * self$up_proj(x))
 }
 )
 
 .qwen3_layer <- torch::nn_module(
-    "qwen3_layer",
-    initialize = function(hidden_size, num_heads, num_kv_heads, head_dim,
-                          intermediate_size, eps = 1e-6) {
-    self$self_attn <- .qwen3_attention(hidden_size, num_heads,
-                                       num_kv_heads, head_dim, eps = eps)
+                                 "qwen3_layer",
+                                 initialize = function(hidden_size, num_heads, num_kv_heads, head_dim,
+        intermediate_size, eps = 1e-6) {
+    self$self_attn <- .qwen3_attention(hidden_size, num_heads, num_kv_heads,
+                                       head_dim, eps = eps)
     self$mlp <- .qwen3_mlp(hidden_size, intermediate_size)
     self$input_layernorm <- ltx23_rms_norm(hidden_size, eps = eps)
     self$post_attention_layernorm <- ltx23_rms_norm(hidden_size, eps = eps)
 },
-    forward = function(x, rope, mask = NULL) {
+                                 forward = function(x, rope, mask = NULL) {
     x <- x + self$self_attn(self$input_layernorm(x), rope, mask)
     x + self$mlp(self$post_attention_layernorm(x))
 }
@@ -132,13 +132,13 @@ NULL
 #'
 #' @export
 qwen3_encoder <- torch::nn_module(
-    "qwen3_encoder",
-    initialize = function(vocab_size = 151936L, hidden_size = 2560L,
-                          intermediate_size = 9728L,
-                          num_hidden_layers = 36L,
-                          num_attention_heads = 32L,
-                          num_key_value_heads = 8L, head_dim = 128L,
-                          rope_theta = 1e6, rms_norm_eps = 1e-6) {
+                                  "qwen3_encoder",
+                                  initialize = function(vocab_size = 151936L, hidden_size = 2560L,
+        intermediate_size = 9728L,
+        num_hidden_layers = 36L,
+        num_attention_heads = 32L,
+        num_key_value_heads = 8L, head_dim = 128L,
+        rope_theta = 1e6, rms_norm_eps = 1e-6) {
     self$head_dim <- head_dim
     self$rope_theta <- rope_theta
 
@@ -147,10 +147,10 @@ qwen3_encoder <- torch::nn_module(
                               initialize = function() {
         self$embed_tokens <- torch::nn_embedding(vocab_size, hidden_size)
         self$layers <- torch::nn_module_list(
-                                             lapply(seq_len(num_hidden_layers), function(i) {
+            lapply(seq_len(num_hidden_layers), function(i) {
             .qwen3_layer(hidden_size, num_attention_heads,
-                         num_key_value_heads, head_dim,
-                         intermediate_size, eps = rms_norm_eps)
+                         num_key_value_heads, head_dim, intermediate_size,
+                         eps = rms_norm_eps)
         })
         )
         self$norm <- ltx23_rms_norm(hidden_size, eps = rms_norm_eps)
@@ -158,8 +158,8 @@ qwen3_encoder <- torch::nn_module(
     )
     self$model <- inner()
 },
-    forward = function(input_ids, attention_mask = NULL,
-                       out_layers = c(9L, 18L, 27L)) {
+                                  forward = function(input_ids, attention_mask = NULL,
+        out_layers = c(9L, 18L, 27L)) {
     x <- self$model$embed_tokens(input_ids)
     b <- input_ids$shape[1]
     s <- input_ids$shape[2]
@@ -216,15 +216,13 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
         config <- jsonlite::fromJSON(config_path, simplifyVector = TRUE)
     }
 
-    args <- list(
-                 vocab_size = config$vocab_size,
+    args <- list(vocab_size = config$vocab_size,
                  hidden_size = config$hidden_size,
                  intermediate_size = config$intermediate_size,
                  num_hidden_layers = config$num_hidden_layers,
                  num_attention_heads = config$num_attention_heads,
                  num_key_value_heads = config$num_key_value_heads,
-                 head_dim = config$head_dim
-    )
+                 head_dim = config$head_dim)
     args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
     args <- lapply(args, as.integer)
     if (!is.null(config$rope_theta)) {
