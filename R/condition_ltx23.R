@@ -112,7 +112,7 @@ ltx23_encode_video_frames <- function(vae, frames) {
     enc_dtype <- vae$encoder$conv_in$conv$weight$dtype
     enc_device <- vae$encoder$conv_in$conv$weight$device
     moments <- torch::with_no_grad(
-        vae$encode(frames$to(device = enc_device, dtype = enc_dtype))
+                                   vae$encode(frames$to(device = enc_device, dtype = enc_dtype))
     )
     latents <- moments$mean$to(dtype = torch::torch_float32())
     ltx23_normalize_latents(latents, vae$latents_mean$to(dtype = torch::torch_float32()),
@@ -140,19 +140,18 @@ ltx23_encode_video_frames <- function(vae, frames) {
 #'
 #' @export
 ltx23_prepare_conditioned_latents <- function(cond_latents, latent_frames,
-                                              latent_height, latent_width,
-                                              noise, cond_noise_scale = 0) {
+    latent_height, latent_width,
+    noise, cond_noise_scale = 0) {
     k <- cond_latents$shape[3]
-    stopifnot(k <= latent_frames,
-              cond_latents$shape[4] == latent_height,
+    stopifnot(k <= latent_frames, cond_latents$shape[4] == latent_height,
               cond_latents$shape[5] == latent_width)
 
     init <- if (k == 1L) {
         cond_latents$`repeat`(c(1L, 1L, latent_frames, 1L, 1L))
     } else {
         torch::torch_cat(list(
-                cond_latents,
-                noise$narrow(3L, k + 1L, latent_frames - k)
+                              cond_latents,
+                              noise$narrow(3L, k + 1L, latent_frames - k)
             ), dim = 3L)
     }
 

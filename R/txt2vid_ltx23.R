@@ -600,8 +600,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     conditioning_mask <- NULL
     if (conditioned) {
         prep <- ltx23_prepare_conditioned_latents(
-                                                  cond_latents, latent_frames, s1_height, s1_width,
-                                                  noise, cond_noise_scale = cond_noise_scale
+            cond_latents, latent_frames, s1_height, s1_width,
+            noise, cond_noise_scale = cond_noise_scale
         )
         latents <- prep$latents
         conditioning_mask <- prep$conditioning_mask
