@@ -3,12 +3,15 @@
 \alias{flux_ada_layer_norm_continuous}
 \title{FLUX continuous adaLN (final norm)}
 \usage{
-flux_ada_layer_norm_continuous(dim, cond_dim = dim)
+flux_ada_layer_norm_continuous(dim, cond_dim = dim, bias = TRUE)
 }
 \arguments{
 \item{dim}{Integer. Model dimension.}
 
 \item{cond_dim}{Integer. Conditioning embedding dimension.}
+
+\item{bias}{Logical. Bias on the projection (TRUE for FLUX.1, FALSE
+for FLUX.2).}
 }
 \description{
 Scale/shift conditioning of the final norm. Note the chunk order:

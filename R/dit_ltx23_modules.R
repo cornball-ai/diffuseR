@@ -88,7 +88,8 @@ ltx23_timestep_embedding <- torch::nn_module(
     "ltx23_timestep_embedding",
     initialize = function(in_channels, time_embed_dim, bias = TRUE) {
     self$linear_1 <- torch::nn_linear(in_channels, time_embed_dim, bias = bias)
-    self$linear_2 <- torch::nn_linear(time_embed_dim, time_embed_dim, bias = bias)
+    self$linear_2 <- torch::nn_linear(time_embed_dim, time_embed_dim,
+                                      bias = bias)
 },
     forward = function(sample) {
     self$linear_2(torch::nnf_silu(self$linear_1(sample)))

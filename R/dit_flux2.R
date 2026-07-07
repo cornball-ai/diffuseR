@@ -20,8 +20,7 @@ flux2_time_guidance_embed <- torch::nn_module(
     initialize = function(embedding_dim, in_channels = 256L) {
     self$in_channels <- in_channels
     self$timestep_embedder <- ltx23_timestep_embedding(in_channels,
-                                                       embedding_dim,
-                                                       bias = FALSE)
+        embedding_dim, bias = FALSE)
 },
     forward = function(timestep) {
     proj <- ltx23_get_timestep_embedding(timestep, self$in_channels,
@@ -59,46 +58,44 @@ flux2_time_guidance_embed <- torch::nn_module(
 #'
 #' @export
 flux2_transformer <- torch::nn_module(
-    "flux2_transformer",
-    initialize = function(in_channels = 128L,
-                          num_layers = 5L,
-                          num_single_layers = 20L,
-                          attention_head_dim = 128L,
-                          num_attention_heads = 24L,
-                          joint_attention_dim = 7680L,
-                          mlp_ratio = 3.0,
-                          timestep_guidance_channels = 256L,
-                          axes_dims_rope = c(32L, 32L, 32L, 32L),
-                          rope_theta = 2000,
-                          eps = 1e-6,
-                          out_channels = NULL) {
+                                      "flux2_transformer",
+                                      initialize = function(in_channels = 128L,
+        num_layers = 5L,
+        num_single_layers = 20L,
+        attention_head_dim = 128L,
+        num_attention_heads = 24L,
+        joint_attention_dim = 7680L,
+        mlp_ratio = 3.0,
+        timestep_guidance_channels = 256L,
+        axes_dims_rope = c(32L, 32L, 32L, 32L),
+        rope_theta = 2000,
+        eps = 1e-6,
+        out_channels = NULL) {
     inner_dim <- num_attention_heads * attention_head_dim
     self$inner_dim <- inner_dim
     self$axes_dims_rope <- as.integer(axes_dims_rope)
     self$rope_theta <- rope_theta
     self$out_channels <- as.integer(out_channels %||% in_channels)
 
-    self$time_guidance_embed <- flux2_time_guidance_embed(
-                                                          inner_dim, as.integer(timestep_guidance_channels)
-    )
+    self$time_guidance_embed <- flux2_time_guidance_embed(inner_dim,
+        as.integer(timestep_guidance_channels))
     self$double_stream_modulation_img <- flux2_modulation(inner_dim, 2L)
     self$double_stream_modulation_txt <- flux2_modulation(inner_dim, 2L)
     self$single_stream_modulation <- flux2_modulation(inner_dim, 1L)
 
-    self$x_embedder <- torch::nn_linear(in_channels, inner_dim,
-                                        bias = FALSE)
+    self$x_embedder <- torch::nn_linear(in_channels, inner_dim, bias = FALSE)
     self$context_embedder <- torch::nn_linear(joint_attention_dim,
-                                              inner_dim, bias = FALSE)
+        inner_dim, bias = FALSE)
 
     self$transformer_blocks <- torch::nn_module_list(
-                                                     lapply(seq_len(num_layers), function(i) {
+        lapply(seq_len(num_layers), function(i) {
         flux2_double_block(inner_dim, num_attention_heads,
                            attention_head_dim, mlp_ratio = mlp_ratio,
                            eps = eps)
     })
     )
     self$single_transformer_blocks <- torch::nn_module_list(
-                                                            lapply(seq_len(num_single_layers), function(i) {
+        lapply(seq_len(num_single_layers), function(i) {
         flux2_single_block(inner_dim, num_attention_heads,
                            attention_head_dim, mlp_ratio = mlp_ratio,
                            eps = eps)
@@ -106,12 +103,12 @@ flux2_transformer <- torch::nn_module(
     )
 
     self$norm_out <- flux_ada_layer_norm_continuous(inner_dim, inner_dim,
-                                                    bias = FALSE)
+        bias = FALSE)
     self$proj_out <- torch::nn_linear(inner_dim, self$out_channels,
                                       bias = FALSE)
 },
-    forward = function(hidden_states, encoder_hidden_states, timestep,
-                       image_rotary_emb, chunk_size = NULL) {
+                                      forward = function(hidden_states, encoder_hidden_states, timestep,
+        image_rotary_emb, chunk_size = NULL) {
     hidden_states <- self$x_embedder(hidden_states)
     timestep <- timestep$to(dtype = hidden_states$dtype)$mul(1000)
     temb <- self$time_guidance_embed(timestep)
@@ -125,12 +122,12 @@ flux2_transformer <- torch::nn_module(
     block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_along(self$transformer_blocks)) {
         res <- self$transformer_blocks[[i]](
-                                            hidden_states = hidden_states,
-                                            encoder_hidden_states = encoder_hidden_states,
-                                            temb_mod_img = mod_img,
-                                            temb_mod_txt = mod_txt,
-                                            image_rotary_emb = image_rotary_emb,
-                                            chunk_size = chunk_size
+                                      hidden_states = hidden_states,
+                                      encoder_hidden_states = encoder_hidden_states,
+                                      temb_mod_img = mod_img,
+                                      temb_mod_txt = mod_txt,
+                                      image_rotary_emb = image_rotary_emb,
+                                      chunk_size = chunk_size
         )
         encoder_hidden_states <- res[[1]]
         hidden_states <- res[[2]]
@@ -146,18 +143,18 @@ flux2_transformer <- torch::nn_module(
     )
     for (i in seq_along(self$single_transformer_blocks)) {
         hidden_states <- self$single_transformer_blocks[[i]](
-                                                             hidden_states = hidden_states,
-                                                             temb_mod = mod_single,
-                                                             image_rotary_emb = image_rotary_emb,
-                                                             chunk_size = chunk_size
+                                      hidden_states = hidden_states,
+                                      temb_mod = mod_single,
+                                      image_rotary_emb = image_rotary_emb,
+                                      chunk_size = chunk_size
         )
         if (block_gc) {
             gc(verbose = FALSE)
         }
     }
     hidden_states <- hidden_states$narrow(
-                                          2L, txt_len + 1L,
-                                          hidden_states$shape[2] - txt_len
+        2L, txt_len + 1L,
+        hidden_states$shape[2] - txt_len
     )
 
     hidden_states <- self$norm_out(hidden_states, temb)
