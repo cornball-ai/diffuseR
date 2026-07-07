@@ -20,8 +20,8 @@ NULL
 # sign, half of those exact small offsets, the rest log-spaced up to
 # max_distance. Reference: T5Attention._relative_position_bucket.
 .t5_relative_position_bucket <- function(relative_position,
-                                         num_buckets = 32L,
-                                         max_distance = 128L) {
+    num_buckets = 32L,
+    max_distance = 128L) {
     num_buckets <- num_buckets %/% 2L
     long <- torch::torch_long()
     relative_buckets <- (relative_position > 0)$to(dtype = long)$mul(num_buckets)
@@ -46,9 +46,9 @@ NULL
 # T5 self-attention: no scaling, no biases; the relative position bias
 # is added to the logits pre-softmax (softmax in float32)
 .t5_attention <- torch::nn_module(
-    "t5_attention",
-    initialize = function(d_model, d_kv, num_heads, has_relative_bias = FALSE,
-                          num_buckets = 32L, max_distance = 128L) {
+                                  "t5_attention",
+                                  initialize = function(d_model, d_kv, num_heads, has_relative_bias = FALSE,
+        num_buckets = 32L, max_distance = 128L) {
     inner_dim <- num_heads * d_kv
     self$num_heads <- num_heads
     self$d_kv <- d_kv
@@ -60,10 +60,10 @@ NULL
     self$o <- torch::nn_linear(inner_dim, d_model, bias = FALSE)
     if (has_relative_bias) {
         self$relative_attention_bias <- torch::nn_embedding(num_buckets,
-                                                            num_heads)
+            num_heads)
     }
 },
-    compute_bias = function(seq_len, device) {
+                                  compute_bias = function(seq_len, device) {
     pos <- torch::torch_arange(start = 0, end = seq_len - 1,
                                dtype = torch::torch_long(), device = device)
     # relative_position[i, j] = j - i
@@ -74,7 +74,7 @@ NULL
     values <- self$relative_attention_bias(buckets + 1L) # [S, S, H]
     values$permute(c(3L, 1L, 2L))$unsqueeze(1L) # [1, H, S, S]
 },
-    forward = function(x, position_bias) {
+                                  forward = function(x, position_bias) {
     shape <- x$shape
     b <- shape[1]
     s <- shape[2]
@@ -86,7 +86,7 @@ NULL
     scores <- torch::torch_matmul(q, k$transpose(-2L, -1L)) # no 1/sqrt(d)
     scores <- scores + position_bias
     attn <- torch::nnf_softmax(scores$to(dtype = torch::torch_float32()),
-        dim = -1L)$to(dtype = scores$dtype)
+                               dim = -1L)$to(dtype = scores$dtype)
     out <- torch::torch_matmul(attn, v)
     out <- out$transpose(2L, 3L)$reshape(c(b, s, -1L))
     self$o(out)
@@ -95,25 +95,25 @@ NULL
 
 # layer.0: pre-norm self-attention with residual
 .t5_self_attn_layer <- torch::nn_module(
-    "t5_self_attn_layer",
-    initialize = function(d_model, d_kv, num_heads, eps,
-                          has_relative_bias = FALSE, num_buckets = 32L,
-                          max_distance = 128L) {
+                                        "t5_self_attn_layer",
+                                        initialize = function(d_model, d_kv, num_heads, eps,
+        has_relative_bias = FALSE, num_buckets = 32L,
+        max_distance = 128L) {
     self$SelfAttention <- .t5_attention(d_model, d_kv, num_heads,
                                         has_relative_bias = has_relative_bias,
                                         num_buckets = num_buckets,
                                         max_distance = max_distance)
     self$layer_norm <- ltx23_rms_norm(d_model, eps = eps)
 },
-    forward = function(x, position_bias) {
+                                        forward = function(x, position_bias) {
     x + self$SelfAttention(self$layer_norm(x), position_bias)
 }
 )
 
 # layer.1: pre-norm gated-GELU feed-forward with residual
 .t5_ff_layer <- torch::nn_module(
-    "t5_ff_layer",
-    initialize = function(d_model, d_ff, eps) {
+                                 "t5_ff_layer",
+                                 initialize = function(d_model, d_ff, eps) {
     dense <- torch::nn_module(
                               "t5_dense_gated_act_dense",
                               initialize = function(d_model, d_ff) {
@@ -129,16 +129,16 @@ NULL
     self$DenseReluDense <- dense(d_model, d_ff)
     self$layer_norm <- ltx23_rms_norm(d_model, eps = eps)
 },
-    forward = function(x) {
+                                 forward = function(x) {
     x + self$DenseReluDense(self$layer_norm(x))
 }
 )
 
 .t5_block <- torch::nn_module(
-    "t5_block",
-    initialize = function(d_model, d_kv, num_heads, d_ff, eps,
-                          has_relative_bias = FALSE, num_buckets = 32L,
-                          max_distance = 128L) {
+                              "t5_block",
+                              initialize = function(d_model, d_kv, num_heads, d_ff, eps,
+        has_relative_bias = FALSE, num_buckets = 32L,
+        max_distance = 128L) {
     self$layer <- torch::nn_module_list(list(
             .t5_self_attn_layer(d_model, d_kv, num_heads, eps,
                                 has_relative_bias = has_relative_bias,
@@ -147,7 +147,7 @@ NULL
             .t5_ff_layer(d_model, d_ff, eps)
         ))
 },
-    forward = function(x, position_bias) {
+                              forward = function(x, position_bias) {
     x <- self$layer[[1]](x, position_bias)
     self$layer[[2]](x)
 }
@@ -167,12 +167,12 @@ NULL
 #'
 #' @export
 t5_encoder <- torch::nn_module(
-    "t5_encoder",
-    initialize = function(vocab_size = 32128L, d_model = 4096L, d_kv = 64L,
-                          num_heads = 64L, d_ff = 10240L, num_layers = 24L,
-                          relative_attention_num_buckets = 32L,
-                          relative_attention_max_distance = 128L,
-                          layer_norm_epsilon = 1e-6) {
+                               "t5_encoder",
+                               initialize = function(vocab_size = 32128L, d_model = 4096L, d_kv = 64L,
+        num_heads = 64L, d_ff = 10240L, num_layers = 24L,
+        relative_attention_num_buckets = 32L,
+        relative_attention_max_distance = 128L,
+        layer_norm_epsilon = 1e-6) {
     self$shared <- torch::nn_embedding(vocab_size, d_model)
     self$block <- torch::nn_module_list(
                                         lapply(seq_len(num_layers), function(i) {
@@ -182,14 +182,13 @@ t5_encoder <- torch::nn_module(
                   max_distance = relative_attention_max_distance)
     })
     )
-    self$final_layer_norm <- ltx23_rms_norm(d_model,
-                                            eps = layer_norm_epsilon)
+    self$final_layer_norm <- ltx23_rms_norm(d_model, eps = layer_norm_epsilon)
 },
-    forward = function(input_ids) {
+                               forward = function(input_ids) {
     x <- self$shared(input_ids)
     # Bias comes from block 1 and is shared by every layer
     position_bias <- self$block[[1]]$layer[[1]]$SelfAttention$compute_bias(
-                                                                           input_ids$shape[2], input_ids$device
+        input_ids$shape[2], input_ids$device
     )$to(dtype = x$dtype)
     for (i in seq_along(self$block)) {
         x <- self$block[[i]](x, position_bias)
@@ -258,8 +257,8 @@ load_t5_text_encoder <- function(model_path, device = "cpu",
 
     opened <- .flux_open_sharded_dir(model_path, "model")
     ckpt <- structure(
-                      list(handle = opened$handle, keys = opened$keys,
-                           version = NULL, config = config, path = model_path),
+                      list(handle = opened$handle, keys = opened$keys, version = NULL,
+                           config = config, path = model_path),
                       class = "ltx23_checkpoint"
     )
 
@@ -299,11 +298,9 @@ load_t5_text_encoder <- function(model_path, device = "cpu",
 #' @export
 encode_with_t5 <- function(prompts, model, tokenizer,
                            max_sequence_length = 256L, device = NULL) {
-    enc <- encode_unigram(tokenizer, prompts,
-                          max_length = max_sequence_length)
+    enc <- encode_unigram(tokenizer, prompts, max_length = max_sequence_length)
     device <- device %||% model$shared$weight$device
     ids <- torch::torch_tensor(enc$input_ids + 1L,
-                               dtype = torch::torch_long(),
-                               device = device)
+                               dtype = torch::torch_long(), device = device)
     torch::with_no_grad(model(ids))
 }

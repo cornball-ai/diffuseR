@@ -72,17 +72,11 @@ flux_open_checkpoint <- function(transformer_dir) {
         config <- jsonlite::fromJSON(config_path, simplifyVector = TRUE)
     }
 
-    opened <- .flux_open_sharded_dir(transformer_dir,
-                                     "diffusion_pytorch_model")
+    opened <- .flux_open_sharded_dir(transformer_dir, "diffusion_pytorch_model")
 
     structure(
-              list(
-                   handle = opened$handle,
-                   keys = opened$keys,
-                   version = NULL,
-                   config = config,
-                   path = transformer_dir
-        ),
+              list(handle = opened$handle, keys = opened$keys, version = NULL,
+                   config = config, path = transformer_dir),
               class = "ltx23_checkpoint"
     )
 }
