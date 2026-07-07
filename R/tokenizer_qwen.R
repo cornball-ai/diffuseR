@@ -102,8 +102,7 @@ qwen_bpe_tokenizer <- function(tokenizer_path) {
 #' @export
 print.qwen_tokenizer <- function(x, ...) {
     cat("<qwen_tokenizer>\n")
-    cat("  vocab:  ", length(ls(x$vocab)), "+", length(ls(x$added)),
-        "added\n")
+    cat("  vocab:  ", length(ls(x$vocab)), "+", length(ls(x$added)), "added\n")
     cat("  path:   ", x$path, "\n")
     invisible(x)
 }
@@ -168,20 +167,19 @@ print.qwen_tokenizer <- function(x, ...) {
             parts <- strsplit(chunk$text, content, fixed = TRUE)[[1]]
             # strsplit drops trailing separators; recover the layout
             n_seps <- lengths(regmatches(chunk$text,
-                                         gregexpr(content, chunk$text,
-                                                  fixed = TRUE)))
+                    gregexpr(content, chunk$text, fixed = TRUE)))
             if (length(parts) == 0L) {
                 parts <- ""
             }
             for (i in seq_along(parts)) {
                 if (nzchar(parts[i])) {
                     out[[length(out) + 1L]] <- list(text = parts[i],
-                                                    id = NA_integer_)
+                        id = NA_integer_)
                 }
                 if (i <= n_seps) {
                     out[[length(out) + 1L]] <- list(
-                                                    text = content,
-                                                    id = get0(content, envir = tokenizer$added))
+                        text = content,
+                        id = get0(content, envir = tokenizer$added))
                 }
             }
         }
@@ -215,10 +213,8 @@ encode_qwen <- function(tokenizer, texts, max_length = 512L,
 
     encode_one <- function(text) {
         if (chat_template) {
-            text <- paste0(
-                           "<|im_start|>user\n", text, "<|im_end|>\n",
-                           "<|im_start|>assistant\n<think>\n\n</think>\n\n"
-            )
+            text <- paste0("<|im_start|>user\n", text, "<|im_end|>\n",
+                           "<|im_start|>assistant\n<think>\n\n</think>\n\n")
         }
         ids <- integer(0)
         for (chunk in .qwen_split_added(text, tokenizer)) {
@@ -237,7 +233,7 @@ encode_qwen <- function(tokenizer, texts, max_length = 512L,
         return(list(
                     input_ids = all_ids,
                     attention_mask = lapply(all_ids, function(x) rep(1L, length(x)))
-        ))
+            ))
     }
 
     all_ids <- lapply(all_ids, function(ids) {
