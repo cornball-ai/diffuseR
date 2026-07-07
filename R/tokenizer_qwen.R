@@ -56,18 +56,35 @@ qwen_bpe_tokenizer <- function(tokenizer_path) {
         stop("Expected a BPE tokenizer, got: ", model$type %||% "none")
     }
 
-    vocab_env <- list2env(as.list(model$vocab), parent = emptyenv())
+    # Integer-id BPE with no persistent string maps: R gc cost scales
+    # with live object count, and a 151k-binding vocab environment made
+    # every gc ~17x slower (measured 12 -> 203 ms), which multiplied
+    # into minutes across the allocator-triggered gcs of a generation.
+    # All lookups compile to three atomic vectors + a 256-int byte table.
+    vocab <- unlist(model$vocab) # named int: piece -> id (0-based)
+    piece_names <- names(vocab)
 
     merges <- model$merges
     if (is.matrix(merges)) {
-        # Pair-format merges [["a", "b"], ...] simplify to a matrix
-        keys <- paste(merges[, 1], merges[, 2])
+        a <- merges[, 1]
+        b <- merges[, 2]
     } else {
-        # Legacy "a b" strings
-        keys <- merges
+        sp <- regexpr(" ", merges, fixed = TRUE)
+        a <- substr(merges, 1L, sp - 1L)
+        b <- substr(merges, sp + 1L, nchar(merges))
     }
-    ranks_env <- list2env(stats::setNames(as.list(seq_along(keys)), keys),
-                          parent = emptyenv())
+    id_a <- unname(vocab[match(a, piece_names)])
+    id_b <- unname(vocab[match(b, piece_names)])
+    id_r <- unname(vocab[match(paste0(a, b), piece_names)])
+    ok <- !is.na(id_a) & !is.na(id_b) & !is.na(id_r)
+    key <- id_a[ok] * 2097152 + id_b[ok] # ids < 2^21: exact in doubles
+    rank <- seq_along(id_a)[ok]
+    result <- id_r[ok]
+    ord <- order(key)
+
+    # Initial ids for the 256 byte-unicode characters
+    byte_chars <- .qwen_byte_table()
+    byte_ids <- unname(vocab[match(byte_chars, piece_names)])
 
     # Pre-tokenization split regex (GPT-4 style)
     split_regex <- NULL
@@ -85,12 +102,14 @@ qwen_bpe_tokenizer <- function(tokenizer_path) {
 
     structure(
               list(
-                   vocab = vocab_env,
-                   ranks = ranks_env,
+                   merge_key = key[ord],
+                   merge_rank = rank[ord],
+                   merge_result = result[ord],
+                   byte_ids = byte_ids,
+                   n_pieces = length(vocab),
                    split_regex = split_regex,
                    added = added_env,
                    added_contents = added$content[order(-nchar(added$content))],
-                   byte_table = .qwen_byte_table(),
                    pad_id = get0("<|endoftext|>", envir = added_env,
                                  ifnotfound = 151643L),
                    path = path
@@ -102,30 +121,31 @@ qwen_bpe_tokenizer <- function(tokenizer_path) {
 #' @export
 print.qwen_tokenizer <- function(x, ...) {
     cat("<qwen_tokenizer>\n")
-    cat("  vocab:  ", length(ls(x$vocab)), "+", length(ls(x$added)), "added\n")
+    cat("  vocab:  ", x$n_pieces, "+", length(ls(x$added)), "added\n")
     cat("  path:   ", x$path, "\n")
     invisible(x)
 }
 
-# Rank-based BPE merge loop over byte-unicode symbols
-.qwen_bpe_merge <- function(chars, ranks) {
-    while (length(chars) > 1L) {
-        best_rank <- Inf
-        best_i <- 0L
-        for (i in seq_len(length(chars) - 1L)) {
-            r <- get0(paste(chars[i], chars[i + 1L]), envir = ranks)
-            if (!is.null(r) && r < best_rank) {
-                best_rank <- r
-                best_i <- i
-            }
-        }
-        if (best_i == 0L) {
+# Rank-based BPE merge loop over token ids: adjacent-pair keys are
+# looked up in the sorted merge table via findInterval (C binary
+# search), vectorized across all pairs per iteration
+.qwen_bpe_merge_ids <- function(ids, tokenizer) {
+    mk <- tokenizer$merge_key
+    while (length(ids) > 1L) {
+        keys <- ids[-length(ids)] * 2097152 + ids[-1L]
+        pos <- findInterval(keys, mk)
+        hit <- pos > 0L
+        hit[hit] <- mk[pos[hit]] == keys[hit]
+        if (!any(hit)) {
             break
         }
-        chars[best_i] <- paste0(chars[best_i], chars[best_i + 1L])
-        chars <- chars[-(best_i + 1L)]
+        ranks <- rep(Inf, length(keys))
+        ranks[hit] <- tokenizer$merge_rank[pos[hit]]
+        i <- which.min(ranks)
+        ids[i] <- tokenizer$merge_result[pos[i]]
+        ids <- ids[-(i + 1L)]
     }
-    chars
+    ids
 }
 
 # Encode one plain-text segment (no added tokens inside)
@@ -137,20 +157,11 @@ print.qwen_tokenizer <- function(x, ...) {
     m <- gregexpr(tokenizer$split_regex, text, perl = TRUE)[[1]]
     pre_tokens <- regmatches(text, list(m))[[1]]
 
-    ids <- integer(0)
-    for (tok in pre_tokens) {
+    out <- lapply(pre_tokens, function(tok) {
         bytes <- as.integer(charToRaw(tok))
-        chars <- tokenizer$byte_table[bytes + 1L]
-        chars <- .qwen_bpe_merge(chars, tokenizer$ranks)
-        for (piece in chars) {
-            id <- get0(piece, envir = tokenizer$vocab)
-            if (is.null(id)) {
-                stop("Byte-level BPE piece not in vocab: ", piece)
-            }
-            ids <- c(ids, id)
-        }
-    }
-    as.integer(ids)
+        .qwen_bpe_merge_ids(tokenizer$byte_ids[bytes + 1L], tokenizer)
+    })
+    as.integer(unlist(out))
 }
 
 # Split text on added-token literals (longest first), returning a list

@@ -70,10 +70,18 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
 
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
-        Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True")
+        # Resident fp8 has an NF4-like stable footprint: the native
+        # backend avoids expandable_segments' page-unmap cost on the
+        # per-step activation churn (see ltx23_load_pipeline)
+        Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "backend:native")
     }
     if (device == "cuda") {
-        ltx23_tune_gc(footprint_gb = 6)
+        # Sized to the LARGEST phase (the 8 GB Qwen3 encode), not the
+        # transformer: a low footprint puts the allocator's R-gc
+        # callback threshold under the working set, and every callback
+        # walks the ~300k-object tokenizer heap (measured: 13-20 s
+        # forwards at footprint 6 vs sub-second at 12)
+        ltx23_tune_gc(footprint_gb = 12)
     }
 
     if (phase_offload) {
