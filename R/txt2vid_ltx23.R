@@ -205,6 +205,20 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # explicit user option wins.
         footprint <- if (identical(ckpt$format, "nf4")) 12 else 8
         ltx23_tune_gc(footprint_gb = footprint)
+        # Pre-warm the caching allocator with one large allocation
+        # freed straight into the pool: the phase onloads then carve
+        # from cached blocks instead of growing the pool one
+        # cudaMalloc per tensor (83.5s -> 4.6s for the NF4
+        # transformer's first onload, measured). This is also the
+        # first CUDA op, so it runs after the options above are set.
+        tryCatch({
+            warm <- torch::torch_empty(
+                                       as.integer(footprint + 1) * 1e9,
+                                       dtype = torch::torch_uint8(), device = "cuda"
+            )
+            rm(warm)
+            gc(verbose = FALSE)
+        }, error = function(e) invisible(NULL))
     }
     groups <- ltx23_split_keys(ckpt$keys)
     torch_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
@@ -276,6 +290,28 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         voc$to(device = component_device, dtype = torch::torch_float32())
         voc$eval()
         pipe$vocoder <- voc
+    }
+
+    if (phase_offload && device == "cuda" &&
+        isTRUE(getOption("diffuseR.pin_staging", FALSE))) {
+        # Page-lock every phase-offloaded component once so the
+        # per-render CPU<->GPU moves run at full PCIe rate (offload
+        # becomes a pointer swap; see staging_ltx23.R). Falls back
+        # silently per component if page-locking fails.
+        if (verbose) {
+            message("Pinning host staging buffers...")
+        }
+        staging <- list()
+        for (nm in intersect(c("transformer", "connectors", "vae",
+                               "audio_vae", "vocoder"), names(pipe))) {
+            st <- .ltx23_pin_component(pipe[[nm]])
+            if (!is.null(st)) {
+                staging[[nm]] <- st
+            }
+        }
+        if (length(staging)) {
+            pipe$staging <- staging
+        }
     }
 
     structure(pipe, class = "ltx23_pipeline")
@@ -395,26 +431,47 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
 
     # Each phase is the sole GPU tenant: components move on for their
-    # phase and back off afterwards
+    # phase and back off afterwards. Pipeline components are referred
+    # to by name so pinned staging (see staging_ltx23.R) can be used
+    # when the loader prepared it; plain modules (the upsampler) take
+    # the pageable path.
     phase_offload <- phase_offload && device != "cpu"
-    onload <- function(module) {
+    staging <- pipeline$staging %||% list()
+    onload <- function(what) {
+        module <- if (is.character(what)) pipeline[[what]] else what
         if (phase_offload) {
-            module$to(device = device)
+            st <- if (is.character(what)) staging[[what]] else NULL
+            if (is.null(st)) {
+                module$to(device = device)
+            } else {
+                .ltx23_staged_onload(st, device)
+            }
         }
         module
     }
-    offload <- function(module) {
+    offload <- function(what) {
+        module <- if (is.character(what)) pipeline[[what]] else what
         if (phase_offload) {
             # Decode traces capture weight tensors; drop them so the
             # module's GPU memory actually frees
             .ltx23_release_vae_traces()
-            module$to(device = "cpu")
-            clear_vram()
+            st <- if (is.character(what)) staging[[what]] else NULL
+            if (is.null(st)) {
+                module$to(device = "cpu")
+            } else {
+                .ltx23_staged_offload(st)
+            }
+            # gc only -- NO cuda_empty_cache between phases: returning
+            # blocks to the driver forces the next phase to regrow the
+            # pool through cudaMalloc at ~15ms per allocation (~83s
+            # for the transformer's 5530 tensors, measured); the
+            # caching allocator reuses the freed blocks directly
+            gc(verbose = FALSE)
         }
         invisible(module)
     }
 
-    onload(pipeline$connectors)
+    onload("connectors")
     connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
     torch::with_no_grad({
         conn <- pipeline$connectors(
@@ -426,7 +483,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         text_mask <- conn$attention_mask$to(device = device)
     })
     rm(conn)
-    offload(pipeline$connectors)
+    offload("connectors")
     gc(verbose = FALSE)
 
     # --- Phase 2: latent preparation ---------------------------------------------
@@ -462,7 +519,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     audio_latents <- ltx23_pack_audio_latents(audio_latents)
 
     # --- Phase 3: denoising -------------------------------------------------------
-    transformer <- onload(pipeline$transformer)
+    transformer <- onload("transformer")
     if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
                                  length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
                                  height %/% (if (two_stage) 2L else 1L), num_frames))
@@ -537,7 +594,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
 
     # The transformer and its dequant buffers are not needed past
     # denoising; free the VRAM before the decoders claim it
-    offload(pipeline$transformer)
+    offload("transformer")
     ltx23_release_dequant_buffers()
 
     result <- list(
@@ -552,7 +609,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Decoding video...")
         }
         phase_t0 <- Sys.time()
-        vae <- onload(pipeline$vae)
+        vae <- onload("vae")
         vae_device <- vae$latents_mean$device
         vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -574,7 +631,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         result$video <- as.array(video)
         rm(video, video_latents)
-        offload(pipeline$vae)
+        offload("vae")
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  video to R array: %.1fs",
@@ -587,8 +644,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Decoding audio...")
         }
         phase_t0 <- Sys.time()
-        audio_vae <- onload(pipeline$audio_vae)
-        onload(pipeline$vocoder)
+        audio_vae <- onload("audio_vae")
+        onload("vocoder")
         av_device <- audio_vae$latents_mean$device
         av_dtype <- audio_vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -606,8 +663,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         })
         result$audio <- as.matrix(as.array(waveform))
         rm(waveform, mel, audio_lat, audio_packed)
-        offload(pipeline$audio_vae)
-        offload(pipeline$vocoder)
+        offload("audio_vae")
+        offload("vocoder")
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  audio chain: %.1fs",
