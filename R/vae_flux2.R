@@ -152,13 +152,12 @@ flux2_bn_normalize <- function(latents, bn_mean, bn_var, eps = 1e-4,
 #'
 #' @export
 flux2_vae_decoder <- torch::nn_module(
-    "flux2_vae_decoder",
-    initialize = function(latent_channels = 32L,
-                          block_channels = c(512L, 512L, 256L, 128L),
-                          norm_groups = 32L) {
-    self$post_quant_conv <- torch::nn_conv2d(latent_channels,
-                                             latent_channels,
-                                             kernel_size = 1)
+                                      "flux2_vae_decoder",
+                                      initialize = function(latent_channels = 32L,
+        block_channels = c(512L, 512L, 256L, 128L),
+        norm_groups = 32L) {
+    self$post_quant_conv <- torch::nn_conv2d(latent_channels, latent_channels,
+        kernel_size = 1)
     self$decoder <- vae_decoder_native(
                                        latent_channels = latent_channels,
                                        block_channels = block_channels,
@@ -174,7 +173,7 @@ flux2_vae_decoder <- torch::nn_module(
     )
     self$bn <- bn_stats(latent_channels * 4L)
 },
-    forward = function(z) {
+                                      forward = function(z) {
     self$decoder(self$post_quant_conv(z))
 }
 )
@@ -208,8 +207,8 @@ load_flux2_vae_decoder <- function(path, latent_channels = 32L,
     handle <- safetensors::safetensors$new(path, framework = "torch")
     keys <- setdiff(handle$keys(), "__metadata__")
     keep <- keys[!startsWith(keys, "encoder.") &
-    !startsWith(keys, "quant_conv.") &
-    keys != "bn.num_batches_tracked"]
+        !startsWith(keys, "quant_conv.") &
+        keys != "bn.num_batches_tracked"]
 
     dests <- c(dec$named_parameters(), dec$named_buffers())
     filled <- character(0)

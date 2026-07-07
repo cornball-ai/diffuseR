@@ -52,7 +52,11 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 phase_offload = TRUE, verbose = TRUE) {
     precision <- match.arg(precision)
     if (is.null(text_device)) {
-        text_device <- if (device == "cuda") "cuda" else "cpu"
+        if (device == "cuda") {
+            text_device <- "cuda"
+        } else {
+            text_device <- "cpu"
+        }
     }
     if (is.null(model_dir)) {
         model_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
@@ -72,7 +76,11 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         ltx23_tune_gc(footprint_gb = 6)
     }
 
-    component_device <- if (phase_offload) "cpu" else device
+    if (phase_offload) {
+        component_device <- "cpu"
+    } else {
+        component_device <- device
+    }
 
     pipe <- list(
                  format = ckpt$format %||% "full",
@@ -87,11 +95,11 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         message("Loading transformer (", pipe$format, ")...")
     }
     pipe$transformer <- flux_load_transformer(
-                                              ckpt, device = component_device,
-                                              dtype = if (device == "cpu") "float32" else "bfloat16",
-                                              pin = FALSE,
-                                              fp8_resident = FALSE,
-                                              verbose = verbose
+        ckpt, device = component_device,
+        dtype = if (device == "cpu") "float32" else "bfloat16",
+        pin = FALSE,
+        fp8_resident = FALSE,
+        verbose = verbose
     )
     # Resident fp8 happens at onload time (the weights ride to the GPU
     # with the phase and back off after)
@@ -103,9 +111,9 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     vae_config <- jsonlite::fromJSON(.flux2_cached("vae/config.json"))
     pipe$vae_bn_eps <- vae_config$batch_norm_eps %||% 1e-4
     pipe$decoder <- load_flux2_vae_decoder(
-                                           .flux2_cached("vae/diffusion_pytorch_model.safetensors"),
-                                           latent_channels = as.integer(vae_config$latent_channels %||% 32L),
-                                           verbose = verbose
+        .flux2_cached("vae/diffusion_pytorch_model.safetensors"),
+        latent_channels = as.integer(vae_config$latent_channels %||% 32L),
+        verbose = verbose
     )
     pipe$decoder$to(device = component_device)
 
@@ -114,9 +122,9 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     te_dir <- dirname(.flux2_cached("text_encoder/config.json"))
     pipe$text_encoder <- load_qwen3_text_encoder(
-                                                 te_dir, device = if (phase_offload) "cpu" else text_device,
-                                                 dtype = if (text_device == "cpu") "float32" else "bfloat16",
-                                                 verbose = verbose
+        te_dir, device = if (phase_offload) "cpu" else text_device,
+        dtype = if (text_device == "cpu") "float32" else "bfloat16",
+        verbose = verbose
     )
     pipe$tokenizer <- qwen_bpe_tokenizer(.flux2_cached("tokenizer/tokenizer.json"))
 
@@ -140,7 +148,7 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         for (i in seq_len(n)) {
             t <- timesteps[[i]]
             t_model <- torch::torch_tensor(t / 1000, dtype = compute_dtype,
-                                           device = latents$device)$reshape(1L)
+                device = latents$device)$reshape(1L)
 
             noise_pred <- transformer(
                                       hidden_states = latents$to(dtype = compute_dtype),
@@ -151,7 +159,7 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
             )
 
             step <- flowmatch_scheduler_step(
-                                             noise_pred$to(dtype = f32), t, latents, schedule
+                noise_pred$to(dtype = f32), t, latents, schedule
             )
             latents <- step$prev_sample
             schedule <- step$schedule
@@ -241,11 +249,9 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
         }
         onload(pipeline$text_encoder)
         te_device <- pipeline$text_encoder$model$embed_tokens$weight$device
-        prompt_embeds <- encode_with_qwen3(
-                                           prompt, pipeline$text_encoder, pipeline$tokenizer,
-                                           max_sequence_length = max_sequence_length,
-                                           device = te_device
-        )
+        prompt_embeds <- encode_with_qwen3(prompt, pipeline$text_encoder,
+            pipeline$tokenizer, max_sequence_length = max_sequence_length,
+            device = te_device)
         offload(pipeline$text_encoder)
     }
     prompt_embeds <- prompt_embeds$to(device = device, dtype = compute_dtype)

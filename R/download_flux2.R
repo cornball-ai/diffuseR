@@ -9,10 +9,8 @@ NULL
 
 .flux2_repo <- "black-forest-labs/FLUX.2-klein-4B"
 
-.flux2_transformer_files <- c(
-                              "transformer/config.json",
-                              "transformer/diffusion_pytorch_model.safetensors"
-)
+.flux2_transformer_files <- c("transformer/config.json",
+                              "transformer/diffusion_pytorch_model.safetensors")
 
 .flux2_support_files <- c(
                           "vae/config.json",
@@ -112,8 +110,7 @@ download_flux2_klein <- function(quantize = TRUE,
             }
         }
     } else if (verbose) {
-        message(toupper(precision), " artifact already present: ",
-                output_dir)
+        message(toupper(precision), " artifact already present: ", output_dir)
     }
 
     if (text_encoders) {
