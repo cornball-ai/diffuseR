@@ -3,6 +3,7 @@
   {
    "text": "a photo of a cat",
    "ids": [
+    3,
     9,
     1202,
     13,
@@ -15,7 +16,7 @@
   {
    "text": "A sunset over mountains, ultra detailed, 8k",
    "ids": [
-    188,
+    71,
     13744,
     147,
     8022,
@@ -31,8 +32,7 @@
   {
    "text": "Hello, world!",
    "ids": [
-    566,
-    7126,
+    8774,
     6,
     296,
     55,
@@ -42,7 +42,7 @@
   {
    "text": "The quick brown fox jumps over the lazy dog.",
    "ids": [
-    634,
+    37,
     1704,
     4216,
     3,
@@ -60,7 +60,7 @@
   {
    "text": "it's a beautiful day; isn't it?",
    "ids": [
-    155,
+    34,
     31,
     7,
     3,
@@ -80,9 +80,9 @@
   {
    "text": "3.14159 and 2,000,000 dollars",
    "ids": [
-    18495,
-    4853,
-    3390,
+    1877,
+    2534,
+    27904,
     11,
     204,
     23916,
@@ -93,7 +93,7 @@
   {
    "text": "state-of-the-art text-to-image generation",
    "ids": [
-    5540,
+    538,
     18,
     858,
     18,
@@ -120,8 +120,7 @@
   {
    "text": "trailing spaces   ",
    "ids": [
-    17,
-    12977,
+    5032,
     53,
     4856,
     1
@@ -130,7 +129,7 @@
   {
    "text": "double  and   triple   spaces",
    "ids": [
-    25761,
+    1486,
     11,
     12063,
     4856,
@@ -140,6 +139,7 @@
   {
    "text": "UPPERCASE lowercase MiXeD",
    "ids": [
+    3,
     6880,
     8742,
     254,
@@ -156,8 +156,7 @@
   {
    "text": "email@example.com and https://example.org/path?q=1",
    "ids": [
-    15,
-    1963,
+    791,
     1741,
     994,
     9,
@@ -184,9 +183,7 @@
   {
    "text": "quotes \"double\" and 'single'",
    "ids": [
-    8270,
-    15,
-    7,
+    7599,
     96,
     25761,
     121,
@@ -203,7 +200,7 @@
   {
    "text": "(parentheses) [brackets] {braces}",
    "ids": [
-    599,
+    41,
     12352,
     88,
     2260,
@@ -225,10 +222,7 @@
   {
    "text": "semi;colon co:lon sla/sh back\\slash",
    "ids": [
-    7,
-    15,
-    51,
-    23,
+    4772,
     117,
     8135,
     29,
@@ -252,9 +246,7 @@
   {
    "text": "underscores_and_snake_case",
    "ids": [
-    7248,
-    7,
-    9022,
+    31530,
     7,
     834,
     232,
@@ -271,6 +263,7 @@
   {
    "text": "a",
    "ids": [
+    3,
     9,
     1
    ]
@@ -284,9 +277,7 @@
   {
    "text": "café résumé naïve",
    "ids": [
-    658,
-    89,
-    154,
+    11949,
     1417,
     4078,
     154,
@@ -301,6 +292,7 @@
   {
    "text": "em—dash and en–dash",
    "ids": [
+    3,
     15,
     51,
     318,
@@ -318,8 +310,7 @@
   {
    "text": "100% of $50 + €20",
    "ids": [
-    2915,
-    1454,
+    2349,
     13,
     13309,
     1768,
@@ -331,8 +322,7 @@
   {
    "text": "An astronaut riding a horse on Mars, photorealistic",
    "ids": [
-    188,
-    29,
+    389,
     30059,
     7494,
     3,
@@ -350,8 +340,7 @@
   {
    "text": "watercolor painting of a fox in a snowy forest",
    "ids": [
-    3552,
-    9910,
+    27610,
     3924,
     13,
     3,
@@ -370,7 +359,7 @@
   {
    "text": "the mitochondria is the powerhouse of the cell",
    "ids": [
-    532,
+    8,
     28642,
     19,
     8,
@@ -385,7 +374,7 @@
   {
    "text": "The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. ",
    "ids": [
-    634,
+    37,
     19903,
     4648,
     2284,
@@ -622,6 +611,7 @@
    "text": "a photo of a cat",
    "max_length": 16,
    "ids": [
+    3,
     9,
     1202,
     13,
@@ -629,7 +619,6 @@
     9,
     1712,
     1,
-    0,
     0,
     0,
     0,
@@ -647,7 +636,7 @@
     1,
     1,
     1,
-    0,
+    1,
     0,
     0,
     0,
@@ -662,7 +651,7 @@
    "text": "The quick brown fox jumps over the lazy dog.",
    "max_length": 16,
    "ids": [
-    634,
+    37,
     1704,
     4216,
     3,
@@ -702,7 +691,7 @@
    "text": "The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. The transformer architecture uses self-attention mechanisms to model long-range dependencies in sequences. ",
    "max_length": 16,
    "ids": [
-    634,
+    37,
     19903,
     4648,
     2284,

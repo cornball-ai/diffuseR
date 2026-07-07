@@ -202,14 +202,15 @@ encode_unigram <- function(tokenizer, texts, max_length = 256L,
         if (!is.null(tokenizer$space_collapse)) {
             text <- gsub(" {2,}", tokenizer$space_collapse, text)
         }
-        # Metaspace: spaces to the replacement, optional prefix
+        # Metaspace: spaces to the replacement, optional prefix.
+        # Empty input yields no pre-tokens (before any prepend).
         text <- gsub(" ", rep_char, text, fixed = TRUE)
+        if (nchar(text) == 0L) {
+            return(integer(0))
+        }
         if (tokenizer$prepend_scheme == "always" &&
             !startsWith(text, rep_char)) {
             text <- paste0(rep_char, text)
-        }
-        if (nchar(text) == 0L) {
-            return(integer(0))
         }
         # Split before each replacement char, keeping it attached.
         # (strsplit with a zero-width lookahead detaches the char, so
