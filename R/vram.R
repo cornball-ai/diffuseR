@@ -63,13 +63,13 @@ is_blackwell_gpu <- function() {
 
     # Fallback: ask nvidia-smi directly
     smi <- suppressWarnings(tryCatch(
-        system2("nvidia-smi",
+                                     system2("nvidia-smi",
                 c(paste0("--query-gpu=memory.",
-                         if (use_free) "free" else "total"),
-                  "--format=csv,noheader,nounits"),
+                        if (use_free) "free" else "total"),
+                    "--format=csv,noheader,nounits"),
                 stdout = TRUE, stderr = FALSE),
-        error = function(e) character(0)
-    ))
+                                     error = function(e) character(0)
+        ))
     mb <- suppressWarnings(as.numeric(smi[1]))
     if (isTRUE(mb > 0)) {
         return(mb / 1024)

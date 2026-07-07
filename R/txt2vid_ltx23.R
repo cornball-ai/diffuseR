@@ -203,7 +203,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # decode phases measured 86% of wall time in callback-driven
         # R gc at the 0.20 default reserved rate. Only-if-unset, so an
         # explicit user option wins.
-        footprint <- if (identical(ckpt$format, "nf4")) 12 else 8
+        if (identical(ckpt$format, "nf4")) {
+            footprint <- 12
+        } else {
+            footprint <- 8
+        }
         ltx23_tune_gc(footprint_gb = footprint)
         # Pre-warm the caching allocator with one large allocation
         # freed straight into the pool: the phase onloads then carve
@@ -212,10 +216,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # transformer's first onload, measured). This is also the
         # first CUDA op, so it runs after the options above are set.
         tryCatch({
-            warm <- torch::torch_empty(
-                                       as.integer(footprint + 1) * 1e9,
-                                       dtype = torch::torch_uint8(), device = "cuda"
-            )
+            warm <- torch::torch_empty(as.integer(footprint + 1) * 1e9,
+                                       dtype = torch::torch_uint8(),
+                                       device = "cuda")
             rm(warm)
             gc(verbose = FALSE)
         }, error = function(e) invisible(NULL))
@@ -438,9 +441,17 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     phase_offload <- phase_offload && device != "cpu"
     staging <- pipeline$staging %||% list()
     onload <- function(what) {
-        module <- if (is.character(what)) pipeline[[what]] else what
+        if (is.character(what)) {
+            module <- pipeline[[what]]
+        } else {
+            module <- what
+        }
         if (phase_offload) {
-            st <- if (is.character(what)) staging[[what]] else NULL
+            if (is.character(what)) {
+                st <- staging[[what]]
+            } else {
+                st <- NULL
+            }
             if (is.null(st)) {
                 module$to(device = device)
             } else {
@@ -450,12 +461,20 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         module
     }
     offload <- function(what) {
-        module <- if (is.character(what)) pipeline[[what]] else what
+        if (is.character(what)) {
+            module <- pipeline[[what]]
+        } else {
+            module <- what
+        }
         if (phase_offload) {
             # Decode traces capture weight tensors; drop them so the
             # module's GPU memory actually frees
             .ltx23_release_vae_traces()
-            st <- if (is.character(what)) staging[[what]] else NULL
+            if (is.character(what)) {
+                st <- staging[[what]]
+            } else {
+                st <- NULL
+            }
             if (is.null(st)) {
                 module$to(device = "cpu")
             } else {
@@ -656,8 +675,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             audio_lat <- ltx23_unpack_audio_latents(audio_packed, latent_mel_bins)
             mel <- audio_vae$decode(audio_lat$to(dtype = av_dtype))
             waveform <- .ltx23_traced_call(
-                                           pipeline$vocoder,
-                                           mel$to(dtype = torch::torch_float32())
+                pipeline$vocoder,
+                mel$to(dtype = torch::torch_float32())
             )
             waveform <- waveform[1,,]$cpu()
         })

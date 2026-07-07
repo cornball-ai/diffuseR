@@ -48,13 +48,9 @@ NULL
     if (!isTRUE(getOption("diffuseR.jit_vae", FALSE))) {
         return(run(x))
     }
-    key <- paste(
-                 format(environment(module)), tag,
-                 paste(as.integer(x$shape), collapse = "x"),
-                 x$dtype$.type(),
-                 x$device$type, x$device$index %||% 0L,
-                 sep = "|"
-    )
+    key <- paste(format(environment(module)), tag,
+                 paste(as.integer(x$shape), collapse = "x"), x$dtype$.type(),
+                 x$device$type, x$device$index %||% 0L, sep = "|")
     tr <- .ltx23_vae_traces[[key]]
     if (isFALSE(tr)) {
         # This shape failed tracing or validation before: eager only
@@ -72,13 +68,15 @@ NULL
         # grad-free tensors; these modules are inference-only. Always
         # trace through a plain closure: jit_trace treats a bare
         # nn_module via a separate (and here broken) code path.
-        for (p in module$parameters) p$requires_grad_(FALSE)
+        for (p in module$parameters) {
+            p$requires_grad_(FALSE)
+        }
         out <- tryCatch({
             tr <- torch::jit_trace(function(z) run(z), x)
             replay <- tr(x)
             ref <- run(x)
             d <- (replay$to(dtype = torch::torch_float32()) -
-                  ref$to(dtype = torch::torch_float32()))$abs()$max()
+                        ref$to(dtype = torch::torch_float32()))$abs()$max()
             if (as.numeric(d) > 0) {
                 warning("diffuseR: traced decode failed validation for ",
                         "shape [", paste(as.integer(x$shape), collapse = ", "),
@@ -115,9 +113,6 @@ NULL
 # spatially tiled, temporally tiled)
 .ltx23_decode_tile <- function(vae, x, causal) {
     dec <- vae$decoder
-    .ltx23_traced_call(
-                       dec, x,
-                       forward = function(z) dec(z, causal = causal),
-                       tag = paste0("causal:", format(causal))
-    )
+    .ltx23_traced_call(dec, x, forward = function(z) dec(z, causal = causal),
+                       tag = paste0("causal:", format(causal)))
 }
