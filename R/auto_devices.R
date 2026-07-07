@@ -38,25 +38,22 @@
 #' # Force CPU-only
 #' devices <- auto_devices("sdxl", strategy = "cpu_only")
 #' }
-auto_devices <- function(
-  model = "sdxl",
-  strategy = "auto"
-) {
-  # If gpuctl is available, use it
+auto_devices <- function(model = "sdxl", strategy = "auto") {
+    # If gpuctl is available, use it
 
-  if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-    return(gpu.ctl::recommended_devices(model = model, strategy = strategy))
-  }
+    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
+        return(gpu.ctl::recommended_devices(model = model, strategy = strategy))
+    }
 
-  # Fallback when gpuctl not available
-  if (strategy == "auto") {
-    message("gpuctl not installed - using unet_gpu strategy as default")
-    message("Install gpuctl for auto-detection: install.packages('gpuctl')")
-    strategy <- "unet_gpu"
-  }
+    # Fallback when gpuctl not available
+    if (strategy == "auto") {
+        message("gpuctl not installed - using unet_gpu strategy as default")
+        message("Install gpuctl for auto-detection: install.packages('gpuctl')")
+        strategy <- "unet_gpu"
+    }
 
-  # Build device config manually
-  .build_fallback_devices(model, strategy)
+    # Build device config manually
+    .build_fallback_devices(model, strategy)
 }
 
 #' Build fallback device configuration
@@ -65,35 +62,31 @@ auto_devices <- function(
 #' @param strategy Character. Memory strategy.
 #' @return Named list of device assignments.
 #' @keywords internal
-.build_fallback_devices <- function(
-  model,
-  strategy
-) {
-  # Components by model
-  components <- list(
-    sd21 = c("unet", "decoder", "text_encoder", "encoder"),
-    sdxl = c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
-  )
+.build_fallback_devices <- function(model, strategy) {
+    # Components by model
+    components <- list(
+                       sd21 = c("unet", "decoder", "text_encoder", "encoder"),
+                       sdxl = c("unet", "decoder", "text_encoder", "text_encoder2", "encoder")
+    )
 
-  if (!model %in% names(components)) {
-    stop("Unsupported model: ", model)
-  }
+    if (!model %in% names(components)) {
+        stop("Unsupported model: ", model)
+    }
 
-  comp <- components[[model]]
+    comp <- components[[model]]
 
-  if (strategy == "full_gpu") {
-    devices <- as.list(rep("cuda", length(comp)))
-    names(devices) <- comp
-  } else if (strategy == "unet_gpu") {
-    devices <- as.list(rep("cpu", length(comp)))
-    names(devices) <- comp
-    devices$unet <- "cuda"
-  } else {
-    # cpu_only
-    devices <- as.list(rep("cpu", length(comp)))
-    names(devices) <- comp
-  }
+    if (strategy == "full_gpu") {
+        devices <- as.list(rep("cuda", length(comp)))
+        names(devices) <- comp
+    } else if (strategy == "unet_gpu") {
+        devices <- as.list(rep("cpu", length(comp)))
+        names(devices) <- comp
+        devices$unet <- "cuda"
+    } else {
+        # cpu_only
+        devices <- as.list(rep("cpu", length(comp)))
+        names(devices) <- comp
+    }
 
-  devices
+    devices
 }
-

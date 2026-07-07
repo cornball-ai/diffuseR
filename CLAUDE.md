@@ -51,7 +51,7 @@ The `txt2img_*` and `img2img` functions default to `devices = "auto"`, which:
 
 ## GPU-Poor Execution Plan (TODO)
 
-Profile-based memory optimization for constrained GPUs. Inspired by mmgp/Wan2GP approach.
+Profile-based memory optimization for constrained GPUs.
 
 ### API
 
@@ -188,7 +188,7 @@ vram_report <- function(label) {
 }
 ```
 
-### Future Optimizations (from mmgp)
+### Future Optimizations
 
 Not implemented, but worth considering:
 
@@ -320,66 +320,34 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
 
-### LTX-2 Video Generation (In Progress)
-- [x] FlowMatch scheduler (validated against Python)
-- [x] RoPE positional embeddings (validated against Python)
-- [x] LTX2 Video VAE (3D causal convolutions) - see learnings below
-- [x] DiT transformer (audio-video) - see learnings below
-- [x] Text encoder integration (connectors + flexible backends)
-- [x] GPU-poor optimizations (wan2GP style memory profiles)
-- [x] Pipeline integration (txt2vid_ltx2)
-- [x] Video output utilities (save_video)
-- [x] Weight loading from HuggingFace safetensors
+### LTX-2.3 Video Generation (clean-room rewrite in progress)
 
-#### LTX-2 Weight Loading
+The original LTX-2.0 port was removed and is being replaced by a ground-up
+LTX-2.3 implementation written from the Apache-2.0 diffusers reference only
+(branch `feat/ltx23`; working checklist in `tasks/todo.md`).
 
-Load LTX-2 model weights from HuggingFace safetensors:
+**Reference checkouts** (in `ref/upstream/`, gitignored):
+- `ref/upstream/diffusers` — the code reference (Apache-2.0)
+- `ref/upstream/ltx2-official` — Lightricks monorepo (LTX-2 Community License;
+  used for numeric constants and file-format facts only, never as a code base)
 
-```r
-# Load VAE (2.44 GB)
-vae <- load_ltx2_vae(
-  weights_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/vae/diffusion_pytorch_model.safetensors",
-  config_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/vae/config.json",
-  device = "cuda",
-  dtype = "float16"
-)
+**Rules:**
+- Never derive code from Wan2GP (WanGP Community License 2.0 restricts
+  commercial embedding). Do not open Wan2GP source or conversions of it.
+- Every technique must have a documented public source independent of
+  Wan2GP: record it in `inst/REFERENCES.md` when adding one.
+- Model weights are downloaded by the user from `Lightricks/LTX-2.3` under the
+  LTX-2 Community License and never redistributed with the package.
+- Kept support files with independent provenance: `gemma3_text_encoder.R`
+  (from HF transformers), `tokenizer_bpe.R` (original), `flowmatch_scheduler.R`
+  (from diffusers).
 
-# Load transformer (37.8 GB, sharded across 8 files)
-transformer <- load_ltx2_transformer(
-  weights_dir = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/transformer",
-  device = "cpu",  # Start on CPU, offload to GPU layer-by-layer
-  dtype = "float16"
-)
-
-# Load text connectors (2.86 GB)
-connectors <- load_ltx2_connectors(
-  weights_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/connectors/diffusion_pytorch_model.safetensors",
-  config_path = "~/.cache/huggingface/hub/models--Lightricks--LTX-2/connectors/config.json"
-)
-```
-
-**Model sizes:**
-| Component | Size | Notes |
-|-----------|------|-------|
-| VAE | 2.44 GB | Single safetensors file |
-| Transformer | 37.8 GB | Sharded across 8 files |
-| Connectors | 2.86 GB | Single safetensors file |
-| Total (19B) | 43.3 GB | Full precision |
-| Total FP8 | 27.1 GB | Quantized |
-
-#### LTX2 VAE Implementation Learnings
+#### Implementation facts carried over from the 2.0 port
 
 **Temporal dimension constraint for causal downsampling:**
-For LTX2's causal 3D convolutions with stride S downsampling, the temporal dimension T must satisfy:
-```
-(T + S - 1) % S == 0
-```
-This means T % S == 1, so **T must be odd for stride=2**.
-
-Example valid sequences for 2 spatiotemporal downsampling stages:
-- T=5 → (5+1)/2=3 → (3+1)/2=2 ✓
-- T=9 → (9+1)/2=5 → (5+1)/2=3 ✓
-- T=4 → (4+1)/2=2.5 ✗ (fails unflatten)
+For causal 3D convolutions with stride S downsampling, the temporal dimension T
+must satisfy `(T + S - 1) %% S == 0`, i.e. T %% S == 1, so **T must be odd for
+stride=2** (T=4 fails the unflatten; T=5 → 3 → 2 works).
 
 **R torch `unflatten` is 1-indexed:**
 ```r
@@ -387,21 +355,9 @@ Example valid sequences for 2 spatiotemporal downsampling stages:
 # R: x$unflatten(3, c(-1, stride))      # dim 3 is 1-indexed
 ```
 
-**LTX2 decoder channel flow:**
-In LTX2 up blocks, `in_channels == out_channels` always. The upsampler handles channel reduction via pixel shuffle. Test inputs must match this pattern.
-
-#### LTX2 DiT Transformer Learnings
-
-**cross_attention_dim must equal inner_dim:**
-In the LTX2 transformer, `caption_projection` projects text embeddings from `caption_channels` to `inner_dim`. The transformer blocks then expect `encoder_hidden_states` to have dimension `cross_attention_dim`. These must be equal:
-```r
-# In model config:
-inner_dim = num_attention_heads * attention_head_dim  # e.g., 32 * 128 = 4096
-cross_attention_dim = 4096  # Must equal inner_dim!
-```
-
 **R torch lacks nnf_scaled_dot_product_attention:**
-Manual scaled dot-product attention is required:
+Manual scaled dot-product attention is required (and materializes the full
+[B, H, S, S] attention matrix — chunk queries at high resolution):
 ```r
 scale <- 1.0 / sqrt(head_dim)
 attn_weights <- torch::torch_matmul(query, key$transpose(-2L, -1L)) * scale
@@ -410,32 +366,18 @@ attn_weights <- torch::nnf_softmax(attn_weights, dim = -1L)
 hidden_states <- torch::torch_matmul(attn_weights, value)
 ```
 
-**Avoid function name collisions across files:**
-The `apply_interleaved_rotary_emb` function in `rope.R` expects `freqs$cos_freqs`, while a similar function in `dit_ltx2_modules.R` expects `freqs[[1]]`. Name collision caused segfaults - renamed to `apply_interleaved_rotary_emb_list` in dit module.
-
-#### LTX2 Text Encoder Learnings
-
-**Architecture: Gemma3 + Connectors:**
-LTX-2 uses Gemma3 as the text encoder, with separate connector transformers for video and audio streams:
-```
-Gemma3 → pack_text_embeds → text_proj_in → video_connector → video_embeds
-                                        → audio_connector → audio_embeds
-```
-
 **Attention mask broadcasting:**
-When using 2D attention masks [B, S], they must be expanded to [B, 1, 1, S] for broadcasting with attention weights [B, H, S, S]:
+2D attention masks [B, S] must be expanded to [B, 1, 1, S] to broadcast with
+attention weights [B, H, S, S]:
 ```r
 if (attention_mask$ndim == 2L) {
   attention_mask <- attention_mask$unsqueeze(2L)$unsqueeze(2L)
 }
 ```
 
-**Flexible text encoding backends:**
-The `encode_text_ltx2()` function supports multiple backends:
-- `"gemma3"`: Native R torch Gemma3 encoder (no Python dependency)
-- `"precomputed"`: Load from file (cached embeddings)
-- `"api"`: HTTP request to external service (Gemma container)
-- `"random"`: Random embeddings for testing
+**Avoid function name collisions across files:**
+Two same-named helpers with different calling conventions in different files
+once caused segfaults. One name, one signature, package-wide.
 
 #### Native Gemma3 Text Encoder
 

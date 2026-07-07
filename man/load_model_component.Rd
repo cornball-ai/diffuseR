@@ -3,14 +3,8 @@
 \alias{load_model_component}
 \title{Load a specific component of a diffusion model}
 \usage{
-load_model_component(
-  component,
-  model_name = "sd21",
-  device = "cpu",
-  unet_dtype_str = NULL,
-  download = TRUE,
-  use_native = FALSE
-)
+load_model_component(component, model_name = "sd21", device = "cpu",
+                     unet_dtype_str = NULL, download = TRUE, use_native = FALSE)
 }
 \arguments{
 \item{component}{Character string, the component to load: "unet", "decoder", or "text_encoder".}

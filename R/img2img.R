@@ -29,16 +29,16 @@
 #' @return An image array and metadata
 #' @export
 
-img2img <- function (input_image, prompt, negative_prompt = NULL,
-                     img_dim = 512, model_name = c("sd21", "sdxl"),
-                     pipeline = NULL, devices = "auto",
-                     unet_dtype_str = "float16", download_models = FALSE,
-                     scheduler = "ddim", num_inference_steps = 50,
-                     strength = 0.8, guidance_scale = 7.5, seed = NULL,
-                     save_file = TRUE, filename = NULL, metadata_path = NULL,
-                     use_native_decoder = FALSE,
-                     use_native_text_encoder = FALSE, use_native_unet = FALSE,
-                     ...) {
+img2img <- function(input_image, prompt, negative_prompt = NULL,
+                    img_dim = 512, model_name = c("sd21", "sdxl"),
+                    pipeline = NULL, devices = "auto",
+                    unet_dtype_str = "float16", download_models = FALSE,
+                    scheduler = "ddim", num_inference_steps = 50,
+                    strength = 0.8, guidance_scale = 7.5, seed = NULL,
+                    save_file = TRUE, filename = NULL, metadata_path = NULL,
+                    use_native_decoder = FALSE,
+                    use_native_text_encoder = FALSE, use_native_unet = FALSE,
+                    ...) {
     if (model_name %in% c("sd21", "sdxl")) {
         num_train_timesteps <- 1000
     } else {
@@ -51,8 +51,9 @@ img2img <- function (input_image, prompt, negative_prompt = NULL,
     }
 
     # 1. Get models
-    m2d <- models2devices(model_name, devices = devices, unet_dtype_str = NULL,
-        download_models = download_models)
+    m2d <- models2devices(model_name, devices = devices,
+                          unet_dtype_str = NULL,
+                          download_models = download_models)
     devices <- m2d$devices
     unet_dtype <- m2d$unet_dtype
     device_cpu <- m2d$device_cpu
@@ -60,26 +61,26 @@ img2img <- function (input_image, prompt, negative_prompt = NULL,
 
     if (is.null(pipeline)) {
         pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-            i2i = TRUE,
-            unet_dtype_str = unet_dtype_str,
-            use_native_decoder = use_native_decoder,
-            use_native_text_encoder = use_native_text_encoder,
-            use_native_unet = use_native_unet)
+                                  i2i = TRUE,
+                                  unet_dtype_str = unet_dtype_str,
+                                  use_native_decoder = use_native_decoder,
+                                  use_native_text_encoder = use_native_text_encoder,
+                                  use_native_unet = use_native_unet)
     }
 
     # 2. Encode input image to latents
     image_tensor <- preprocess_image(input_image, width = img_dim, height = img_dim,
-        device = torch::torch_device(devices$encoder)) # Resize & normalize
+                                     device = torch::torch_device(devices$encoder)) # Resize & normalize
     message("Encoding image...")
     encoded <- pipeline$encoder(image_tensor)
     # message("Loading quant_conv...")
     conv_latents <- quant_conv(encoded, dtype = unet_dtype,
-        device = devices$unet)
+                               device = devices$unet)
 
-    latents_mean <- conv_latents[, 1:4,,]# First 4 channels
-    latents_log_var <- conv_latents[, 5:8,,]# Last 4 channels
+    latents_mean <- conv_latents[, 1:4,,] # First 4 channels
+    latents_log_var <- conv_latents[, 5:8,,] # Last 4 channels
     init_latents <- latents_mean$to(dtype = unet_dtype,
-        device = torch::torch_device(devices$unet)) * 0.18215
+                                    device = torch::torch_device(devices$unet)) * 0.18215
     # Need to FIX
     # Sample from the distribution (reparameterization trick)
     # if(eps > 0){
@@ -91,9 +92,9 @@ img2img <- function (input_image, prompt, negative_prompt = NULL,
     # 3. Compute noise timestep from strength
     t_strength <- as.integer(strength * num_train_timesteps)
     schedule <- ddim_scheduler_create(num_train_timesteps = 1000,
-        num_inference_steps = num_inference_steps,
-        beta_schedule = "scaled_linear",
-        device = torch::torch_device(devices$unet))
+                                      num_inference_steps = num_inference_steps,
+                                      beta_schedule = "scaled_linear",
+                                      device = torch::torch_device(devices$unet))
 
     all_inference_timesteps <- schedule$timesteps
     timestep_idx <- which.min(abs(all_inference_timesteps - t_strength))
@@ -102,31 +103,32 @@ img2img <- function (input_image, prompt, negative_prompt = NULL,
 
     # 4. Add noise to latents
     message("Adding noise to latent image...")
-    if (!is.null(seed)) set.seed(seed)
+    if (!is.null(seed)) {
+        set.seed(seed)
+    }
     noised_latents <- scheduler_add_noise(original_latents = init_latents,
         noise = torch::torch_randn_like(init_latents),
         timestep = timestep_start,
         scheduler_obj = schedule)
     noised_latents <- noised_latents$to(dtype = unet_dtype,
-        device = torch::torch_device(devices$unet))
+                                        device = torch::torch_device(devices$unet))
 
     txt2img(
-        prompt = prompt,
-        negative_prompt = negative_prompt,
-        img_dim = img_dim,
-        model_name = model_name,
-        pipeline = pipeline,
-        devices = devices,
-        unet_dtype_str = unet_dtype_str,
-        scheduler = "ddim",
-        timesteps = timesteps,
-        initial_latents = noised_latents,
-        num_inference_steps = num_inference_steps,
-        guidance_scale = guidance_scale,
-        seed = seed,
-        save_file = save_file,
-        filename = filename,
-        metadata_path = metadata_path
+            prompt = prompt,
+            negative_prompt = negative_prompt,
+            img_dim = img_dim,
+            model_name = model_name,
+            pipeline = pipeline,
+            devices = devices,
+            unet_dtype_str = unet_dtype_str,
+            scheduler = "ddim",
+            timesteps = timesteps,
+            initial_latents = noised_latents,
+            num_inference_steps = num_inference_steps,
+            guidance_scale = guidance_scale,
+            seed = seed,
+            save_file = save_file,
+            filename = filename,
+            metadata_path = metadata_path
     )
 }
-

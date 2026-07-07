@@ -3,13 +3,8 @@
 \alias{tokenize_gemma3}
 \title{Tokenize text for Gemma3}
 \usage{
-tokenize_gemma3(
-  tokenizer,
-  text,
-  max_length = 1024L,
-  padding = "max_length",
-  return_tensors = "pt"
-)
+tokenize_gemma3(tokenizer, text, max_length = 1024L, padding = "max_length",
+                return_tensors = "pt")
 }
 \arguments{
 \item{tokenizer}{Gemma3 tokenizer object.}

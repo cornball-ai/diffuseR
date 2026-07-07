@@ -14,23 +14,18 @@
 #' \dontrun{
 #' save_image(output_tensor, "sample.png")
 #' }
-save_image <- function(
-  img,
-  save_to = "output.png",
-  normalize = TRUE
-) {
-  # img_array <- tensor2image(img, normalize = normalize)
-  dims <- dim(img)
+save_image <- function(img, save_to = "output.png", normalize = TRUE) {
+    # img_array <- tensor2image(img, normalize = normalize)
+    dims <- dim(img)
 
-  grDevices::png(filename = save_to, width = dims[2], height = dims[1])
-  grid::grid.raster(img)
-  grDevices::dev.off()
-
-  if (interactive()) {
+    grDevices::png(filename = save_to, width = dims[2], height = dims[1])
     grid::grid.raster(img)
-  }
+    grDevices::dev.off()
 
-  cat("Image saved to", save_to, "\n")
-  invisible(save_to)
+    if (interactive()) {
+        grid::grid.raster(img)
+    }
+
+    cat("Image saved to", save_to, "\n")
+    invisible(save_to)
 }
-

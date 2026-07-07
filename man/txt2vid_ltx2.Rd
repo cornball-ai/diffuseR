@@ -1,96 +1,113 @@
 % tinyrox says don't edit this manually, but it can't stop you!
 \name{txt2vid_ltx2}
 \alias{txt2vid_ltx2}
-\title{Generate Video from Text Prompt using LTX-2}
+\title{Generate video (and audio) with LTX-2.3}
 \usage{
-txt2vid_ltx2(
-  prompt,
-  negative_prompt = NULL,
-  width = 768L,
-  height = 512L,
-  num_frames = 121L,
-  fps = 24,
-  num_inference_steps = 8L,
-  guidance_scale = 4,
-  memory_profile = "auto",
-  text_backend = "gemma3",
-  text_model_path = NULL,
-  text_api_url = NULL,
-  vae = NULL,
-  dit = NULL,
-  connectors = NULL,
-  seed = NULL,
-  output_file = NULL,
-  output_format = "mp4",
-  return_latents = FALSE,
-  verbose = TRUE
-)
+txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
+             prompt_embeds = NULL, width = 768L, height = 512L,
+             num_frames = 121L, frame_rate = 24,
+             sigmas = ltx23_distilled_sigmas(), guidance_scale = 1,
+             seed = NULL, device = "cuda", dtype = "bfloat16", filename = NULL,
+             max_sequence_length = 1024L, decode_video = TRUE,
+             decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
+             adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
+             image = NULL, condition_video = NULL, conditioning_frames = 9L,
+             cond_noise_scale = 0, audio = NULL, verbose = TRUE)
 }
 \arguments{
-\item{prompt}{Character. Text prompt describing the video to generate.}
+\item{prompt}{Character. The prompt.}
 
-\item{negative_prompt}{Character. Optional negative prompt.}
+\item{pipeline}{An \code{ltx23_pipeline} from
+\code{\link{ltx23_load_pipeline}}.}
 
-\item{width}{Integer. Video width in pixels (default 768).}
+\item{prompt_embeds}{Optional precomputed list with
+\code{prompt_embeds} (raw stacked Gemma3 states) and
+\code{prompt_attention_mask}; bypasses the text encoder.}
 
-\item{height}{Integer. Video height in pixels (default 512).}
+\item{num_frames}{Integer. 8k + 1 frames (e.g. 121).}
 
-\item{num_frames}{Integer. Number of frames to generate (default 121).}
+\item{frame_rate}{Numeric. Frames per second.}
 
-\item{fps}{Numeric. Frames per second (default 24).}
+\item{sigmas}{Numeric vector. Denoising schedule (default: official
+distilled schedule; must end in 0).}
 
-\item{num_inference_steps}{Integer. Number of denoising steps (default 8 for distilled).}
+\item{guidance_scale}{Numeric. Only 1 (no CFG) is supported; the
+distilled checkpoints are trained for CFG-free sampling.}
 
-\item{guidance_scale}{Numeric. CFG scale (default 4.0).}
+\item{seed}{Integer or NULL.}
 
-\item{memory_profile}{Character or list. Memory profile: "auto" for auto-detection,
-or a profile from `ltx2_memory_profile()`.}
+\item{device}{Character. Compute device for the denoising loop.}
 
-\item{text_backend}{Character. Text encoding backend: "gemma3" (native), "api", "precomputed", or "random".}
+\item{dtype}{Character. Model compute dtype ("bfloat16" or "float32").}
 
-\item{text_model_path}{Character. Path to Gemma3 model (for "gemma3" backend). Supports glob patterns.}
+\item{filename}{Character or NULL. Output video path (.mp4). Audio is
+muxed in when the av package is available.}
 
-\item{text_api_url}{Character. URL for text encoding API (if backend = "api").}
+\item{max_sequence_length}{Integer. Text token length (multiple of 128).}
 
-\item{vae}{Optional. Pre-loaded VAE module.}
+\item{two_stage}{Logical. Generate at half resolution, upsample the
+latents 2x spatially, and refine over the stage-2 schedule
+(resolution must then be a multiple of 64; requires
+\code{upsampler}).}
 
-\item{dit}{Optional. Pre-loaded DiT transformer module.}
+\item{upsampler}{An \code{\link{ltx23_latent_upsampler}} (see
+\code{\link{ltx23_load_upsampler}}).}
 
-\item{connectors}{Optional. Pre-loaded text connectors module.}
+\item{adain_factor}{Numeric. AdaIN blend of the upsampled latents
+toward the stage-1 statistics (0 disables).}
 
-\item{seed}{Integer. Random seed for reproducibility.}
+\item{tone_map_compression}{Numeric in [0, 1]. Optional latent tone
+mapping before stage 2.}
 
-\item{output_file}{Character. Path to save output video (NULL for no save).}
+\item{phase_offload}{Logical. Move each small component to the compute
+device only for its phase (text encoding, upsampling, decoding) and
+back to the CPU afterwards, keeping the denoise phase as the sole
+GPU tenant.}
 
-\item{output_format}{Character. Output format: "mp4", "gif", or "frames".}
+\item{image}{Optional start image for image-to-video: a PNG/JPEG path
+or an [H, W, 3] array in [0, 1]. The image conditions the first
+frame; the rest of the video is generated (reference i2v).}
 
-\item{return_latents}{Logical. If TRUE, also return final latents.}
+\item{condition_video}{Optional continuation source: a video path
+(its trailing \code{conditioning_frames} frames are used) or an
+[F, H, W, 3] array. The clip's tail becomes the frozen prefix of
+the new video, so the output's first \code{conditioning_frames}
+frames overlap the source (trim or crossfade when concatenating).}
 
-\item{verbose}{Logical. Print progress messages.}
+\item{conditioning_frames}{Integer. Trailing pixel frames taken from
+\code{condition_video} (8k + 1, default 9 = 2 latent frames).}
+
+\item{cond_noise_scale}{Numeric in [0, 1]. Optional partial noising
+of the conditioned tokens (0 = keep them exactly).}
+
+\item{audio}{Optional conditioning audio for audio-driven generation
+(lip sync): a file path (decoded via \code{av}) or a matrix
+[2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
+clean, frozen audio latents that the video attends to while
+denoising, and the original samples are muxed into the output
+(audio decoding is skipped).}
+
+\item{verbose}{Logical.}
+
+\item{text_encoder,tokenizer}{Gemma3 model and tokenizer (or paths;
+see \code{\link{load_gemma3_text_encoder}} and
+\code{\link{gemma3_tokenizer}}). Ignored when \code{prompt_embeds}
+is supplied.}
+
+\item{width,height}{Integers. Output resolution (multiples of 32).}
+
+\item{decode_video,decode_audio}{Logicals. Decode the respective
+latents (disable for latent-space work).}
 }
 \value{
-A list with:
-  - `video`: Array of video frames [frames, height, width, channels]
-  - `latents`: (if return_latents=TRUE) Final latent tensor
-  - `metadata`: Generation metadata
+Invisibly, a list with \code{video} (array
+  [frames, height, width, 3] in [0, 1]), \code{audio} (matrix
+  [2, samples] in [-1, 1]), \code{sample_rate}, and the raw latents.
 }
 \description{
-Generates video using the LTX-2 diffusion transformer model.
-}
-\examples{
-\dontrun{
-# Basic usage
-result <- txt2vid_ltx2("A cat walking on a beach at sunset")
-
-# With specific settings
-result <- txt2vid_ltx2(
-  prompt = "A timelapse of clouds moving over mountains",
-  width = 512,
-  height = 320,
-  num_frames = 61,
-  num_inference_steps = 8,
-  seed = 42,
-  output_file = "clouds.mp4"
-)
-}
+Distilled text-to-video generation: encodes the prompt with Gemma3 +
+connectors, denoises joint audio/video latents over the official
+8-step distilled schedule (no classifier-free guidance), decodes the
+video with the causal VAE and the audio with the audio VAE + BWE
+vocoder, and optionally muxes both into an MP4.
 }

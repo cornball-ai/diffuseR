@@ -3,18 +3,12 @@
 \alias{flowmatch_scheduler_create}
 \title{Create a FlowMatch Euler Discrete Scheduler}
 \usage{
-flowmatch_scheduler_create(
-  num_train_timesteps = 1000L,
-  shift = 1,
-  use_dynamic_shifting = FALSE,
-  base_shift = 0.5,
-  max_shift = 1.15,
-  base_seq_len = 256L,
-  max_seq_len = 4096L,
-  invert_sigmas = FALSE,
-  shift_terminal = NULL,
-  time_shift_type = c("exponential", "linear")
-)
+flowmatch_scheduler_create(num_train_timesteps = 1000L, shift = 1,
+                           use_dynamic_shifting = FALSE, base_shift = 0.5,
+                           max_shift = 1.15, base_seq_len = 256L,
+                           max_seq_len = 4096L, invert_sigmas = FALSE,
+                           shift_terminal = NULL,
+                           time_shift_type = c("exponential", "linear"))
 }
 \arguments{
 \item{num_train_timesteps}{Integer. The number of diffusion steps used to

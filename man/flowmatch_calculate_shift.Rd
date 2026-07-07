@@ -3,13 +3,8 @@
 \alias{flowmatch_calculate_shift}
 \title{Calculate shift for dynamic shifting}
 \usage{
-flowmatch_calculate_shift(
-  seq_len,
-  base_seq_len = 256L,
-  max_seq_len = 4096L,
-  base_shift = 0.5,
-  max_shift = 1.15
-)
+flowmatch_calculate_shift(seq_len, base_seq_len = 256L, max_seq_len = 4096L,
+                          base_shift = 0.5, max_shift = 1.15)
 }
 \arguments{
 \item{seq_len}{Integer. The sequence length (num_patches).}

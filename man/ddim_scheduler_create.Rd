@@ -3,17 +3,13 @@
 \alias{ddim_scheduler_create}
 \title{Create a DDIM Scheduler}
 \usage{
-ddim_scheduler_create(
-  num_train_timesteps = 1000,
-  num_inference_steps = 50,
-  eta = 0,
-  beta_schedule = c("linear", "scaled_linear", "cosine"),
-  beta_start = 0.00085,
-  beta_end = 0.012,
-  rescale_betas_zero_snr = FALSE,
-  dtype = torch::torch_float32(),
-  device = c(torch::torch_device("cpu"), torch::torch_device("cuda"))
-)
+ddim_scheduler_create(num_train_timesteps = 1000, num_inference_steps = 50,
+                      eta = 0,
+                      beta_schedule = c("linear", "scaled_linear", "cosine"),
+                      beta_start = 0.00085, beta_end = 0.012,
+                      rescale_betas_zero_snr = FALSE,
+                      dtype = torch::torch_float32(),
+                      device = c(torch::torch_device("cpu"), torch::torch_device("cuda")))
 }
 \arguments{
 \item{num_train_timesteps}{Integer. The number of diffusion steps used to

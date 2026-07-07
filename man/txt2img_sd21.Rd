@@ -3,28 +3,13 @@
 \alias{txt2img_sd21}
 \title{Generate an image from a text prompt using a diffusion pipeline}
 \usage{
-txt2img_sd21(
-  prompt,
-  negative_prompt = NULL,
-  img_dim = 768,
-  pipeline = NULL,
-  devices = "auto",
-  unet_dtype_str = NULL,
-  download_models = FALSE,
-  scheduler = "ddim",
-  timesteps = NULL,
-  initial_latents = NULL,
-  num_inference_steps = 50,
-  guidance_scale = 7.5,
-  seed = NULL,
-  save_file = TRUE,
-  filename = NULL,
-  metadata_path = NULL,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  ...
-)
+txt2img_sd21(prompt, negative_prompt = NULL, img_dim = 768, pipeline = NULL,
+             devices = "auto", unet_dtype_str = NULL, download_models = FALSE,
+             scheduler = "ddim", timesteps = NULL, initial_latents = NULL,
+             num_inference_steps = 50, guidance_scale = 7.5, seed = NULL,
+             save_file = TRUE, filename = NULL, metadata_path = NULL,
+             use_native_decoder = FALSE, use_native_text_encoder = FALSE,
+             use_native_unet = FALSE, ...)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}

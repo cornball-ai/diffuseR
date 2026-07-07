@@ -1,0 +1,30 @@
+% tinyrox says don't edit this manually, but it can't stop you!
+\name{ltx23_quantize_fp8}
+\alias{ltx23_quantize_fp8}
+\title{Quantize an LTX-2.3 checkpoint to FP8 shards}
+\usage{
+ltx23_quantize_fp8(checkpoint_path,
+                   output_dir = file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.3-fp8"),
+                   shard_bytes = 4e+09, force = FALSE, verbose = TRUE)
+}
+\arguments{
+\item{checkpoint_path}{Source .safetensors (46 GB bf16 single file).}
+
+\item{output_dir}{Output directory for shards + manifest.}
+
+\item{shard_bytes}{Numeric. Approximate shard size (default 4 GB).}
+
+\item{force}{Logical. Re-quantize even if a valid manifest exists.}
+
+\item{verbose}{Logical.}
+}
+\value{
+Invisibly, the manifest list.
+}
+\description{
+Streams the single-file bf16 checkpoint tensor by tensor. DiT
+attention/FFN linear weights are stored as float8_e4m3fn with a
+float32 absmax/448 per-tensor scale (\code{<key>_scale} sibling);
+everything else is copied through unchanged. Output shards carry the
+original key names plus a manifest for skip-if-exists.
+}

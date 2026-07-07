@@ -1,0 +1,39 @@
+COPYRIGHT AND ATTRIBUTION NOTES FOR diffuseR
+
+diffuseR is licensed under the Apache License (>= 2). Portions of the
+package are R ports of, or derived from, third-party work:
+
+1. HuggingFace diffusers (Apache License 2.0)
+   Copyright The HuggingFace Team.
+   https://github.com/huggingface/diffusers
+   The LTX video pipeline components (transformer, video/audio VAE,
+   text-embedding connectors, vocoder, latent upsampler, schedulers, and
+   pipeline logic including the AdaIN latent filter and tone mapping) are
+   R ports written from the diffusers reference implementation.
+   The FlowMatch Euler scheduler is ported from
+   diffusers/schedulers/scheduling_flow_match_euler_discrete.py.
+
+2. HuggingFace transformers (Apache License 2.0)
+   Copyright The HuggingFace Team.
+   https://github.com/huggingface/transformers
+   The Gemma3 text encoder (R/gemma3_text_encoder.R) is an R port of the
+   Gemma3 implementation in transformers.
+
+3. Lightricks Ltd.
+   https://github.com/Lightricks/LTX-2
+   Numeric constants (e.g. distilled sigma schedules), the single-file
+   checkpoint key layout, and pipeline parameter defaults are facts taken
+   from the official LTX release. No code from the Lightricks repository
+   (LTX-2 Community License) is included in this package.
+
+   LTX model weights are downloaded by the user directly from Lightricks'
+   HuggingFace repositories under the LTX-2 Community License and are not
+   part of, nor redistributed with, this package.
+
+4. Stability AI / Stable Diffusion (SD 2.1, SDXL)
+   Model weights are downloaded by the user under their respective
+   licenses (CreativeML Open RAIL++-M and similar) and are not part of,
+   nor redistributed with, this package.
+
+See inst/REFERENCES.md for a technique-by-technique account of where
+each implementation idea comes from.

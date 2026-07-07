@@ -3,16 +3,9 @@
 \alias{load_pipeline}
 \title{Load a diffusion model pipeline}
 \usage{
-load_pipeline(
-  model_name,
-  m2d,
-  i2i = FALSE,
-  unet_dtype_str,
-  use_native_decoder = FALSE,
-  use_native_text_encoder = FALSE,
-  use_native_unet = FALSE,
-  ...
-)
+load_pipeline(model_name, m2d, i2i = FALSE, unet_dtype_str,
+              use_native_decoder = FALSE, use_native_text_encoder = FALSE,
+              use_native_unet = FALSE, ...)
 }
 \arguments{
 \item{model_name}{The name of the model to load.}
