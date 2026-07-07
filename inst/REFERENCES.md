@@ -29,6 +29,17 @@ module; this file documents the actual lineage, idea by idea.
 | NF4/fp8 transformer quantization, cast-set policy, phase offloading, allocator tuning | Same sources as the LTX sections below, applied to the FLUX cast set |
 | Weights | black-forest-labs/FLUX.1-schnell (Apache-2.0; gated HuggingFace repo, downloaded by the user, never redistributed) |
 
+## FLUX.2 klein
+
+| What | Source |
+|---|---|
+| MMDiT transformer (shared modulation, SwiGLU feed-forwards, ViT-22B parallel single blocks, 4-axis RoPE) | Ported from HuggingFace **diffusers** (Apache-2.0): `models/transformers/transformer_flux2.py` |
+| Klein pipeline flow: Qwen3 prompt encoding contract (chat template, mid-stack hidden states 9/18/27), 4-channel position ids, latent patchify/pack chain, empirical dynamic-shift mu, BatchNorm latent statistics | diffusers `pipelines/flux2/pipeline_flux2_klein.py` (Apache-2.0); the empirical mu formula originates from BFL `sampling.py` (numeric facts) |
+| 32-channel `AutoencoderKLFlux2` decode path (post_quant_conv + standard decoder + BN running stats) | diffusers `models/autoencoders/autoencoder_kl_flux2.py` (Apache-2.0); decoder body shared with the SD/FLUX.1 port |
+| Qwen3 encoder (GQA, per-head q/k RMS norms, SwiGLU, RoPE theta 1e6, causal + padding mask) | Ported from HuggingFace **transformers** (Apache-2.0): `models/qwen3/` |
+| Qwen2 byte-level BPE tokenization (GPT-2 byte table, GPT-4-style split regex, rank-based merges) | GPT-2 BPE (Radford et al. 2019; openai/gpt-2 `encoder.py`, MIT); format facts from HuggingFace tokenizers documentation |
+| Weights | black-forest-labs/FLUX.2-klein-4B (Apache-2.0, ungated; downloaded by the user, never redistributed) |
+
 ## Quantization
 
 | What | Source |
