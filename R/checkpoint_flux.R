@@ -72,17 +72,35 @@ flux_open_checkpoint <- function(transformer_dir) {
         config <- jsonlite::fromJSON(config_path, simplifyVector = TRUE)
     }
 
-    index_path <- file.path(transformer_dir,
-                            "diffusion_pytorch_model.safetensors.index.json")
+    opened <- .flux_open_sharded_dir(transformer_dir,
+                                     "diffusion_pytorch_model")
+
+    structure(
+              list(
+                   handle = opened$handle,
+                   keys = opened$keys,
+                   version = NULL,
+                   config = config,
+                   path = transformer_dir
+        ),
+              class = "ltx23_checkpoint"
+    )
+}
+
+# Open a HF-layout safetensors directory (sharded via <base>.safetensors
+# .index.json, or a single <base>.safetensors) lazily; returns the
+# handle/keys pair shared by all checkpoint objects.
+.flux_open_sharded_dir <- function(dir, base) {
+    index_path <- file.path(dir, paste0(base, ".safetensors.index.json"))
     if (file.exists(index_path)) {
         index <- jsonlite::fromJSON(index_path, simplifyVector = TRUE)
         weight_map <- unlist(index$weight_map)
         shard_files <- unique(weight_map)
-        missing <- shard_files[!file.exists(file.path(transformer_dir, shard_files))]
+        missing <- shard_files[!file.exists(file.path(dir, shard_files))]
         if (length(missing)) {
             stop("Missing checkpoint shards: ", paste(missing, collapse = ", "))
         }
-        handles <- lapply(file.path(transformer_dir, shard_files), function(p) {
+        handles <- lapply(file.path(dir, shard_files), function(p) {
             safetensors::safetensors$new(p, framework = "torch")
         })
         names(handles) <- shard_files
@@ -97,27 +115,15 @@ flux_open_checkpoint <- function(transformer_dir) {
         }
         )
     } else {
-        single_path <- file.path(transformer_dir,
-                                 "diffusion_pytorch_model.safetensors")
+        single_path <- file.path(dir, paste0(base, ".safetensors"))
         if (!file.exists(single_path)) {
-            stop("No diffusion_pytorch_model safetensors (or index) in ",
-                 transformer_dir)
+            stop("No ", base, " safetensors (or index) in ", dir)
         }
         h <- safetensors::safetensors$new(single_path, framework = "torch")
         keys <- setdiff(h$keys(), "__metadata__")
         handle <- list(get_tensor = function(key) h$get_tensor(key))
     }
-
-    structure(
-              list(
-                   handle = handle,
-                   keys = keys,
-                   version = NULL,
-                   config = config,
-                   path = transformer_dir
-        ),
-              class = "ltx23_checkpoint"
-    )
+    list(handle = handle, keys = keys)
 }
 
 #' Open a quantized FLUX artifact directory

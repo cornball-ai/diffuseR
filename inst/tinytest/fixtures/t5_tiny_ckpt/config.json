@@ -1,0 +1,31 @@
+{
+  "architectures": [
+    "T5EncoderModel"
+  ],
+  "classifier_dropout": 0.0,
+  "d_ff": 32,
+  "d_kv": 4,
+  "d_model": 16,
+  "dense_act_fn": "gelu_new",
+  "dropout_rate": 0.0,
+  "dtype": "float32",
+  "eos_token_id": 1,
+  "feed_forward_proj": "gated-gelu",
+  "initializer_factor": 1.0,
+  "is_decoder": false,
+  "is_encoder_decoder": false,
+  "is_gated_act": true,
+  "layer_norm_epsilon": 1e-06,
+  "model_type": "t5",
+  "num_decoder_layers": 2,
+  "num_heads": 4,
+  "num_layers": 2,
+  "pad_token_id": 0,
+  "relative_attention_max_distance": 128,
+  "relative_attention_num_buckets": 32,
+  "scale_decoder_outputs": true,
+  "tie_word_embeddings": true,
+  "transformers_version": "5.13.0",
+  "use_cache": false,
+  "vocab_size": 100
+}
