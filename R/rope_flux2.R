@@ -46,14 +46,13 @@ flux2_prepare_text_ids <- function(len, device = "cpu") {
 #' @export
 flux2_prepare_latent_ids <- function(height, width, device = "cpu") {
     f32 <- torch::torch_float32()
-    ids <- torch::torch_zeros(height, width, 4L, dtype = f32,
-                              device = device)
+    ids <- torch::torch_zeros(height, width, 4L, dtype = f32, device = device)
     rows <- torch::torch_arange(start = 0, end = height - 1, dtype = f32,
                                 device = device)
     cols <- torch::torch_arange(start = 0, end = width - 1, dtype = f32,
                                 device = device)
-    ids[, , 2] <- ids[, , 2] + rows$unsqueeze(2L)
-    ids[, , 3] <- ids[, , 3] + cols$unsqueeze(1L)
+    ids[,, 2] <- ids[,, 2] + rows$unsqueeze(2L)
+    ids[,, 3] <- ids[,, 3] + cols$unsqueeze(1L)
     ids$reshape(c(height * width, 4L))
 }
 

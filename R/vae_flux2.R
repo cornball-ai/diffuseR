@@ -87,7 +87,7 @@ flux2_pack_latents <- function(latents) {
 #' @export
 flux2_unpack_latents_with_ids <- function(x, ids, height, width) {
     if (ids$ndim == 3L) {
-        ids <- ids[1, , ]
+        ids <- ids[1,,]
     }
     long <- torch::torch_long()
     h_ids <- ids[, 2]$to(dtype = long)
@@ -122,7 +122,7 @@ flux2_unpack_latents_with_ids <- function(x, ids, height, width) {
 flux2_bn_normalize <- function(latents, bn_mean, bn_var, eps = 1e-4,
                                inverse = FALSE) {
     mean <- bn_mean$view(c(1L, -1L, 1L, 1L))$to(device = latents$device,
-                                                dtype = latents$dtype)
+        dtype = latents$dtype)
     std <- bn_var$add(eps)$sqrt()$view(c(1L, -1L, 1L, 1L))$
     to(device = latents$device, dtype = latents$dtype)
     if (inverse) {
