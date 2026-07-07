@@ -126,11 +126,19 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = conf)
     }
     if (device == "cuda") {
-        footprint <- if (identical(ckpt$format, "nf4")) 8 else 4
+        if (identical(ckpt$format, "nf4")) {
+            footprint <- 8
+        } else {
+            footprint <- 4
+        }
         ltx23_tune_gc(footprint_gb = footprint)
     }
 
-    component_device <- if (phase_offload) "cpu" else device
+    if (phase_offload) {
+        component_device <- "cpu"
+    } else {
+        component_device <- device
+    }
 
     pipe <- list(
                  format = ckpt$format %||% "full",
@@ -145,9 +153,9 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         message("Loading transformer (", pipe$format, ")...")
     }
     pipe$transformer <- flux_load_transformer(
-                                              ckpt, device = component_device,
-                                              pin = device == "cuda",
-                                              verbose = verbose
+        ckpt, device = component_device,
+        pin = device == "cuda",
+        verbose = verbose
     )
 
     vae_config <- jsonlite::fromJSON(.flux1_cached("vae/config.json"))
@@ -184,9 +192,9 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     t5_dir <- dirname(.flux1_cached("text_encoder_2/config.json"))
     pipe$text_encoder2 <- load_t5_text_encoder(
-                                               t5_dir, device = text_device,
-                                               dtype = if (text_device == "cpu") "float32" else "bfloat16",
-                                               verbose = verbose
+        t5_dir, device = text_device,
+        dtype = if (text_device == "cpu") "float32" else "bfloat16",
+        verbose = verbose
     )
     pipe$tokenizer2 <- unigram_tokenizer(.flux1_cached("tokenizer_2/tokenizer.json"))
 
@@ -220,7 +228,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
             # The transformer takes sigma-space time (it rescales by 1000
             # internally, matching the reference pipeline's t/1000)
             t_model <- torch::torch_tensor(t / 1000, dtype = compute_dtype,
-                                           device = latents$device)$reshape(1L)
+                device = latents$device)$reshape(1L)
 
             noise_pred <- transformer(
                                       hidden_states = latents$to(dtype = compute_dtype),
@@ -232,7 +240,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
             )
 
             step <- flowmatch_scheduler_step(
-                                             noise_pred$to(dtype = f32), t, latents, schedule
+                noise_pred$to(dtype = f32), t, latents, schedule
             )
             latents <- step$prev_sample
             schedule <- step$schedule
@@ -322,10 +330,8 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
             if (verbose) {
                 message("Encoding prompt (T5)...")
             }
-            prompt_embeds <- encode_with_t5(
-                                            prompt, pipeline$text_encoder2, pipeline$tokenizer2,
-                                            max_sequence_length = max_sequence_length
-            )
+            prompt_embeds <- encode_with_t5(prompt, pipeline$text_encoder2,
+                pipeline$tokenizer2, max_sequence_length = max_sequence_length)
         }
         if (is.null(pooled_prompt_embeds)) {
             tokens <- CLIPTokenizer(prompt)
@@ -337,7 +343,7 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     })
     prompt_embeds <- prompt_embeds$to(device = device, dtype = compute_dtype)
     pooled_prompt_embeds <- pooled_prompt_embeds$to(device = device,
-                                                    dtype = compute_dtype)
+        dtype = compute_dtype)
     txt_len <- prompt_embeds$shape[2]
 
     # --- Phase 2: latents, rotary embeddings, schedule --------------------------

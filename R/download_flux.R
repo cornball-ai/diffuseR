@@ -16,13 +16,11 @@ NULL
                                       1:3)
 )
 
-.flux1_support_files <- c(
-                          "vae/config.json",
+.flux1_support_files <- c("vae/config.json",
                           "vae/diffusion_pytorch_model.safetensors",
                           "text_encoder/config.json",
                           "text_encoder/model.safetensors",
-                          "scheduler/scheduler_config.json"
-)
+                          "scheduler/scheduler_config.json")
 
 .flux1_t5_files <- c(
                      "text_encoder_2/config.json",
@@ -112,7 +110,7 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
             }
             ok <- .ltx23_consent(paste0(
                                         "FLUX.1-schnell: the 24 GB bf16 transformer plus a ~",
-                                        if (precision == "nf4") "7" else "12",
+                    if (precision == "nf4") "7" else "12",
                                         " GB local ", precision,
                                         " artifact (weights Apache-2.0, gated HuggingFace repo)"
                 ))
@@ -123,8 +121,7 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
                 message("Downloading the FLUX.1-schnell transformer (24 GB)...")
             }
         }
-        paths <- vapply(.flux1_transformer_files, .flux1_download,
-                        character(1))
+        paths <- vapply(.flux1_transformer_files, .flux1_download, character(1))
         result$transformer_dir <- dirname(paths[[1]])
 
         if (quantize && !have_artifact) {
