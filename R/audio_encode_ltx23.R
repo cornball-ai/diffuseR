@@ -26,8 +26,8 @@ NULL
     win <- .ltx23_hann(filter_length)
     basis <- matrix(0, nf * 2L, filter_length)
     for (k in 0:(nf - 1L)) {
-        basis[k + 1L, ] <- cos(2 * pi * k * n / filter_length) * win
-        basis[nf + k + 1L, ] <- -sin(2 * pi * k * n / filter_length) * win
+        basis[k + 1L,] <- cos(2 * pi * k * n / filter_length) * win
+        basis[nf + k + 1L,] <- -sin(2 * pi * k * n / filter_length) * win
     }
     torch::torch_tensor(basis, dtype = torch::torch_float32())$unsqueeze(2L)
 }
@@ -48,7 +48,7 @@ NULL
     for (i in seq_len(n_mels)) {
         lower <- (fft_freqs - hz[i]) / (hz[i + 1] - hz[i])
         upper <- (hz[i + 2] - fft_freqs) / (hz[i + 2] - hz[i + 1])
-        W[i, ] <- pmax(0, pmin(lower, upper)) * 2 / (hz[i + 2] - hz[i])
+        W[i,] <- pmax(0, pmin(lower, upper)) * 2 / (hz[i + 2] - hz[i])
     }
     torch::torch_tensor(W, dtype = torch::torch_float32())
 }
@@ -69,10 +69,10 @@ ltx23_audio_mel_frontend <- function(filter_length = 1024L,
                                      hop_length = 160L, n_mels = 64L,
                                      sample_rate = 16000L, fmin = 0,
                                      fmax = 8000) {
-    frontend <- ltx23_mel_stft(
-                               filter_length = filter_length, hop_length = hop_length,
-                               window_length = filter_length, num_mel_channels = n_mels
-    )
+    frontend <- ltx23_mel_stft(filter_length = filter_length,
+                               hop_length = hop_length,
+                               window_length = filter_length,
+                               num_mel_channels = n_mels)
     torch::with_no_grad({
         frontend$stft_fn$forward_basis$copy_(.ltx23_stft_basis(filter_length))
         frontend$mel_basis$copy_(.ltx23_mel_filterbank(sample_rate,
@@ -158,8 +158,7 @@ ltx23_encode_audio <- function(audio_vae, wav, audio_num_frames,
     enc_dtype <- audio_vae$encoder$conv_in$conv$weight$dtype
     frontend$to(device = dev)
 
-    x <- torch::torch_tensor(wav, dtype = torch::torch_float32(),
-                             device = dev)
+    x <- torch::torch_tensor(wav, dtype = torch::torch_float32(), device = dev)
     torch::with_no_grad({
         # Stereo channels through the STFT as a batch of mono signals
         mel <- frontend(x$unsqueeze(2L)) # [2, 64, T]

@@ -435,8 +435,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tone_map_compression = 0, phase_offload = TRUE,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
-                         audio = NULL,
-                         verbose = TRUE) {
+                         audio = NULL, verbose = TRUE) {
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
@@ -643,15 +642,15 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Encoding conditioning audio...")
         }
         audio_latents <- ltx23_encode_audio(audio_vae, input_audio,
-                                            audio_num_frames)$
+            audio_num_frames)$
         to(device = device)
         offload("audio_vae")
         gc(verbose = FALSE)
         decode_audio <- FALSE
     } else {
         audio_latents <- torch::torch_randn(
-                                            c(1L, 8L, audio_num_frames, latent_mel_bins),
-                                            device = device, dtype = f32
+            c(1L, 8L, audio_num_frames, latent_mel_bins),
+            device = device, dtype = f32
         )
         audio_latents <- ltx23_pack_audio_latents(audio_latents)
     }

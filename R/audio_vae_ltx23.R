@@ -1,11 +1,11 @@
-#' LTX-2.3 Audio VAE (decoder)
+#' LTX-2.3 Audio VAE
 #'
-#' Fresh R port of the LTX-2 audio autoencoder decoder from the
-#' diffusers reference (Apache-2.0, autoencoder_kl_ltx2_audio.py),
-#' configured per the checkpoint: pixel norm, height-axis causality,
-#' base 128 channels with multipliers (1, 2, 4), 8 latent channels,
-#' 64 mel bins, no attention. The encoder is not ported (text-to-video
-#' never encodes audio); its checkpoint keys are skipped deliberately.
+#' Fresh R port of the LTX-2 audio autoencoder from the diffusers
+#' reference (Apache-2.0, autoencoder_kl_ltx2_audio.py), configured per
+#' the checkpoint: pixel norm, height-axis causality, base 128 channels
+#' with multipliers (1, 2, 4), 8 latent channels, 64 mel bins, no
+#' attention. The decoder produces mel for the vocoder; the encoder
+#' turns user audio into conditioning latents (lip sync).
 #'
 #' @name audio_vae_ltx23
 NULL
@@ -144,13 +144,11 @@ ltx23_audio_downsample <- torch::nn_module(
     "ltx23_audio_downsample",
     initialize = function(in_channels, causality_axis = "height") {
     # Padding order: (left, right, top, bottom)
-    self$padding <- switch(causality_axis,
-                           none = c(0L, 1L, 0L, 1L),
+    self$padding <- switch(causality_axis, none = c(0L, 1L, 0L, 1L),
                            width = c(2L, 0L, 0L, 1L),
                            height = c(0L, 1L, 2L, 0L),
                            `width-compatibility` = c(1L, 0L, 0L, 1L),
-                           stop("Invalid causality_axis: ", causality_axis)
-    )
+                           stop("Invalid causality_axis: ", causality_axis))
     self$conv <- torch::nn_conv2d(in_channels, in_channels, kernel_size = 3L,
                                   stride = 2L, padding = 0L)
 },
@@ -172,20 +170,18 @@ ltx23_audio_downsample <- torch::nn_module(
 #'
 #' @export
 ltx23_audio_encoder <- torch::nn_module(
-    "ltx23_audio_encoder",
-    initialize = function(
-                          base_channels = 128L,
-                          in_channels = 2L,
-                          num_res_blocks = 2L,
-                          latent_channels = 8L,
-                          ch_mult = c(1L, 2L, 4L),
-                          causality_axis = "height"
+                                        "ltx23_audio_encoder",
+                                        initialize = function(
+        base_channels = 128L,
+        in_channels = 2L,
+        num_res_blocks = 2L,
+        latent_channels = 8L,
+        ch_mult = c(1L, 2L, 4L),
+        causality_axis = "height"
     ) {
     num_levels <- length(ch_mult)
-    self$conv_in <- ltx23_audio_causal_conv2d(
-                                              in_channels, base_channels, kernel_size = 3L,
-                                              causality_axis = causality_axis
-    )
+    self$conv_in <- ltx23_audio_causal_conv2d(in_channels, base_channels,
+        kernel_size = 3L, causality_axis = causality_axis)
 
     block_in <- base_channels
     stages <- list()
@@ -218,7 +214,7 @@ ltx23_audio_encoder <- torch::nn_module(
         }
         )
         stages[[level]] <- stage(
-            blocks,
+                                 blocks,
             if (level != num_levels) {
                 ltx23_audio_downsample(block_in, causality_axis = causality_axis)
             } else {
@@ -243,12 +239,12 @@ ltx23_audio_encoder <- torch::nn_module(
 
     self$norm_out <- ltx23_per_channel_rms_norm(eps = 1e-6)
     self$conv_out <- ltx23_audio_causal_conv2d(
-                                               block_in, 2L * latent_channels, kernel_size = 3L,
-                                               causality_axis = causality_axis
+        block_in, 2L * latent_channels, kernel_size = 3L,
+        causality_axis = causality_axis
     )
     self$latent_channels <- as.integer(latent_channels)
 },
-    forward = function(x) {
+                                        forward = function(x) {
     h <- self$conv_in(x)
     for (level in seq_along(self$down)) {
         h <- self$down[[level]](h)
