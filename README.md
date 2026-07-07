@@ -173,6 +173,29 @@ Currently supported models:
 - FLUX.2 Klein 4B (4-step distilled)
 - LTX-2.3 Video (with audio)
 
+### Choosing an image model: SDXL vs FLUX.2
+
+Same prompt, same seed, 1024x1024, measured on an RTX 5060 Ti 16GB:
+
+> "A retro 1970s radio station studio interior, warm wood panels,
+> vinyl records on the walls, soft neon glow, detailed illustration"
+
+| Model | Settings | Load | Warm generation | Peak VRAM |
+|---|---|---|---|---|
+| SDXL | 50 steps, CFG 7.5 | 45 s | **20 s** | 12.7 GB |
+| FLUX.2 Klein 4B | 4 steps, guidance-free | 32 s | 48 s | **8.2 GB** |
+
+SDXL is over twice as fast per image, but FLUX.2's prompt adherence
+and coherence are in a different class — SDXL melts the speaker
+stacks and turns the wall records into neon smears, while FLUX.2
+draws the studio you asked for (SDXL left, FLUX.2 right):
+
+![SDXL vs FLUX.2, same prompt and seed](man/figures/sdxl_vs_flux2_radio_studio.jpg)
+
+Rule of thumb: reach for FLUX.2 unless you need images in bulk and
+fast more than you need them right. Note FLUX.2 Klein is
+guidance-free, so negative prompts do not apply.
+
 ### Downloading Models
 
 Models are automatically downloaded from HuggingFace on first use. For gated models (like FLUX.1-schnell), you need to:
