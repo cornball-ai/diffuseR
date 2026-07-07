@@ -20,7 +20,7 @@ flux_time_text_embed <- torch::nn_module(
     initialize = function(embedding_dim, pooled_projection_dim) {
     self$timestep_embedder <- ltx23_timestep_embedding(256L, embedding_dim)
     self$text_embedder <- ltx23_timestep_embedding(pooled_projection_dim,
-                                                   embedding_dim)
+        embedding_dim)
 },
     forward = function(timestep, pooled_projection) {
     proj <- ltx23_get_timestep_embedding(timestep, 256L,
@@ -57,46 +57,43 @@ flux_time_text_embed <- torch::nn_module(
 #'
 #' @export
 flux_transformer <- torch::nn_module(
-    "flux_transformer",
-    initialize = function(in_channels = 64L,
-                          num_layers = 19L,
-                          num_single_layers = 38L,
-                          attention_head_dim = 128L,
-                          num_attention_heads = 24L,
-                          joint_attention_dim = 4096L,
-                          pooled_projection_dim = 768L,
-                          axes_dims_rope = c(16L, 56L, 56L),
-                          out_channels = NULL) {
+                                     "flux_transformer",
+                                     initialize = function(in_channels = 64L,
+        num_layers = 19L,
+        num_single_layers = 38L,
+        attention_head_dim = 128L,
+        num_attention_heads = 24L,
+        joint_attention_dim = 4096L,
+        pooled_projection_dim = 768L,
+        axes_dims_rope = c(16L, 56L, 56L),
+        out_channels = NULL) {
     inner_dim <- num_attention_heads * attention_head_dim
     self$inner_dim <- inner_dim
     self$axes_dims_rope <- as.integer(axes_dims_rope)
     self$out_channels <- as.integer(out_channels %||% in_channels)
 
     self$time_text_embed <- flux_time_text_embed(inner_dim,
-                                                 pooled_projection_dim)
+        pooled_projection_dim)
     self$context_embedder <- torch::nn_linear(joint_attention_dim, inner_dim)
     self$x_embedder <- torch::nn_linear(in_channels, inner_dim)
 
     self$transformer_blocks <- torch::nn_module_list(
-                                                     lapply(seq_len(num_layers), function(i) {
-        flux_double_block(inner_dim, num_attention_heads,
-                          attention_head_dim)
+        lapply(seq_len(num_layers), function(i) {
+        flux_double_block(inner_dim, num_attention_heads, attention_head_dim)
     })
     )
     self$single_transformer_blocks <- torch::nn_module_list(
-                                                            lapply(seq_len(num_single_layers), function(i) {
-        flux_single_block(inner_dim, num_attention_heads,
-                          attention_head_dim)
+        lapply(seq_len(num_single_layers), function(i) {
+        flux_single_block(inner_dim, num_attention_heads, attention_head_dim)
     })
     )
 
     self$norm_out <- flux_ada_layer_norm_continuous(inner_dim, inner_dim)
-    self$proj_out <- torch::nn_linear(inner_dim, self$out_channels,
-                                      bias = TRUE)
+    self$proj_out <- torch::nn_linear(inner_dim, self$out_channels, bias = TRUE)
 },
-    forward = function(hidden_states, encoder_hidden_states,
-                       pooled_projections, timestep, image_rotary_emb,
-                       chunk_size = NULL) {
+                                     forward = function(hidden_states, encoder_hidden_states,
+        pooled_projections, timestep, image_rotary_emb,
+        chunk_size = NULL) {
     hidden_states <- self$x_embedder(hidden_states)
     timestep <- timestep$to(dtype = hidden_states$dtype)$mul(1000)
     temb <- self$time_text_embed(timestep, pooled_projections)
@@ -107,11 +104,11 @@ flux_transformer <- torch::nn_module(
 
     for (i in seq_along(self$transformer_blocks)) {
         res <- self$transformer_blocks[[i]](
-                                            hidden_states = hidden_states,
-                                            encoder_hidden_states = encoder_hidden_states,
-                                            temb = temb,
-                                            image_rotary_emb = image_rotary_emb,
-                                            chunk_size = chunk_size
+                                     hidden_states = hidden_states,
+                                     encoder_hidden_states = encoder_hidden_states,
+                                     temb = temb,
+                                     image_rotary_emb = image_rotary_emb,
+                                     chunk_size = chunk_size
         )
         encoder_hidden_states <- res[[1]]
         hidden_states <- res[[2]]
@@ -134,18 +131,18 @@ flux_transformer <- torch::nn_module(
     )
     for (i in seq_along(self$single_transformer_blocks)) {
         hidden_states <- self$single_transformer_blocks[[i]](
-                                                             hidden_states = hidden_states,
-                                                             temb = temb,
-                                                             image_rotary_emb = image_rotary_emb,
-                                                             chunk_size = chunk_size
+                                     hidden_states = hidden_states,
+                                     temb = temb,
+                                     image_rotary_emb = image_rotary_emb,
+                                     chunk_size = chunk_size
         )
         if (block_gc) {
             gc(verbose = FALSE)
         }
     }
     hidden_states <- hidden_states$narrow(
-                                          2L, txt_len + 1L,
-                                          hidden_states$shape[2] - txt_len
+        2L, txt_len + 1L,
+        hidden_states$shape[2] - txt_len
     )
 
     hidden_states <- self$norm_out(hidden_states, temb)
