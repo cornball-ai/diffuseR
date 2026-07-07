@@ -11,10 +11,8 @@
 NULL
 
 .flux_dtype <- function(dtype) {
-    switch(dtype,
-           bfloat16 = torch::torch_bfloat16(),
-           float16 = torch::torch_float16(),
-           float32 = torch::torch_float32(),
+    switch(dtype, bfloat16 = torch::torch_bfloat16(),
+           float16 = torch::torch_float16(), float32 = torch::torch_float32(),
            stop("Unsupported dtype: ", dtype))
 }
 
@@ -65,9 +63,9 @@ NULL
 #' @export
 flux_quantize <- function(transformer_dir,
                           output_dir = file.path(tools::R_user_dir("diffuseR", "data"),
-                                                 paste0("flux1-schnell-", format)),
-                          format = c("nf4", "fp8"),
-                          shard_bytes = 4e9, force = FALSE, verbose = TRUE) {
+        paste0("flux1-schnell-", format)),
+                          format = c("nf4", "fp8"), shard_bytes = 4e9,
+                          force = FALSE, verbose = TRUE) {
     format <- match.arg(format)
 
     manifest_path <- file.path(output_dir, "manifest.json")
@@ -222,7 +220,11 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     }
     model$to(dtype = torch::torch_bfloat16())
 
-    sib_suffix <- if (format == "nf4") "_absmax" else "_scale"
+    if (format == "nf4") {
+        sib_suffix <- "_absmax"
+    } else {
+        sib_suffix <- "_scale"
+    }
     sib_keys <- ckpt$keys[endsWith(ckpt$keys, paste0(".weight", sib_suffix))]
     main_keys <- setdiff(ckpt$keys, sib_keys)
 
@@ -235,7 +237,7 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
             key <- main_keys[[i]]
 
             if (flux_is_quant_key(key) &&
-                paste0(key, sib_suffix) %in% sib_keys) {
+                        paste0(key, sib_suffix) %in% sib_keys) {
                 segments <- strsplit(key, ".", fixed = TRUE)[[1]]
                 parent <- .ltx23_walk_module(model, utils::head(segments, -2L))
                 leaf <- segments[length(segments) - 1L]
@@ -258,14 +260,14 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
                 }
                 if (format == "nf4") {
                     quant_mod$set_nf4_weight(
-                                             ckpt$handle$get_tensor(key),
-                                             ckpt$handle$get_tensor(paste0(key, sib_suffix))
+                        ckpt$handle$get_tensor(key),
+                        ckpt$handle$get_tensor(paste0(key, sib_suffix))
                     )
                 } else {
                     quant_mod$set_fp8_weight(
-                                             ckpt$handle$get_tensor(key),
-                                             ckpt$handle$get_tensor(paste0(key, sib_suffix)),
-                                             pin = pin
+                        ckpt$handle$get_tensor(key),
+                        ckpt$handle$get_tensor(paste0(key, sib_suffix)),
+                        pin = pin
                     )
                 }
                 do.call(`$<-`, list(parent, leaf, quant_mod))

@@ -72,10 +72,8 @@ flux_open_checkpoint <- function(transformer_dir) {
         config <- jsonlite::fromJSON(config_path, simplifyVector = TRUE)
     }
 
-    index_path <- file.path(
-                            transformer_dir,
-                            "diffusion_pytorch_model.safetensors.index.json"
-    )
+    index_path <- file.path(transformer_dir,
+                            "diffusion_pytorch_model.safetensors.index.json")
     if (file.exists(index_path)) {
         index <- jsonlite::fromJSON(index_path, simplifyVector = TRUE)
         weight_map <- unlist(index$weight_map)
