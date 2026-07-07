@@ -89,6 +89,7 @@ flux2_unpack_latents_with_ids <- function(x, ids, height, width) {
     if (ids$ndim == 3L) {
         ids <- ids[1,,]
     }
+    ids <- ids$to(device = x$device)
     long <- torch::torch_long()
     h_ids <- ids[, 2]$to(dtype = long)
     w_ids <- ids[, 3]$to(dtype = long)
