@@ -316,9 +316,36 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
   - Handles Blackwell workaround automatically
 
 ### Model Support
-- [ ] Add FLUX model support
+- [x] Add FLUX model support (FLUX.1-schnell, see below)
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
+
+### FLUX.1-schnell (Complete)
+
+4-step distilled text-to-image, CFG-free. 12B MMDiT + T5-XXL + CLIP-L +
+16-channel VAE, ported from diffusers/transformers (provenance in
+`inst/REFERENCES.md`).
+
+```r
+library(diffuseR)
+download_flux1()   # gated HF repo: accept license + set HF_TOKEN; ~34 GB
+                   # download, one-time NF4 quantize to a 6.8 GB artifact
+txt2img_flux("An astronaut riding a horse on Mars, photorealistic",
+             seed = 7)   # or txt2img("...", model_name = "flux1")
+```
+
+Measured on the RTX 5060 Ti 16 GB (NF4 resident, T5 float32 on CPU):
+1024x1024 in ~2 min wall (peak 8.7 GB alloc / 9.0 GB reserved),
+512x512 in ~1.5 min (peak 8.0 GB). CPU-only works too (~9 min at 256px).
+
+Key components: `flux_transformer` (19 double + 38 single blocks),
+`t5_encoder` + `unigram_tokenizer` (pure R SentencePiece Viterbi),
+`flux_quantize`/`flux_load_transformer` (NF4 ~6.8 GB resident or fp8
+~12 GB streamed; cast census is exactly 494 weights), `flux_load_pipeline`
++ `txt2img_flux` with per-phase GPU offloading. Gotchas that bit once:
+the shipped tokenizer_2 uses Metaspace prepend "always" (a spiece
+conversion gives "never" - different ids for every prompt), and quantized
+residents must follow the compute dtype (bf16 GPU / fp32 CPU).
 
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 
