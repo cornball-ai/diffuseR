@@ -74,12 +74,14 @@ flux_ada_layer_norm_zero_single <- torch::nn_module(
 #'
 #' @param dim Integer. Model dimension.
 #' @param cond_dim Integer. Conditioning embedding dimension.
+#' @param bias Logical. Bias on the projection (TRUE for FLUX.1, FALSE
+#'   for FLUX.2).
 #'
 #' @export
 flux_ada_layer_norm_continuous <- torch::nn_module(
     "flux_ada_layer_norm_continuous",
-    initialize = function(dim, cond_dim = dim) {
-    self$linear <- torch::nn_linear(cond_dim, 2L * dim, bias = TRUE)
+    initialize = function(dim, cond_dim = dim, bias = TRUE) {
+    self$linear <- torch::nn_linear(cond_dim, 2L * dim, bias = bias)
     self$norm <- torch::nn_layer_norm(dim, eps = 1e-6,
                                       elementwise_affine = FALSE)
 },

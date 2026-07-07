@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "total_size": 77504
+  },
+  "weight_map": {
+    "context_embedder.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "double_stream_modulation_img.linear.weight": "diffusion_pytorch_model-00001-of-00003.safetensors",
+    "double_stream_modulation_txt.linear.weight": "diffusion_pytorch_model-00001-of-00003.safetensors",
+    "norm_out.linear.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "proj_out.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "single_stream_modulation.linear.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "single_transformer_blocks.0.attn.norm_k.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "single_transformer_blocks.0.attn.norm_q.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "single_transformer_blocks.0.attn.to_out.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "single_transformer_blocks.0.attn.to_qkv_mlp_proj.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "time_guidance_embed.timestep_embedder.linear_1.weight": "diffusion_pytorch_model-00001-of-00003.safetensors",
+    "time_guidance_embed.timestep_embedder.linear_2.weight": "diffusion_pytorch_model-00001-of-00003.safetensors",
+    "transformer_blocks.0.attn.add_k_proj.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.add_q_proj.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.add_v_proj.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.norm_added_k.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.norm_added_q.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.norm_k.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.norm_q.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.to_add_out.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.to_k.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.to_out.0.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.to_q.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.attn.to_v.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.ff.linear_in.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.ff.linear_out.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.ff_context.linear_in.weight": "diffusion_pytorch_model-00002-of-00003.safetensors",
+    "transformer_blocks.0.ff_context.linear_out.weight": "diffusion_pytorch_model-00003-of-00003.safetensors",
+    "x_embedder.weight": "diffusion_pytorch_model-00002-of-00003.safetensors"
+  }
+}
