@@ -1,9 +1,9 @@
-# LTX-2.3 implementation references
+# Implementation references (LTX-2.3, FLUX.1-schnell)
 
-Every technique in diffuseR's LTX-2.3 support traces to a public,
-permissively licensed source or to our own measured engineering. None of
-it derives from Wan2GP (WanGP Community License) or its `mmgp` module;
-this file documents the actual lineage, idea by idea.
+Every technique in diffuseR's LTX-2.3 and FLUX.1 support traces to a
+public, permissively licensed source or to our own measured engineering.
+None of it derives from Wan2GP (WanGP Community License) or its `mmgp`
+module; this file documents the actual lineage, idea by idea.
 
 ## Model architecture and pipeline
 
@@ -14,6 +14,20 @@ this file documents the actual lineage, idea by idea.
 | Distilled sigma schedules, default negative prompt | diffusers `pipelines/ltx2/utils.py` (Apache-2.0); values originate from Lightricks' LTX-2 release (numeric facts) |
 | Single-file checkpoint key layout, embedded config, `model_version` metadata | Format facts of the official Lightricks checkpoints, cross-checked against diffusers `scripts/convert_ltx2_to_diffusers.py` (Apache-2.0) |
 | Gemma3 text encoder | Ported from HuggingFace **transformers** (Apache-2.0) |
+
+## FLUX.1-schnell
+
+| What | Source |
+|---|---|
+| MMDiT transformer (double/single blocks, joint attention, adaLN-Zero variants, RoPE position ids, timestep + pooled-text conditioning) | Ported from HuggingFace **diffusers** (Apache-2.0): `models/transformers/transformer_flux.py`, `models/normalization.py`, `models/embeddings.py` |
+| Pipeline flow: prompt encoding contract, sigma schedule (`linspace(1, 1/N, N)`, static shift), 2x2 latent pack/unpack, latent image ids, VAE scale/shift decode | diffusers `pipelines/flux/pipeline_flux.py` (Apache-2.0) |
+| FlowMatch Euler scheduler | diffusers `schedulers/scheduling_flow_match_euler_discrete.py` (Apache-2.0); shared with the LTX port |
+| 16-channel AutoencoderKL decoder config (no quant convs, scaling 0.3611 / shift 0.1159) | diffusers `scripts/convert_flux_to_diffusers.py` + `convert_sd3_to_diffusers.py` (Apache-2.0) |
+| T5-v1.1 encoder (RMS norms, unscaled unbiased attention, shared relative position bias, gated-GELU FFN) | Ported from HuggingFace **transformers** (Apache-2.0): `models/t5/modeling_t5.py` |
+| CLIP ViT-L text encoder with quick-GELU and argmax-EOS pooling | HuggingFace **transformers** `models/clip/modeling_clip.py` (Apache-2.0); native module shared with the SD/SDXL port |
+| SentencePiece Unigram tokenization (Viterbi best-path over piece log-probs) | Kudo (2018), "Subword Regularization", arXiv:1804.10959; SentencePiece (Apache-2.0); tokenizer.json format facts from HuggingFace tokenizers documentation |
+| NF4/fp8 transformer quantization, cast-set policy, phase offloading, allocator tuning | Same sources as the LTX sections below, applied to the FLUX cast set |
+| Weights | black-forest-labs/FLUX.1-schnell (Apache-2.0; gated HuggingFace repo, downloaded by the user, never redistributed) |
 
 ## Quantization
 

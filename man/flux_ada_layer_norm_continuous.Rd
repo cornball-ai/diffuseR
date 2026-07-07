@@ -1,0 +1,18 @@
+% tinyrox says don't edit this manually, but it can't stop you!
+\name{flux_ada_layer_norm_continuous}
+\alias{flux_ada_layer_norm_continuous}
+\title{FLUX continuous adaLN (final norm)}
+\usage{
+flux_ada_layer_norm_continuous(dim, cond_dim = dim)
+}
+\arguments{
+\item{dim}{Integer. Model dimension.}
+
+\item{cond_dim}{Integer. Conditioning embedding dimension.}
+}
+\description{
+Scale/shift conditioning of the final norm. Note the chunk order:
+scale first, then shift (the reverse of adaLN-Zero). Reference:
+diffusers AdaLayerNormContinuous as used by FLUX norm_out
+(elementwise_affine = FALSE, eps = 1e-6).
+}

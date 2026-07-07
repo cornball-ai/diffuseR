@@ -3,7 +3,7 @@
 \alias{VAEAttentionBlock}
 \title{VAE Attention Block}
 \usage{
-VAEAttentionBlock(channels)
+VAEAttentionBlock(channels, norm_groups = 32)
 }
 \arguments{
 \item{channels}{Number of channels}

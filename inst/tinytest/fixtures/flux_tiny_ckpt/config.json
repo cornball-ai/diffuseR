@@ -1,0 +1,19 @@
+{
+  "_class_name": "FluxTransformer2DModel",
+  "_diffusers_version": "0.39.0.dev0",
+  "attention_head_dim": 8,
+  "axes_dims_rope": [
+    2,
+    2,
+    4
+  ],
+  "guidance_embeds": false,
+  "in_channels": 4,
+  "joint_attention_dim": 16,
+  "num_attention_heads": 2,
+  "num_layers": 1,
+  "num_single_layers": 1,
+  "out_channels": null,
+  "patch_size": 1,
+  "pooled_projection_dim": 12
+}

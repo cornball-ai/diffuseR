@@ -19,6 +19,7 @@ for s in "${scripts[@]}"; do
     --with torch \
     --with numpy \
     --with safetensors \
+    --with transformers \
     --with huggingface_hub \
     --with packaging \
     --with filelock \

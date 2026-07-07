@@ -3,7 +3,7 @@
 \alias{VAEMidBlock}
 \title{VAE Mid Block}
 \usage{
-VAEMidBlock(channels)
+VAEMidBlock(channels, norm_groups = 32)
 }
 \arguments{
 \item{channels}{Number of channels}
