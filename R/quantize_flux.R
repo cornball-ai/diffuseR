@@ -188,8 +188,10 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
 #' @param ckpt A checkpoint from \code{\link{flux_open_checkpoint}} or
 #'   \code{\link{flux_open_quantized}}.
 #' @param device Character. Compute device.
-#' @param dtype Character. Model dtype ("bfloat16" or "float32";
-#'   quantized formats always use bfloat16 residents).
+#' @param dtype Character. Model dtype ("bfloat16" or "float32"). For
+#'   quantized formats this sets the resident (non-quantized) tensors
+#'   and must match the compute dtype: bfloat16 for GPU compute,
+#'   float32 for CPU compute.
 #' @param pin Logical. Pin fp8 host memory for faster transfers.
 #' @param verbose Logical.
 #' @param ... Overrides for \code{\link{flux_transformer}} arguments
@@ -221,7 +223,10 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     if (!format %in% c("nf4", "fp8")) {
         stop("Unknown checkpoint format: ", format)
     }
-    model$to(dtype = torch::torch_bfloat16())
+    # Residents (embedders, norms, biases) in the compute dtype: the
+    # quantized linears dequantize into the input's dtype at forward, so
+    # the two must agree (bfloat16 on GPU, float32 for CPU compute)
+    model$to(dtype = .flux_dtype(dtype))
 
     if (format == "nf4") {
         sib_suffix <- "_absmax"

@@ -154,6 +154,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     pipe$transformer <- flux_load_transformer(
         ckpt, device = component_device,
+        dtype = if (device == "cpu") "float32" else "bfloat16",
         pin = device == "cuda",
         verbose = verbose
     )
