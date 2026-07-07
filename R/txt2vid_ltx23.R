@@ -77,13 +77,37 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     latents * std + mean
 }
 
-# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free)
+# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free).
+# With a conditioning_mask [B, S] (prefix conditioning), conditioned
+# video tokens see a per-token timestep of zero and are frozen through
+# the Euler updates (reference i2v semantics at strength 1).
 .ltx23_denoise <- function(transformer, latents, audio_latents, sigmas,
                            video_text_embeds, audio_text_embeds, text_mask,
                            latent_frames, latent_height, latent_width,
                            audio_num_frames, frame_rate, device,
-                           compute_dtype, verbose = TRUE, stage = "") {
+                           compute_dtype, verbose = TRUE, stage = "",
+                           conditioning_mask = NULL,
+                           audio_conditioned = FALSE) {
     f32 <- torch::torch_float32()
+    keep_mask <- if (!is.null(conditioning_mask)) {
+        conditioning_mask$unsqueeze(3L) # [B, S, 1] for latent blending
+    } else {
+        NULL
+    }
+    t_zero <- if (audio_conditioned) {
+        torch::torch_tensor(0, device = device, dtype = f32)
+    } else {
+        NULL
+    }
+    # Compact per-token timestep: the conditioned prefix sees exactly
+    # two values (t and 0), so the transformer gets a 2-entry timestep
+    # plus a per-token selector instead of a [B, S] vector -- the
+    # modulation tensors stay [B, 2, ...] until selected on demand
+    cond_idx <- if (!is.null(conditioning_mask)) {
+        conditioning_mask$squeeze(1L)$to(dtype = torch::torch_long())
+    } else {
+        NULL
+    }
     video_coords <- transformer$rope$prepare_video_coords(latents$shape[1],
         latent_frames, latent_height, latent_width, device,
         fps = frame_rate)
@@ -98,14 +122,23 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
         for (i in seq_len(n_steps)) {
             sigma <- sigmas[i]
             t <- torch::torch_tensor(sigma * scale_mult, device = device, dtype = f32)
+            t_video <- if (is.null(conditioning_mask)) {
+                t
+            } else {
+                # [t, 0]: index 0 = free tokens, index 1 = conditioned
+                torch::torch_tensor(c(sigma * scale_mult, 0),
+                                    device = device, dtype = f32)
+            }
 
             out <- transformer(
                                hidden_states = latents$to(dtype = compute_dtype),
                                audio_hidden_states = audio_latents$to(dtype = compute_dtype),
                                encoder_hidden_states = video_text_embeds,
                                audio_encoder_hidden_states = audio_text_embeds,
-                               timestep = t,
+                               timestep = t_video,
+                               audio_timestep = if (audio_conditioned) t_zero else t,
                                sigma = t,
+                               audio_sigma = if (audio_conditioned) t_zero else t,
                                encoder_attention_mask = text_mask,
                                audio_encoder_attention_mask = text_mask,
                                num_frames = latent_frames,
@@ -115,13 +148,22 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                                audio_num_frames = audio_num_frames,
                                video_coords = video_coords,
                                audio_coords = audio_coords,
-                               use_cross_timestep = TRUE
+                               use_cross_timestep = TRUE,
+                               cond_token_index = cond_idx
             )
 
             # Euler velocity step in float32; dt is negative (sigma decreasing)
             dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
-            latents <- latents + dt * out$sample$to(dtype = f32)
-            audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+            stepped <- latents + dt * out$sample$to(dtype = f32)
+            latents <- if (is.null(keep_mask)) {
+                stepped
+            } else {
+                # Conditioned tokens stay clean
+                latents * keep_mask + stepped * (1 - keep_mask)
+            }
+            if (!audio_conditioned) {
+                audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+            }
             rm(out)
             gc(verbose = FALSE)
             if (verbose) {
@@ -209,6 +251,19 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
             footprint <- 8
         }
         ltx23_tune_gc(footprint_gb = footprint)
+        # Pre-warm the caching allocator with one large allocation
+        # freed straight into the pool: the phase onloads then carve
+        # from cached blocks instead of growing the pool one
+        # cudaMalloc per tensor (83.5s -> 4.6s for the NF4
+        # transformer's first onload, measured). This is also the
+        # first CUDA op, so it runs after the options above are set.
+        tryCatch({
+            warm <- torch::torch_empty(as.integer(footprint + 1) * 1e9,
+                                       dtype = torch::torch_uint8(),
+                                       device = "cuda")
+            rm(warm)
+            gc(verbose = FALSE)
+        }, error = function(e) invisible(NULL))
     }
     groups <- ltx23_split_keys(ckpt$keys)
     torch_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
@@ -282,6 +337,28 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         pipe$vocoder <- voc
     }
 
+    if (phase_offload && device == "cuda" &&
+        isTRUE(getOption("diffuseR.pin_staging", FALSE))) {
+        # Page-lock every phase-offloaded component once so the
+        # per-render CPU<->GPU moves run at full PCIe rate (offload
+        # becomes a pointer swap; see staging_ltx23.R). Falls back
+        # silently per component if page-locking fails.
+        if (verbose) {
+            message("Pinning host staging buffers...")
+        }
+        staging <- list()
+        for (nm in intersect(c("transformer", "connectors", "vae",
+                               "audio_vae", "vocoder"), names(pipe))) {
+            st <- .ltx23_pin_component(pipe[[nm]])
+            if (!is.null(st)) {
+                staging[[nm]] <- st
+            }
+        }
+        if (length(staging)) {
+            pipe$staging <- staging
+        }
+    }
+
     structure(pipe, class = "ltx23_pipeline")
 }
 
@@ -332,6 +409,24 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   device only for its phase (text encoding, upsampling, decoding) and
 #'   back to the CPU afterwards, keeping the denoise phase as the sole
 #'   GPU tenant.
+#' @param image Optional start image for image-to-video: a PNG/JPEG path
+#'   or an [H, W, 3] array in [0, 1]. The image conditions the first
+#'   frame; the rest of the video is generated (reference i2v).
+#' @param condition_video Optional continuation source: a video path
+#'   (its trailing \code{conditioning_frames} frames are used) or an
+#'   [F, H, W, 3] array. The clip's tail becomes the frozen prefix of
+#'   the new video, so the output's first \code{conditioning_frames}
+#'   frames overlap the source (trim or crossfade when concatenating).
+#' @param conditioning_frames Integer. Trailing pixel frames taken from
+#'   \code{condition_video} (8k + 1, default 9 = 2 latent frames).
+#' @param cond_noise_scale Numeric in [0, 1]. Optional partial noising
+#'   of the conditioned tokens (0 = keep them exactly).
+#' @param audio Optional conditioning audio for audio-driven generation
+#'   (lip sync): a file path (decoded via \code{av}) or a matrix
+#'   [2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
+#'   clean, frozen audio latents that the video attends to while
+#'   denoising, and the original samples are muxed into the output
+#'   (audio decoding is skipped).
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{video} (array
@@ -349,10 +444,19 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          decode_audio = TRUE, two_stage = FALSE,
                          upsampler = NULL, adain_factor = 1.0,
                          tone_map_compression = 0, phase_offload = TRUE,
-                         verbose = TRUE) {
+                         image = NULL, condition_video = NULL,
+                         conditioning_frames = 9L, cond_noise_scale = 0,
+                         audio = NULL, verbose = TRUE) {
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
+    }
+    if (!is.null(image) && !is.null(condition_video)) {
+        stop("Provide either image (i2v) or condition_video (continuation), not both.")
+    }
+    conditioned <- !is.null(image) || !is.null(condition_video)
+    if (conditioned && two_stage) {
+        stop("Prefix conditioning with two_stage = TRUE is not supported yet.")
     }
     if (two_stage) {
         if (is.null(upsampler)) {
@@ -399,26 +503,63 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
 
     # Each phase is the sole GPU tenant: components move on for their
-    # phase and back off afterwards
+    # phase and back off afterwards. Pipeline components are referred
+    # to by name so pinned staging (see staging_ltx23.R) can be used
+    # when the loader prepared it; plain modules (the upsampler) take
+    # the pageable path.
     phase_offload <- phase_offload && device != "cpu"
-    onload <- function(module) {
+    staging <- pipeline$staging %||% list()
+    onload <- function(what) {
+        if (is.character(what)) {
+            module <- pipeline[[what]]
+        } else {
+            module <- what
+        }
         if (phase_offload) {
-            module$to(device = device)
+            if (is.character(what)) {
+                st <- staging[[what]]
+            } else {
+                st <- NULL
+            }
+            if (is.null(st)) {
+                module$to(device = device)
+            } else {
+                .ltx23_staged_onload(st, device)
+            }
         }
         module
     }
-    offload <- function(module) {
+    offload <- function(what) {
+        if (is.character(what)) {
+            module <- pipeline[[what]]
+        } else {
+            module <- what
+        }
         if (phase_offload) {
             # Decode traces capture weight tensors; drop them so the
             # module's GPU memory actually frees
             .ltx23_release_vae_traces()
-            module$to(device = "cpu")
-            clear_vram()
+            if (is.character(what)) {
+                st <- staging[[what]]
+            } else {
+                st <- NULL
+            }
+            if (is.null(st)) {
+                module$to(device = "cpu")
+            } else {
+                .ltx23_staged_offload(st)
+            }
+            # gc only -- NO cuda_empty_cache between phases: returning
+            # blocks to the driver forces the next phase to regrow the
+            # pool through cudaMalloc at ~15ms per allocation (~83s
+            # for the transformer's 5530 tensors, measured); the
+            # caching allocator reuses the freed blocks directly
+            gc(verbose = FALSE)
         }
         invisible(module)
     }
 
-    onload(pipeline$connectors)
+    onload("connectors")
     connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
     torch::with_no_grad({
         conn <- pipeline$connectors(
@@ -430,7 +571,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         text_mask <- conn$attention_mask$to(device = device)
     })
     rm(conn)
-    offload(pipeline$connectors)
+    offload("connectors")
     gc(verbose = FALSE)
 
     # --- Phase 2: latent preparation ---------------------------------------------
@@ -453,20 +594,80 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
     latent_mel_bins <- 16L # 64 mel bins / 4
 
-    latents <- torch::torch_randn(
-                                  c(1L, 128L, latent_frames, s1_height, s1_width),
-                                  device = device, dtype = f32
-    )
-    latents <- ltx23_pack_video_latents(latents)
+    # Prefix conditioning: encode the start image (i2v) or the tail of
+    # a previous clip (continuation) into normalized latents
+    cond_latents <- NULL
+    if (conditioned) {
+        vae <- onload("vae")
+        cond_frames <- if (!is.null(image)) {
+            ltx23_preprocess_frames(image, height, width)
+        } else {
+            arr <- if (is.character(condition_video)) {
+                ltx23_read_tail_frames(condition_video, conditioning_frames)
+            } else {
+                condition_video
+            }
+            ltx23_preprocess_frames(arr, height, width)
+        }
+        if (verbose) {
+            message(sprintf("Encoding %d conditioning frame(s)...",
+                            cond_frames$shape[3]))
+        }
+        cond_latents <- ltx23_encode_video_frames(vae, cond_frames)$
+        to(device = device)
+        offload("vae")
+        gc(verbose = FALSE)
+    }
 
-    audio_latents <- torch::torch_randn(
-                                        c(1L, 8L, audio_num_frames, latent_mel_bins),
-                                        device = device, dtype = f32
+    noise <- torch::torch_randn(
+                                c(1L, 128L, latent_frames, s1_height, s1_width),
+                                device = device, dtype = f32
     )
-    audio_latents <- ltx23_pack_audio_latents(audio_latents)
+    conditioning_mask <- NULL
+    if (conditioned) {
+        prep <- ltx23_prepare_conditioned_latents(
+            cond_latents, latent_frames, s1_height, s1_width,
+            noise, cond_noise_scale = cond_noise_scale
+        )
+        latents <- prep$latents
+        conditioning_mask <- prep$conditioning_mask
+        rm(prep, cond_latents)
+    } else {
+        latents <- ltx23_pack_video_latents(noise)
+    }
+    rm(noise)
+
+    audio_conditioned <- !is.null(audio)
+    input_audio <- NULL
+    if (audio_conditioned) {
+        # Audio-driven generation: the user audio becomes clean,
+        # frozen audio latents; the video denoises while attending to
+        # them (lip sync). The output carries the original audio.
+        input_audio <- if (is.character(audio)) {
+            ltx23_read_audio(audio)
+        } else {
+            audio
+        }
+        audio_vae <- onload("audio_vae")
+        if (verbose) {
+            message("Encoding conditioning audio...")
+        }
+        audio_latents <- ltx23_encode_audio(audio_vae, input_audio,
+            audio_num_frames)$
+        to(device = device)
+        offload("audio_vae")
+        gc(verbose = FALSE)
+        decode_audio <- FALSE
+    } else {
+        audio_latents <- torch::torch_randn(
+            c(1L, 8L, audio_num_frames, latent_mel_bins),
+            device = device, dtype = f32
+        )
+        audio_latents <- ltx23_pack_audio_latents(audio_latents)
+    }
 
     # --- Phase 3: denoising -------------------------------------------------------
-    transformer <- onload(pipeline$transformer)
+    transformer <- onload("transformer")
     if (verbose) message(sprintf("Denoising: %d steps at %dx%dx%d...",
                                  length(sigmas) - 1L, width %/% (if (two_stage) 2L else 1L),
                                  height %/% (if (two_stage) 2L else 1L), num_frames))
@@ -477,7 +678,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                latent_frames, s1_height, s1_width,
                                audio_num_frames, frame_rate,
                                device, compute_dtype, verbose = verbose,
-                               stage = if (two_stage) "stage 1 " else ""
+                               stage = if (two_stage) "stage 1 " else "",
+                               conditioning_mask = conditioning_mask,
+                               audio_conditioned = audio_conditioned
     )
     latents <- denoised$latents
     audio_latents <- denoised$audio_latents
@@ -541,7 +744,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
 
     # The transformer and its dequant buffers are not needed past
     # denoising; free the VRAM before the decoders claim it
-    offload(pipeline$transformer)
+    offload("transformer")
     ltx23_release_dequant_buffers()
 
     result <- list(
@@ -549,6 +752,12 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                    audio_latents = audio_latents,
                    sample_rate = 48000L
     )
+    if (audio_conditioned) {
+        # The conditioning audio IS the soundtrack: carry the original
+        # samples through to the result and the mux
+        result$audio <- as.matrix(input_audio)
+        result$sample_rate <- 16000L
+    }
 
     # --- Phase 4: decoding -----------------------------------------------------------
     if (decode_video) {
@@ -556,7 +765,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Decoding video...")
         }
         phase_t0 <- Sys.time()
-        vae <- onload(pipeline$vae)
+        vae <- onload("vae")
         vae_device <- vae$latents_mean$device
         vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -578,7 +787,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         result$video <- as.array(video)
         rm(video, video_latents)
-        offload(pipeline$vae)
+        offload("vae")
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  video to R array: %.1fs",
@@ -591,8 +800,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Decoding audio...")
         }
         phase_t0 <- Sys.time()
-        audio_vae <- onload(pipeline$audio_vae)
-        onload(pipeline$vocoder)
+        audio_vae <- onload("audio_vae")
+        onload("vocoder")
         av_device <- audio_vae$latents_mean$device
         av_dtype <- audio_vae$decoder$conv_in$conv$weight$dtype
         torch::with_no_grad({
@@ -610,8 +819,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         })
         result$audio <- as.matrix(as.array(waveform))
         rm(waveform, mel, audio_lat, audio_packed)
-        offload(pipeline$audio_vae)
-        offload(pipeline$vocoder)
+        offload("audio_vae")
+        offload("vocoder")
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  audio chain: %.1fs",
@@ -623,7 +832,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         phase_t0 <- Sys.time()
         save_video_ltx23(result$video, filename,
                          fps = frame_rate,
-                         audio = if (decode_audio) result$audio else NULL,
+                         audio = result$audio,
                          sample_rate = result$sample_rate,
                          verbose = verbose
         )

@@ -9,9 +9,8 @@ ltx23_map_audio_vae_key(key)
 \item{key}{Character. Checkpoint key.}
 }
 \value{
-Character or NA.
+Character.
 }
 \description{
-Encoder keys return NA (deliberately skipped; only the decoder is
-ported).
+Map an official audio VAE checkpoint key to the R module name
 }

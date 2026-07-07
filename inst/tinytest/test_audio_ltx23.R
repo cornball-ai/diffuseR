@@ -159,4 +159,46 @@ expect_equal(
   ltx23_map_audio_vae_key("audio_vae.per_channel_statistics.mean-of-means"),
   "latents_mean"
 )
-expect_true(is.na(ltx23_map_audio_vae_key("audio_vae.encoder.conv_in.conv.weight")))
+expect_equal(
+  ltx23_map_audio_vae_key("audio_vae.encoder.conv_in.conv.weight"),
+  "encoder.conv_in.conv.weight"
+)
+expect_equal(
+  ltx23_map_audio_vae_key("audio_vae.encoder.down.1.downsample.conv.weight"),
+  "encoder.down.1.downsample.conv.weight"
+)
+
+# --- Encoder: shapes and key-name census -------------------------------------------
+
+enc <- ltx23_audio_encoder(
+  base_channels = 8L, in_channels = 2L, num_res_blocks = 2L,
+  latent_channels = 4L, ch_mult = c(1L, 2L)
+)
+enc$eval()
+mel_in <- torch::torch_randn(1L, 2L, 12L, 8L)
+torch::with_no_grad(out_enc <- enc(mel_in))
+# One downsample level: time and mel halved; moments = 2 * latent
+expect_equal(as.integer(out_enc$shape), c(1L, 8L, 6L, 4L))
+
+# Parameter names line up with the checkpoint layout
+pn <- names(enc$named_parameters())
+expect_true("conv_in.conv.weight" %in% pn)
+expect_true("down.0.block.0.conv1.conv.weight" %in% pn)
+expect_true("down.0.block.1.conv2.conv.bias" %in% pn)
+expect_true("down.0.downsample.conv.weight" %in% pn)
+expect_true("down.1.block.0.nin_shortcut.conv.weight" %in% pn)
+expect_true("mid.block_1.conv1.conv.weight" %in% pn)
+expect_true("mid.block_2.conv2.conv.bias" %in% pn)
+expect_true("conv_out.conv.weight" %in% pn)
+# Pixel norms are parameterless: exactly the conv tensors
+expect_true(all(grepl("conv", pn)))
+
+# encode() through the vae wrapper returns mean/logvar of latent size
+avae <- ltx23_audio_vae(
+  base_channels = 8L, output_channels = 2L, num_res_blocks = 1L,
+  latent_channels = 4L, ch_mult = c(1L, 2L), mel_bins = 8L
+)
+avae$eval()
+torch::with_no_grad(m <- avae$encode(torch::torch_randn(1L, 2L, 12L, 8L)))
+expect_equal(as.integer(m$mean$shape)[2], 4L)
+expect_equal(as.integer(m$logvar$shape)[2], 4L)

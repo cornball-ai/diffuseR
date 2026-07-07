@@ -1,11 +1,11 @@
-#' LTX-2.3 Audio VAE (decoder)
+#' LTX-2.3 Audio VAE
 #'
-#' Fresh R port of the LTX-2 audio autoencoder decoder from the
-#' diffusers reference (Apache-2.0, autoencoder_kl_ltx2_audio.py),
-#' configured per the checkpoint: pixel norm, height-axis causality,
-#' base 128 channels with multipliers (1, 2, 4), 8 latent channels,
-#' 64 mel bins, no attention. The encoder is not ported (text-to-video
-#' never encodes audio); its checkpoint keys are skipped deliberately.
+#' Fresh R port of the LTX-2 audio autoencoder from the diffusers
+#' reference (Apache-2.0, autoencoder_kl_ltx2_audio.py), configured per
+#' the checkpoint: pixel norm, height-axis causality, base 128 channels
+#' with multipliers (1, 2, 4), 8 latent channels, 64 mel bins, no
+#' attention. The decoder produces mel for the vocoder; the encoder
+#' turns user audio into conditioning latents (lip sync).
 #'
 #' @name audio_vae_ltx23
 NULL
@@ -127,6 +127,132 @@ ltx23_audio_upsample <- torch::nn_module(
         x <- x$narrow(4L, 2L, x$shape[4] - 1L)
     }
     x
+}
+)
+
+#' LTX audio downsampler
+#'
+#' Causal zero-pad followed by a plain stride-2 conv (reference
+#' LTX2AudioDownsample; note the conv is unwrapped, so its checkpoint
+#' key is \code{downsample.conv.*}).
+#'
+#' @param in_channels Integer.
+#' @param causality_axis Character.
+#'
+#' @export
+ltx23_audio_downsample <- torch::nn_module(
+    "ltx23_audio_downsample",
+    initialize = function(in_channels, causality_axis = "height") {
+    # Padding order: (left, right, top, bottom)
+    self$padding <- switch(causality_axis, none = c(0L, 1L, 0L, 1L),
+                           width = c(2L, 0L, 0L, 1L),
+                           height = c(0L, 1L, 2L, 0L),
+                           `width-compatibility` = c(1L, 0L, 0L, 1L),
+                           stop("Invalid causality_axis: ", causality_axis))
+    self$conv <- torch::nn_conv2d(in_channels, in_channels, kernel_size = 3L,
+                                  stride = 2L, padding = 0L)
+},
+    forward = function(x) {
+    self$conv(torch::nnf_pad(x, self$padding))
+}
+)
+
+#' LTX-2.3 audio VAE encoder
+#'
+#' Mel spectrogram [B, 2, T, 64] -> latent distribution moments
+#' [B, 2 * latent_channels, ceil(T/4), 16]. Structure mirrors the
+#' decoder: causal convs, parameterless pixel norms, ResNet stages with
+#' stride-2 downsampling between levels (reference LTX2AudioEncoder).
+#'
+#' @param base_channels,num_res_blocks,latent_channels,ch_mult,causality_axis
+#'   See \code{\link{ltx23_audio_decoder}}.
+#' @param in_channels Integer. Mel channels (2 = stereo).
+#'
+#' @export
+ltx23_audio_encoder <- torch::nn_module(
+                                        "ltx23_audio_encoder",
+                                        initialize = function(
+        base_channels = 128L,
+        in_channels = 2L,
+        num_res_blocks = 2L,
+        latent_channels = 8L,
+        ch_mult = c(1L, 2L, 4L),
+        causality_axis = "height"
+    ) {
+    num_levels <- length(ch_mult)
+    self$conv_in <- ltx23_audio_causal_conv2d(in_channels, base_channels,
+        kernel_size = 3L, causality_axis = causality_axis)
+
+    block_in <- base_channels
+    stages <- list()
+    for (level in seq_len(num_levels)) {
+        block_out <- base_channels * ch_mult[level]
+        blocks <- list()
+        for (j in seq_len(num_res_blocks)) {
+            blocks[[j]] <- ltx23_audio_resnet_block(
+                if (j == 1L) block_in else block_out, block_out,
+                causality_axis = causality_axis
+            )
+        }
+        block_in <- block_out
+        stage <- torch::nn_module(
+                                  "ltx23_audio_down_stage",
+                                  initialize = function(blocks, downsample) {
+            self$block <- torch::nn_module_list(blocks)
+            if (!is.null(downsample)) {
+                self$downsample <- downsample
+            }
+        },
+                                  forward = function(x) {
+            for (i in seq_along(self$block)) {
+                x <- self$block[[i]](x)
+            }
+            if (!is.null(self$downsample)) {
+                x <- self$downsample(x)
+            }
+            x
+        }
+        )
+        stages[[level]] <- stage(
+                                 blocks,
+            if (level != num_levels) {
+                ltx23_audio_downsample(block_in, causality_axis = causality_axis)
+            } else {
+                NULL
+            }
+        )
+    }
+    self$down <- torch::nn_module_list(stages)
+
+    self$mid <- torch::nn_module(
+                                 "ltx23_audio_mid",
+                                 initialize = function(channels, causality_axis) {
+        self$block_1 <- ltx23_audio_resnet_block(channels,
+            causality_axis = causality_axis)
+        self$block_2 <- ltx23_audio_resnet_block(channels,
+            causality_axis = causality_axis)
+    },
+                                 forward = function(x) {
+        self$block_2(self$block_1(x))
+    }
+    )(block_in, causality_axis)
+
+    self$norm_out <- ltx23_per_channel_rms_norm(eps = 1e-6)
+    self$conv_out <- ltx23_audio_causal_conv2d(
+        block_in, 2L * latent_channels, kernel_size = 3L,
+        causality_axis = causality_axis
+    )
+    self$latent_channels <- as.integer(latent_channels)
+},
+                                        forward = function(x) {
+    h <- self$conv_in(x)
+    for (level in seq_along(self$down)) {
+        h <- self$down[[level]](h)
+    }
+    h <- self$mid(h)
+    h <- self$norm_out(h)
+    h <- torch::nnf_silu(h)
+    self$conv_out(h)
 }
 )
 
@@ -257,11 +383,13 @@ ltx23_audio_decoder <- torch::nn_module(
 
 #' LTX-2.3 audio VAE
 #'
-#' Decoder plus the per-channel latent statistics loaded from the
-#' checkpoint. Only decoding is supported.
+#' Encoder + decoder plus the per-channel latent statistics loaded from
+#' the checkpoint. Encoding is used for audio-conditioned generation
+#' (lip sync); decoding for generated audio.
 #'
 #' @param base_channels,output_channels,num_res_blocks,latent_channels,ch_mult,causality_axis,mel_bins
 #'   See \code{\link{ltx23_audio_decoder}}.
+#' @param in_channels Integer. Mel input channels (2 = stereo).
 #'
 #' @export
 ltx23_audio_vae <- torch::nn_module(
@@ -273,8 +401,15 @@ ltx23_audio_vae <- torch::nn_module(
         latent_channels = 8L,
         ch_mult = c(1L, 2L, 4L),
         causality_axis = "height",
-        mel_bins = 64L
+        mel_bins = 64L,
+        in_channels = 2L
     ) {
+    self$encoder <- ltx23_audio_encoder(base_channels = base_channels,
+                                        in_channels = in_channels,
+                                        num_res_blocks = num_res_blocks,
+                                        latent_channels = latent_channels,
+                                        ch_mult = ch_mult,
+                                        causality_axis = causality_axis)
     self$decoder <- ltx23_audio_decoder(base_channels = base_channels,
                                         output_channels = output_channels,
                                         num_res_blocks = num_res_blocks,
@@ -288,6 +423,14 @@ ltx23_audio_vae <- torch::nn_module(
     self$latents_std <- torch::nn_buffer(torch::torch_ones(base_channels))
     self$latent_channels <- as.integer(latent_channels)
 },
+                                    encode = function(mel) {
+    moments <- self$encoder(mel)
+    n <- self$latent_channels
+    list(
+         mean = moments$narrow(2L, 1L, n),
+         logvar = moments$narrow(2L, n + 1L, n)
+    )
+},
                                     decode = function(z) {
     .ltx23_traced_call(self$decoder, z)
 },
@@ -298,19 +441,13 @@ ltx23_audio_vae <- torch::nn_module(
 
 #' Map an official audio VAE checkpoint key to the R module name
 #'
-#' Encoder keys return NA (deliberately skipped; only the decoder is
-#' ported).
-#'
 #' @param key Character. Checkpoint key.
 #'
-#' @return Character or NA.
+#' @return Character.
 #'
 #' @export
 ltx23_map_audio_vae_key <- function(key) {
     key <- sub("^audio_vae\\.", "", key)
-    if (startsWith(key, "encoder.")) {
-        return(NA_character_)
-    }
     key <- sub("^per_channel_statistics\\.mean-of-means$", "latents_mean", key)
     key <- sub("^per_channel_statistics\\.std-of-means$", "latents_std", key)
     key
