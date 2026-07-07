@@ -75,7 +75,11 @@ flux2_is_quant_key <- function(key) {
 # Model family from a diffusers transformer config
 .flux_family <- function(config) {
     cls <- config$`_class_name` %||% "FluxTransformer2DModel"
-    if (identical(cls, "Flux2Transformer2DModel")) "flux2" else "flux1"
+    if (identical(cls, "Flux2Transformer2DModel")) {
+        "flux2"
+    } else {
+        "flux1"
+    }
 }
 
 #' Open a FLUX transformer checkpoint directory

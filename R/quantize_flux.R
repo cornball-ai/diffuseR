@@ -88,10 +88,8 @@ NULL
 # Family-specific hooks for quantization and loading
 .flux_family_hooks <- function(config) {
     if (.flux_family(config) == "flux2") {
-        list(model_fn = flux2_transformer,
-             args_fn = .flux2_transformer_args,
-             is_quant_key = flux2_is_quant_key,
-             shard_prefix = "flux2-klein")
+        list(model_fn = flux2_transformer, args_fn = .flux2_transformer_args,
+             is_quant_key = flux2_is_quant_key, shard_prefix = "flux2-klein")
     } else {
         list(model_fn = flux_transformer,
              args_fn = .flux_transformer_args,
