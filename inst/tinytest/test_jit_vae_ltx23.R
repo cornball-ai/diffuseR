@@ -9,6 +9,9 @@ if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) 
 library(diffuseR)
 torch::torch_manual_seed(11)
 
+old_opt <- options(diffuseR.jit_vae = TRUE)
+on.exit(options(old_opt), add = TRUE)
+
 max_abs_diff <- function(a, b) as.numeric((a - b)$abs()$max())
 trace_count <- function() length(ls(diffuseR:::.ltx23_vae_traces))
 

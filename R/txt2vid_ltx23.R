@@ -187,6 +187,14 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     } else {
         ltx23_open_checkpoint(checkpoint_path)
     }
+    if (device == "cuda") {
+        # Stop the allocator gc storm before the first CUDA op: the
+        # decode phases measured 86% of wall time in callback-driven
+        # R gc at the 0.20 default reserved rate. Only-if-unset, so an
+        # explicit user option wins.
+        footprint <- if (identical(ckpt$format, "nf4")) 12 else 8
+        ltx23_tune_gc(footprint_gb = footprint)
+    }
     groups <- ltx23_split_keys(ckpt$keys)
     torch_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
                           float16 = torch::torch_float16(),
@@ -532,6 +540,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Decoding video...")
         }
+        phase_t0 <- Sys.time()
         vae <- onload(pipeline$vae)
         vae_device <- vae$latents_mean$device
         vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
@@ -547,16 +556,26 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             video <- ((video$to(dtype = f32) / 2 + 0.5)$clamp(0, 1))[1,,,,]
             video <- video$permute(c(2L, 3L, 4L, 1L))$cpu()
         })
+        if (verbose) {
+            message(sprintf("  video decode: %.1fs",
+                            as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
+            phase_t0 <- Sys.time()
+        }
         result$video <- as.array(video)
         rm(video, video_latents)
         offload(pipeline$vae)
         gc(verbose = FALSE)
+        if (verbose) {
+            message(sprintf("  video to R array: %.1fs",
+                            as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
+        }
     }
 
     if (decode_audio) {
         if (verbose) {
             message("Decoding audio...")
         }
+        phase_t0 <- Sys.time()
         audio_vae <- onload(pipeline$audio_vae)
         onload(pipeline$vocoder)
         av_device <- audio_vae$latents_mean$device
@@ -579,9 +598,14 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         offload(pipeline$audio_vae)
         offload(pipeline$vocoder)
         gc(verbose = FALSE)
+        if (verbose) {
+            message(sprintf("  audio chain: %.1fs",
+                            as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
+        }
     }
 
     if (!is.null(filename) && decode_video) {
+        phase_t0 <- Sys.time()
         save_video_ltx23(result$video, filename,
                          fps = frame_rate,
                          audio = if (decode_audio) result$audio else NULL,
@@ -589,6 +613,10 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          verbose = verbose
         )
         result$filename <- filename
+        if (verbose) {
+            message(sprintf("  encode + mux: %.1fs",
+                            as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
+        }
     }
 
     invisible(result)

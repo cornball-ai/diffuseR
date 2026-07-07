@@ -426,7 +426,11 @@ ltx23_video_vae <- torch::nn_module(
                                        causal
             )
             row[[length(row) + 1L]] <- tile
-            gc(verbose = FALSE)
+            if (!isTRUE(getOption("diffuseR.jit_vae", FALSE))) {
+                # Eager tiles leave GBs of dead handles; without this
+                # the allocator callback storms instead
+                gc(verbose = FALSE)
+            }
         }
         rows[[length(rows) + 1L]] <- row
     }
@@ -483,7 +487,9 @@ ltx23_video_vae <- torch::nn_module(
             decoded <- decoded$narrow(3L, 1L, decoded$shape[3] - 1L)
         }
         row[[length(row) + 1L]] <- decoded
-        gc(verbose = FALSE)
+        if (!isTRUE(getOption("diffuseR.jit_vae", FALSE))) {
+            gc(verbose = FALSE)
+        }
     }
 
     result_row <- list()
