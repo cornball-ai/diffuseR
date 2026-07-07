@@ -44,10 +44,11 @@ targets::install_github("cornball-ai/diffuseR")
 
 ## Features
 
-- **Text-to-Image Generation**: Create images from textual descriptions
-- **Image-to-Image Generation**: Modify existing images based on text prompts
-- **Two Models**: Stable Diffusion 2.1 and SDXL (fully native R torch implementation)
-- **Scheduler Options**: DDIM (more coming soon)
+- **Text-to-Image Generation**: Stable Diffusion 2.1, SDXL, FLUX.1-schnell, and FLUX.2 Klein (fully native R torch implementations)
+- **Text-to-Video Generation**: LTX-2.3 with synchronized audio
+- **Image-to-Image Generation**: Modify existing images based on text prompts (SD 2.1 / SDXL)
+- **GPU-poor support**: NF4 and fp8 quantization run the 12B FLUX.1 and 22B LTX-2.3 transformers on a 16GB card
+- **Scheduler Options**: DDIM and FlowMatch Euler (static and dynamic shifting)
 - **Device Support**: CPU and CUDA GPUs (including Blackwell RTX 50xx)
 - **R-native Interface**: Functional programming approach that feels natural in R
 
@@ -133,17 +134,48 @@ torch::cuda_empty_cache()
 ![](man/figures/cat2.png)
 ![](man/figures/gambling_cat.png)
 
+
+### FLUX
+
+FLUX.1-schnell (12B) and FLUX.2 Klein (4B) are step-distilled models:
+4 denoising steps, no guidance. Both are quantized locally once at
+download time and fit comfortably on a 16GB GPU (measured on an RTX
+5060 Ti: FLUX.1 1024x1024 in ~2 min at 8.7GB peak; FLUX.2 Klein in
+~48s at 8.2GB peak).
+
+```r
+library(diffuseR)
+
+# FLUX.1-schnell: the HuggingFace repo is gated (Apache-2.0 weights,
+# license click-through). Accept the license and set HF_TOKEN first.
+# ~34GB download, one-time NF4 quantize to a 6.8GB artifact.
+download_flux1()
+txt2img_flux("An astronaut riding a horse on Mars, photorealistic",
+             seed = 7)
+
+# FLUX.2 Klein 4B: ungated. ~16GB download, one-time fp8 quantize to
+# a 3.9GB artifact.
+download_flux2_klein()
+txt2img_flux2("a red fox sitting in a snowy forest, digital art",
+              seed = 42)
+
+# Or through the common dispatcher
+txt2img("a lighthouse at dusk", model_name = "flux2")
+```
+
 ## Supported Models
 
 Currently supported models:
 
 - Stable Diffusion 2.1
 - Stable Diffusion XL (SDXL)
-- LTX-2 Video (in development)
+- FLUX.1-schnell (12B, 4-step distilled)
+- FLUX.2 Klein 4B (4-step distilled)
+- LTX-2.3 Video (with audio)
 
 ### Downloading Models
 
-Models are automatically downloaded from HuggingFace on first use. For gated models (like Gemma for LTX-2), you need to:
+Models are automatically downloaded from HuggingFace on first use. For gated models (like FLUX.1-schnell), you need to:
 
 1. Create a HuggingFace account at https://huggingface.co
 2. Accept the model's license agreement (visit the model page and click "Agree")
@@ -172,7 +204,8 @@ Future plans for diffuseR include:
 
 - [ ] Inpainting support
 - [ ] Additional schedulers (PNDM, DPMSolverMultistep, Euler ancestral)
-- [ ] text-to-video generation
+- [ ] FLUX.2 reference-image conditioning and img2img
+- [x] text-to-video generation (LTX-2.3)
 
 ## How It Works
 
