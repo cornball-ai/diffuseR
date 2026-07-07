@@ -54,3 +54,4 @@ ref/
 /ref
 tasks/
 .venv/
+tools/cache/
