@@ -34,7 +34,7 @@ flux_ada_layer_norm_zero <- torch::nn_module(
     emb <- self$linear(torch::nnf_silu(emb))
     p <- emb$chunk(6L, dim = 2L)
     # shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp
-    x <- self$norm(x) * (1 + p[[2]]$unsqueeze(2L)) + p[[1]]$unsqueeze(2L)
+    x <- self$norm(x) * p[[2]]$unsqueeze(2L)$add(1) + p[[1]]$unsqueeze(2L)
     list(x, p[[3]], p[[4]], p[[5]], p[[6]])
 }
 )
@@ -60,7 +60,7 @@ flux_ada_layer_norm_zero_single <- torch::nn_module(
     emb <- self$linear(torch::nnf_silu(emb))
     p <- emb$chunk(3L, dim = 2L)
     # shift_msa, scale_msa, gate_msa
-    x <- self$norm(x) * (1 + p[[2]]$unsqueeze(2L)) + p[[1]]$unsqueeze(2L)
+    x <- self$norm(x) * p[[2]]$unsqueeze(2L)$add(1) + p[[1]]$unsqueeze(2L)
     list(x, p[[3]])
 }
 )
@@ -87,7 +87,7 @@ flux_ada_layer_norm_continuous <- torch::nn_module(
     emb <- self$linear(torch::nnf_silu(cond)$to(dtype = x$dtype))
     p <- emb$chunk(2L, dim = 2L)
     # scale, shift
-    self$norm(x) * (1 + p[[1]]$unsqueeze(2L)) + p[[2]]$unsqueeze(2L)
+    self$norm(x) * p[[1]]$unsqueeze(2L)$add(1) + p[[2]]$unsqueeze(2L)
 }
 )
 
@@ -237,7 +237,7 @@ flux_double_block <- torch::nn_module(
 
     # Image stream: gated attention + modulated feed-forward
     hidden_states <- hidden_states + n1[[2]]$unsqueeze(2L) * attn_out[[1]]
-    norm_h <- self$norm2(hidden_states) * (1 + n1[[4]]$unsqueeze(2L)) +
+    norm_h <- self$norm2(hidden_states) * n1[[4]]$unsqueeze(2L)$add(1) +
     n1[[3]]$unsqueeze(2L)
     hidden_states <- hidden_states + n1[[5]]$unsqueeze(2L) * self$ff(norm_h)
 
@@ -245,7 +245,7 @@ flux_double_block <- torch::nn_module(
     encoder_hidden_states <- encoder_hidden_states +
     n1c[[2]]$unsqueeze(2L) * attn_out[[2]]
     norm_c <- self$norm2_context(encoder_hidden_states) *
-    (1 + n1c[[4]]$unsqueeze(2L)) + n1c[[3]]$unsqueeze(2L)
+    n1c[[4]]$unsqueeze(2L)$add(1) + n1c[[3]]$unsqueeze(2L)
     encoder_hidden_states <- encoder_hidden_states +
     n1c[[5]]$unsqueeze(2L) * self$ff_context(norm_c)
 
