@@ -86,5 +86,9 @@ save_file(
 io["vae_latent"] = latent
 io["vae_image"] = image
 io = {k: v.contiguous() for k, v in io.items()}
-save_file(io, os.path.join(OUT_DIR, "clip_vae_io.safetensors"))
+# Metadata shifts the header size: without it this file's leading bytes
+# happen to match `file`'s VAX COFF magic and R CMD check flags it as
+# an executable
+save_file(io, os.path.join(OUT_DIR, "clip_vae_io.safetensors"),
+          metadata={"purpose": "diffuseR FLUX test fixture"})
 print(f"wrote clip_tiny, vae16_tiny, and {len(io)} io tensors to {OUT_DIR}")

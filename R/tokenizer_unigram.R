@@ -78,10 +78,10 @@ unigram_tokenizer <- function(tokenizer_path) {
         list()
     }
     prepend_scheme <- "never"
-    replacement <- "▁"
+    replacement <- "\u2581"
     for (p in pres) {
         if (identical(p$type, "Metaspace")) {
-            replacement <- p$replacement %||% "▁"
+            replacement <- p$replacement %||% "\u2581"
             prepend_scheme <- p$prepend_scheme %||%
             (if (isTRUE(p$add_prefix_space)) "always" else "never")
         }

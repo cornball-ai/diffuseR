@@ -52,7 +52,8 @@ NULL
 #' after quantization.
 #'
 #' @param transformer_dir Source diffusers transformer directory.
-#' @param output_dir Output directory for shards + manifest.
+#' @param output_dir Output directory for shards + manifest (default:
+#'   the per-format location under \code{tools::R_user_dir}).
 #' @param format "nf4" or "fp8".
 #' @param shard_bytes Numeric. Approximate shard size.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
@@ -61,12 +62,14 @@ NULL
 #' @return Invisibly, the manifest list.
 #'
 #' @export
-flux_quantize <- function(transformer_dir,
-                          output_dir = file.path(tools::R_user_dir("diffuseR", "data"),
-        paste0("flux1-schnell-", format)),
+flux_quantize <- function(transformer_dir, output_dir = NULL,
                           format = c("nf4", "fp8"), shard_bytes = 4e9,
                           force = FALSE, verbose = TRUE) {
     format <- match.arg(format)
+    if (is.null(output_dir)) {
+        output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
+                                paste0("flux1-schnell-", format))
+    }
 
     manifest_path <- file.path(output_dir, "manifest.json")
     if (!force && file.exists(manifest_path)) {

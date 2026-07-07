@@ -3,15 +3,14 @@
 \alias{flux_quantize}
 \title{Quantize a FLUX transformer to NF4 or fp8 shards}
 \usage{
-flux_quantize(transformer_dir,
-              output_dir = file.path(tools::R_user_dir("diffuseR", "data"), paste0("flux1-schnell-", format)),
-              format = c("nf4", "fp8"), shard_bytes = 4e+09, force = FALSE,
-              verbose = TRUE)
+flux_quantize(transformer_dir, output_dir = NULL, format = c("nf4", "fp8"),
+              shard_bytes = 4e+09, force = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{transformer_dir}{Source diffusers transformer directory.}
 
-\item{output_dir}{Output directory for shards + manifest.}
+\item{output_dir}{Output directory for shards + manifest (default:
+the per-format location under \code{tools::R_user_dir}).}
 
 \item{format}{"nf4" or "fp8".}
 
