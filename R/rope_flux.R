@@ -33,8 +33,8 @@ flux_prepare_latent_image_ids <- function(height, width, device = "cpu") {
                                 device = device)
     cols <- torch::torch_arange(start = 0, end = width - 1, dtype = f32,
                                 device = device)
-    ids[, , 2] <- ids[, , 2] + rows$unsqueeze(2L)
-    ids[, , 3] <- ids[, , 3] + cols$unsqueeze(1L)
+    ids[,, 2] <- ids[,, 2] + rows$unsqueeze(2L)
+    ids[,, 3] <- ids[,, 3] + cols$unsqueeze(1L)
     ids$reshape(c(height * width, 3L))
 }
 
@@ -69,7 +69,7 @@ flux_pos_embed <- function(ids, axes_dim = c(16L, 56L, 56L), theta = 10000) {
         d <- axes_dim[i]
         # freqs = 1 / theta^(seq(0, d - 2, by = 2) / d), length d / 2
         exponents <- torch::torch_arange(start = 0, end = d - 2, step = 2,
-                                         dtype = f64)
+            dtype = f64)
         freqs <- 1.0 / torch::torch_pow(theta, exponents / d)
         # Outer product [S, d/2]
         freqs <- pos[, i]$unsqueeze(2L) * freqs$unsqueeze(1L)
@@ -104,8 +104,8 @@ flux_apply_rotary_emb <- function(x, freqs) {
     sin <- freqs[[2]]$unsqueeze(1L)$unsqueeze(1L)
 
     pairs <- x$unflatten(4L, c(-1L, 2L)) # [B, H, S, D/2, 2]
-    x_real <- pairs[, , , , 1]
-    x_imag <- pairs[, , , , 2]
+    x_real <- pairs[,,,, 1]
+    x_imag <- pairs[,,,, 2]
     x_rotated <- torch::torch_stack(list(-x_imag, x_real), dim = -1L)$flatten(start_dim = 4L)
 
     out <- x$to(dtype = torch::torch_float32()) * cos +

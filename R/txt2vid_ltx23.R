@@ -203,7 +203,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # decode phases measured 86% of wall time in callback-driven
         # R gc at the 0.20 default reserved rate. Only-if-unset, so an
         # explicit user option wins.
-        footprint <- if (identical(ckpt$format, "nf4")) 12 else 8
+        if (identical(ckpt$format, "nf4")) {
+            footprint <- 12
+        } else {
+            footprint <- 8
+        }
         ltx23_tune_gc(footprint_gb = footprint)
     }
     groups <- ltx23_split_keys(ckpt$keys)
@@ -599,8 +603,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             audio_lat <- ltx23_unpack_audio_latents(audio_packed, latent_mel_bins)
             mel <- audio_vae$decode(audio_lat$to(dtype = av_dtype))
             waveform <- .ltx23_traced_call(
-                                           pipeline$vocoder,
-                                           mel$to(dtype = torch::torch_float32())
+                pipeline$vocoder,
+                mel$to(dtype = torch::torch_float32())
             )
             waveform <- waveform[1,,]$cpu()
         })
