@@ -110,9 +110,9 @@ flux_ada_layer_norm_continuous <- torch::nn_module(
 #'
 #' @export
 flux_attention <- torch::nn_module(
-    "flux_attention",
-    initialize = function(query_dim, heads, dim_head, added_kv = FALSE,
-                          pre_only = FALSE, eps = 1e-6) {
+                                   "flux_attention",
+                                   initialize = function(query_dim, heads, dim_head, added_kv = FALSE,
+        pre_only = FALSE, eps = 1e-6) {
     inner_dim <- heads * dim_head
     self$heads <- heads
     self$dim_head <- dim_head
@@ -139,8 +139,8 @@ flux_attention <- torch::nn_module(
         self$to_add_out <- torch::nn_linear(inner_dim, query_dim, bias = TRUE)
     }
 },
-    forward = function(hidden_states, encoder_hidden_states = NULL,
-                       image_rotary_emb = NULL, chunk_size = NULL) {
+                                   forward = function(hidden_states, encoder_hidden_states = NULL,
+        image_rotary_emb = NULL, chunk_size = NULL) {
     # Per-head layout [B, S, H, D]
     query <- self$to_q(hidden_states)$unflatten(3L, c(self$heads, -1L))
     key <- self$to_k(hidden_states)$unflatten(3L, c(self$heads, -1L))
@@ -151,7 +151,8 @@ flux_attention <- torch::nn_module(
 
     if (!is.null(encoder_hidden_states)) {
         txt_len <- encoder_hidden_states$shape[2]
-        eq <- self$add_q_proj(encoder_hidden_states)$unflatten(3L, c(self$heads, -1L))
+        eq <- self$add_q_proj(encoder_hidden_states)$unflatten(3L,
+            c(self$heads, -1L))
         ek <- self$add_k_proj(encoder_hidden_states)$unflatten(3L, c(self$heads, -1L))
         ev <- self$add_v_proj(encoder_hidden_states)$unflatten(3L, c(self$heads, -1L))
         eq <- self$norm_added_q(eq)
@@ -182,9 +183,9 @@ flux_attention <- torch::nn_module(
         ctx <- out$narrow(2L, 1L, txt_len)
         img <- out$narrow(2L, txt_len + 1L, seq_len - txt_len)
         return(list(
-                self$to_out[[1]](img$contiguous()),
-                self$to_add_out(ctx$contiguous())
-        ))
+                    self$to_out[[1]](img$contiguous()),
+                    self$to_add_out(ctx$contiguous())
+            ))
     }
     if (self$pre_only) {
         return(out)
@@ -209,21 +210,21 @@ flux_attention <- torch::nn_module(
 #'
 #' @export
 flux_double_block <- torch::nn_module(
-    "flux_double_block",
-    initialize = function(dim, num_attention_heads, attention_head_dim) {
+                                      "flux_double_block",
+                                      initialize = function(dim, num_attention_heads, attention_head_dim) {
     self$norm1 <- flux_ada_layer_norm_zero(dim)
     self$norm1_context <- flux_ada_layer_norm_zero(dim)
-    self$attn <- flux_attention(dim, num_attention_heads,
-                                attention_head_dim, added_kv = TRUE)
+    self$attn <- flux_attention(dim, num_attention_heads, attention_head_dim,
+                                added_kv = TRUE)
     self$norm2 <- torch::nn_layer_norm(dim, eps = 1e-6,
                                        elementwise_affine = FALSE)
     self$ff <- ltx23_feed_forward(dim, mult = 4L)
     self$norm2_context <- torch::nn_layer_norm(dim, eps = 1e-6,
-                                               elementwise_affine = FALSE)
+        elementwise_affine = FALSE)
     self$ff_context <- ltx23_feed_forward(dim, mult = 4L)
 },
-    forward = function(hidden_states, encoder_hidden_states, temb,
-                       image_rotary_emb = NULL, chunk_size = NULL) {
+                                      forward = function(hidden_states, encoder_hidden_states, temb,
+        image_rotary_emb = NULL, chunk_size = NULL) {
     n1 <- self$norm1(hidden_states, emb = temb)
     n1c <- self$norm1_context(encoder_hidden_states, emb = temb)
 
@@ -274,18 +275,18 @@ flux_double_block <- torch::nn_module(
 #'
 #' @export
 flux_single_block <- torch::nn_module(
-    "flux_single_block",
-    initialize = function(dim, num_attention_heads, attention_head_dim,
-                          mlp_ratio = 4.0) {
+                                      "flux_single_block",
+                                      initialize = function(dim, num_attention_heads, attention_head_dim,
+        mlp_ratio = 4.0) {
     mlp_hidden_dim <- as.integer(dim * mlp_ratio)
     self$norm <- flux_ada_layer_norm_zero_single(dim)
     self$proj_mlp <- torch::nn_linear(dim, mlp_hidden_dim)
     self$proj_out <- torch::nn_linear(dim + mlp_hidden_dim, dim)
-    self$attn <- flux_attention(dim, num_attention_heads,
-                                attention_head_dim, pre_only = TRUE)
+    self$attn <- flux_attention(dim, num_attention_heads, attention_head_dim,
+                                pre_only = TRUE)
 },
-    forward = function(hidden_states, temb, image_rotary_emb = NULL,
-                       chunk_size = NULL) {
+                                      forward = function(hidden_states, temb, image_rotary_emb = NULL,
+        chunk_size = NULL) {
     residual <- hidden_states
     n <- self$norm(hidden_states, emb = temb)
     mlp <- torch::nnf_gelu(self$proj_mlp(n[[1]]), approximate = "tanh")
