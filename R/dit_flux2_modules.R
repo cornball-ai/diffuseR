@@ -28,13 +28,12 @@ NULL
 #'
 #' @export
 flux2_modulation <- torch::nn_module(
-    "flux2_modulation",
-    initialize = function(dim, mod_param_sets = 2L, bias = FALSE) {
+                                     "flux2_modulation",
+                                     initialize = function(dim, mod_param_sets = 2L, bias = FALSE) {
     self$mod_param_sets <- mod_param_sets
-    self$linear <- torch::nn_linear(dim, dim * 3L * mod_param_sets,
-                                    bias = bias)
+    self$linear <- torch::nn_linear(dim, dim * 3L * mod_param_sets, bias = bias)
 },
-    forward = function(temb) {
+                                     forward = function(temb) {
     self$linear(torch::nnf_silu(temb))
 }
 )
@@ -65,14 +64,14 @@ flux2_modulation <- torch::nn_module(
 #'
 #' @export
 flux2_feed_forward <- torch::nn_module(
-    "flux2_feed_forward",
-    initialize = function(dim, dim_out = NULL, mult = 3.0, bias = FALSE) {
+                                       "flux2_feed_forward",
+                                       initialize = function(dim, dim_out = NULL, mult = 3.0, bias = FALSE) {
     inner_dim <- as.integer(dim * mult)
     self$linear_in <- torch::nn_linear(dim, inner_dim * 2L, bias = bias)
     self$linear_out <- torch::nn_linear(inner_dim, dim_out %||% dim,
                                         bias = bias)
 },
-    forward = function(x) {
+                                       forward = function(x) {
     x <- self$linear_in(x)
     half <- x$shape[length(x$shape)] %/% 2L
     x <- torch::nnf_silu(x$narrow(-1L, 1L, half)) *
@@ -105,10 +104,8 @@ flux2_parallel_self_attention <- torch::nn_module(
     self$inner_dim <- inner_dim
     self$mlp_hidden_dim <- as.integer(query_dim * mlp_ratio)
 
-    self$to_qkv_mlp_proj <- torch::nn_linear(
-                                             query_dim, inner_dim * 3L + self$mlp_hidden_dim * 2L,
-                                             bias = bias
-    )
+    self$to_qkv_mlp_proj <- torch::nn_linear(query_dim,
+        inner_dim * 3L + self$mlp_hidden_dim * 2L, bias = bias)
     self$norm_q <- ltx23_rms_norm(dim_head, eps = eps)
     self$norm_k <- ltx23_rms_norm(dim_head, eps = eps)
     self$to_out <- torch::nn_linear(inner_dim + self$mlp_hidden_dim,
@@ -118,8 +115,7 @@ flux2_parallel_self_attention <- torch::nn_module(
                        chunk_size = NULL) {
     proj <- self$to_qkv_mlp_proj(hidden_states)
     qkv <- proj$narrow(-1L, 1L, 3L * self$inner_dim)
-    mlp <- proj$narrow(-1L, 3L * self$inner_dim + 1L,
-                       self$mlp_hidden_dim * 2L)
+    mlp <- proj$narrow(-1L, 3L * self$inner_dim + 1L, self$mlp_hidden_dim * 2L)
 
     parts <- qkv$chunk(3L, dim = -1L)
     query <- parts[[1]]$unflatten(3L, c(self$heads, -1L))
@@ -170,13 +166,13 @@ flux2_parallel_self_attention <- torch::nn_module(
 #'
 #' @export
 flux2_double_block <- torch::nn_module(
-    "flux2_double_block",
-    initialize = function(dim, num_attention_heads, attention_head_dim,
-                          mlp_ratio = 3.0, eps = 1e-6, bias = FALSE) {
+                                       "flux2_double_block",
+                                       initialize = function(dim, num_attention_heads, attention_head_dim,
+        mlp_ratio = 3.0, eps = 1e-6, bias = FALSE) {
     self$norm1 <- torch::nn_layer_norm(dim, eps = eps,
                                        elementwise_affine = FALSE)
     self$norm1_context <- torch::nn_layer_norm(dim, eps = eps,
-                                               elementwise_affine = FALSE)
+        elementwise_affine = FALSE)
     self$attn <- flux_attention(dim, num_attention_heads,
                                 attention_head_dim, added_kv = TRUE,
                                 eps = eps, bias = bias)
@@ -184,13 +180,13 @@ flux2_double_block <- torch::nn_module(
                                        elementwise_affine = FALSE)
     self$ff <- flux2_feed_forward(dim, dim, mult = mlp_ratio, bias = bias)
     self$norm2_context <- torch::nn_layer_norm(dim, eps = eps,
-                                               elementwise_affine = FALSE)
+        elementwise_affine = FALSE)
     self$ff_context <- flux2_feed_forward(dim, dim, mult = mlp_ratio,
-                                          bias = bias)
+        bias = bias)
 },
-    forward = function(hidden_states, encoder_hidden_states, temb_mod_img,
-                       temb_mod_txt, image_rotary_emb = NULL,
-                       chunk_size = NULL) {
+                                       forward = function(hidden_states, encoder_hidden_states, temb_mod_img,
+        temb_mod_txt, image_rotary_emb = NULL,
+        chunk_size = NULL) {
     mi <- .flux2_mod_split(temb_mod_img, 2L)
     mt <- .flux2_mod_split(temb_mod_txt, 2L)
     # Each triple is (shift, scale, gate)
@@ -246,18 +242,18 @@ flux2_double_block <- torch::nn_module(
 #'
 #' @export
 flux2_single_block <- torch::nn_module(
-    "flux2_single_block",
-    initialize = function(dim, num_attention_heads, attention_head_dim,
-                          mlp_ratio = 3.0, eps = 1e-6, bias = FALSE) {
+                                       "flux2_single_block",
+                                       initialize = function(dim, num_attention_heads, attention_head_dim,
+        mlp_ratio = 3.0, eps = 1e-6, bias = FALSE) {
     self$norm <- torch::nn_layer_norm(dim, eps = eps,
                                       elementwise_affine = FALSE)
     self$attn <- flux2_parallel_self_attention(
-                                               dim, num_attention_heads, attention_head_dim,
-                                               mlp_ratio = mlp_ratio, eps = eps, bias = bias
+        dim, num_attention_heads, attention_head_dim,
+        mlp_ratio = mlp_ratio, eps = eps, bias = bias
     )
 },
-    forward = function(hidden_states, temb_mod, image_rotary_emb = NULL,
-                       chunk_size = NULL) {
+                                       forward = function(hidden_states, temb_mod, image_rotary_emb = NULL,
+        chunk_size = NULL) {
     mod <- .flux2_mod_split(temb_mod, 1L)[[1]]
     norm_h <- self$norm(hidden_states) * mod[[2]]$add(1) + mod[[1]]
     attn_out <- self$attn(
