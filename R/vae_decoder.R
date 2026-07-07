@@ -8,12 +8,13 @@ VAEResnetBlock <- torch::nn_module(
 
                                    initialize = function(
         in_channels,
-        out_channels
+        out_channels,
+        norm_groups = 32
     ) {
-    self$norm1 <- torch::nn_group_norm(32, in_channels, eps = 1e-6)
+    self$norm1 <- torch::nn_group_norm(norm_groups, in_channels, eps = 1e-6)
     self$conv1 <- torch::nn_conv2d(in_channels, out_channels,
                                    kernel_size = 3, padding = 1)
-    self$norm2 <- torch::nn_group_norm(32, out_channels, eps = 1e-6)
+    self$norm2 <- torch::nn_group_norm(norm_groups, out_channels, eps = 1e-6)
     self$conv2 <- torch::nn_conv2d(out_channels, out_channels, kernel_size = 3, padding = 1)
 
     # Shortcut if dimensions change
@@ -49,8 +50,8 @@ VAEResnetBlock <- torch::nn_module(
 VAEAttentionBlock <- torch::nn_module(
                                       "VAEAttentionBlock",
 
-                                      initialize = function(channels) {
-    self$group_norm <- torch::nn_group_norm(32, channels, eps = 1e-6)
+                                      initialize = function(channels, norm_groups = 32) {
+    self$group_norm <- torch::nn_group_norm(norm_groups, channels, eps = 1e-6)
     self$to_q <- torch::nn_linear(channels, channels)
     self$to_k <- torch::nn_linear(channels, channels)
     self$to_v <- torch::nn_linear(channels, channels)
@@ -108,7 +109,8 @@ VAEUpBlock <- torch::nn_module(
         in_channels,
         out_channels,
         num_resnets = 3,
-        add_upsample = TRUE
+        add_upsample = TRUE,
+        norm_groups = 32
     ) {
     self$resnets <- torch::nn_module_list()
 
@@ -118,7 +120,7 @@ VAEUpBlock <- torch::nn_module(
         } else {
             res_in <- out_channels
         }
-        self$resnets$append(VAEResnetBlock(res_in, out_channels))
+        self$resnets$append(VAEResnetBlock(res_in, out_channels, norm_groups))
     }
 
     if (add_upsample) {
@@ -156,12 +158,13 @@ VAEUpBlock <- torch::nn_module(
 VAEMidBlock <- torch::nn_module(
                                 "VAEMidBlock",
 
-                                initialize = function(channels) {
+                                initialize = function(channels, norm_groups = 32) {
     self$resnets <- torch::nn_module_list(list(
-            VAEResnetBlock(channels, channels),
-            VAEResnetBlock(channels, channels)
+            VAEResnetBlock(channels, channels, norm_groups),
+            VAEResnetBlock(channels, channels, norm_groups)
         ))
-    self$attentions <- torch::nn_module_list(list(VAEAttentionBlock(channels)))
+    self$attentions <- torch::nn_module_list(list(VAEAttentionBlock(channels,
+        norm_groups)))
 },
 
                                 forward = function(x) {
@@ -171,6 +174,62 @@ VAEMidBlock <- torch::nn_module(
     x
 }
 )
+
+#' Load HF safetensors VAE weights into the native decoder
+#'
+#' Loads the decoder half of a diffusers AutoencoderKL safetensors file
+#' (e.g. FLUX.1-schnell's \code{vae/diffusion_pytorch_model.safetensors}).
+#' Keys under \code{decoder.} map to the native module 1:1; encoder and
+#' quant-conv keys are skipped (the FLUX VAE has no quant convs, and
+#' txt2img needs no encoder).
+#'
+#' @param native_decoder Native VAE decoder module
+#' @param path Path to the VAE .safetensors file (or a directory
+#'   containing diffusion_pytorch_model.safetensors)
+#' @param verbose Print loading progress
+#'
+#' @return The native decoder with loaded weights (invisibly)
+#' @export
+load_decoder_safetensors <- function(native_decoder, path, verbose = TRUE) {
+    path <- path.expand(path)
+    if (dir.exists(path)) {
+        path <- file.path(path, "diffusion_pytorch_model.safetensors")
+    }
+    handle <- safetensors::safetensors$new(path, framework = "torch")
+    keys <- setdiff(handle$keys(), "__metadata__")
+    dec_keys <- keys[startsWith(keys, "decoder.")]
+
+    dests <- native_decoder$named_parameters()
+    filled <- character(0)
+    unmapped <- character(0)
+    torch::with_no_grad({
+        for (key in dec_keys) {
+            native_name <- sub("^decoder\\.", "", key)
+            dest <- dests[[native_name]]
+            if (is.null(dest)) {
+                unmapped <- c(unmapped, key)
+                next
+            }
+            dest$copy_(handle$get_tensor(key))
+            filled <- c(filled, native_name)
+        }
+    })
+
+    unfilled <- setdiff(names(dests), filled)
+    if (length(unmapped)) {
+        stop("VAE decoder load: ", length(unmapped), " unmapped keys, e.g. ",
+             paste(utils::head(unmapped, 3), collapse = ", "))
+    }
+    if (length(unfilled)) {
+        stop("VAE decoder load: ", length(unfilled),
+             " unfilled params, e.g. ",
+             paste(utils::head(unfilled, 3), collapse = ", "))
+    }
+    if (verbose) {
+        message("Loaded ", length(filled), " decoder parameters from ", path)
+    }
+    invisible(native_decoder)
+}
 
 #' Load weights from TorchScript decoder into native decoder
 #'
@@ -219,8 +278,13 @@ load_decoder_weights <- function(native_decoder, torchscript_path,
 #' Native R torch implementation of the SDXL VAE decoder.
 #' Replaces TorchScript decoder for better GPU compatibility.
 #'
-#' @param latent_channels Number of latent channels (default 4)
+#' @param latent_channels Number of latent channels (4 for SD/SDXL,
+#'   16 for FLUX/SD3)
 #' @param out_channels Number of output channels (default 3 for RGB)
+#' @param block_channels Decoder block channels (reversed encoder
+#'   block_out_channels; default matches SD/SDXL and FLUX)
+#' @param norm_groups Group norm groups (default 32; must divide every
+#'   entry of \code{block_channels})
 #'
 #' @return An nn_module representing the VAE decoder
 #' @export
@@ -237,37 +301,33 @@ vae_decoder_native <- torch::nn_module(
 
                                        initialize = function(
         latent_channels = 4,
-        out_channels = 3
+        out_channels = 3,
+        block_channels = c(512, 512, 256, 128),
+        norm_groups = 32
     ) {
-    # SDXL VAE decoder architecture:
-    # Block channels: 512, 512, 256, 128 (reversed from encoder)
-    block_channels <- c(512, 512, 256, 128)
+    # Diffusers AutoencoderKL decoder: block channels reversed from the
+    # encoder's block_out_channels; upsamplers on all but the last block.
+    # The SD/SDXL and FLUX/SD3 VAEs share this exact shape (FLUX differs
+    # only in latent_channels = 16).
+    n_blocks <- length(block_channels)
 
-    # Input conv: latent_channels -> 512
-    self$conv_in <- torch::nn_conv2d(latent_channels, 512, kernel_size = 3,
-                                     padding = 1)
+    self$conv_in <- torch::nn_conv2d(latent_channels, block_channels[1],
+                                     kernel_size = 3, padding = 1)
 
-    # Mid block
-    self$mid_block <- VAEMidBlock(512)
+    self$mid_block <- VAEMidBlock(block_channels[1], norm_groups)
 
-    # Up blocks (4 blocks, 3 with upsamplers)
     self$up_blocks <- torch::nn_module_list()
+    for (i in seq_len(n_blocks)) {
+        in_ch <- block_channels[max(i - 1, 1)]
+        self$up_blocks$append(VAEUpBlock(in_ch, block_channels[i],
+            num_resnets = 3,
+            add_upsample = i < n_blocks,
+            norm_groups = norm_groups))
+    }
 
-    # up_block 0: 512 -> 512, has upsampler
-    self$up_blocks$append(VAEUpBlock(512, 512, num_resnets = 3, add_upsample = TRUE))
-
-    # up_block 1: 512 -> 512, has upsampler
-    self$up_blocks$append(VAEUpBlock(512, 512, num_resnets = 3, add_upsample = TRUE))
-
-    # up_block 2: 512 -> 256, has upsampler
-    self$up_blocks$append(VAEUpBlock(512, 256, num_resnets = 3, add_upsample = TRUE))
-
-    # up_block 3: 256 -> 128, NO upsampler (final block)
-    self$up_blocks$append(VAEUpBlock(256, 128, num_resnets = 3, add_upsample = FALSE))
-
-    # Output layers
-    self$conv_norm_out <- torch::nn_group_norm(32, 128, eps = 1e-6)
-    self$conv_out <- torch::nn_conv2d(128, out_channels, kernel_size = 3, padding = 1)
+    last <- block_channels[n_blocks]
+    self$conv_norm_out <- torch::nn_group_norm(norm_groups, last, eps = 1e-6)
+    self$conv_out <- torch::nn_conv2d(last, out_channels, kernel_size = 3, padding = 1)
 },
 
                                        forward = function(x) {
