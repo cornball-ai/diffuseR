@@ -176,16 +176,27 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     } else {
         component_device <- device
     }
-    if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
-        # Reduces caching-allocator fragmentation; must be set before the
-        # first CUDA allocation
-        Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True")
-    }
     fp8 <- dir.exists(checkpoint_path)
     ckpt <- if (fp8) {
         ltx23_open_fp8_checkpoint(checkpoint_path)
     } else {
         ltx23_open_checkpoint(checkpoint_path)
+    }
+    if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
+        # Must be set before the first CUDA allocation. NF4 runs the
+        # compiled block stack whose intermediates never become R
+        # handles: the native backend is faster there (expandable
+        # frees are page-unmaps, which is what made the decode gc
+        # storm expensive) and its 1280x704 fit is validated. The
+        # fp8/eager paths were only ever validated under
+        # expandable_segments (fragmentation from eager handle churn),
+        # so they keep it.
+        conf <- if (identical(ckpt$format, "nf4")) {
+            "backend:native"
+        } else {
+            "expandable_segments:True"
+        }
+        Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = conf)
     }
     if (device == "cuda") {
         # Stop the allocator gc storm before the first CUDA op: the

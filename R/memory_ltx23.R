@@ -132,6 +132,16 @@ ltx23_tune_gc <- function(footprint_gb = 12, total_gb = NULL) {
     if (is.null(getOption("torch.threshold_call_gc"))) {
         options(torch.threshold_call_gc = 16000)
     }
+    # The other two allocator-callback gates (defaults 0.8): measured
+    # 32.7s -> 21.5s on the tiled decode under expandable segments, and
+    # R-gc share 50% -> 32% on the native backend, with no wall-time
+    # downside in any condition
+    if (is.null(getOption("torch.cuda_allocator_allocated_rate"))) {
+        options(torch.cuda_allocator_allocated_rate = 0.95)
+    }
+    if (is.null(getOption("torch.cuda_allocator_allocated_reserved_rate"))) {
+        options(torch.cuda_allocator_allocated_reserved_rate = 0.95)
+    }
     rate <- NULL
     if (is.null(getOption("torch.cuda_allocator_reserved_rate"))) {
         rate <- min(0.92, max(0.20, footprint_gb / total_gb))
