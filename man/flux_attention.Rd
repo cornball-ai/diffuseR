@@ -4,7 +4,7 @@
 \title{FLUX joint attention}
 \usage{
 flux_attention(query_dim, heads, dim_head, added_kv = FALSE, pre_only = FALSE,
-               eps = 1e-06)
+               eps = 1e-06, bias = TRUE)
 }
 \arguments{
 \item{query_dim}{Integer. Model dimension.}
@@ -18,6 +18,9 @@ flux_attention(query_dim, heads, dim_head, added_kv = FALSE, pre_only = FALSE,
 \item{pre_only}{Logical. Skip the output projection (single blocks).}
 
 \item{eps}{Numeric. RMS norm epsilon.}
+
+\item{bias}{Logical. Bias on the linear projections (TRUE for FLUX.1,
+FALSE for FLUX.2).}
 }
 \description{
 Multi-head attention with per-head RMS q/k norms and rotary position

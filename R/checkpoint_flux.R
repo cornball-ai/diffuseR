@@ -42,6 +42,46 @@ flux_is_quant_key <- function(key) {
     grepl(.flux_quant_cast_pattern, key)
 }
 
+# FLUX.2 cast set: block linears, the three shared modulation
+# projections, and the context embedder (7680 x 3072). Everything else
+# (x_embedder, timestep MLP, norm_out, q/k norms) stays in the resident
+# dtype. Full klein-4B census: 5 double x 12 + 20 single x 2 + 3
+# modulations + context_embedder = 104 cast weights, ~3.9B of 4B params.
+.flux2_quant_cast_pattern <- paste0(
+                                    "^(",
+                                    "transformer_blocks\\.[0-9]+\\.(",
+                                    "attn\\.(to_q|to_k|to_v|add_q_proj|add_k_proj|add_v_proj|to_out\\.0|to_add_out)",
+                                    "|ff\\.(linear_in|linear_out)|ff_context\\.(linear_in|linear_out)",
+                                    ")",
+                                    "|single_transformer_blocks\\.[0-9]+\\.attn\\.(to_qkv_mlp_proj|to_out)",
+                                    "|double_stream_modulation_img\\.linear",
+                                    "|double_stream_modulation_txt\\.linear",
+                                    "|single_stream_modulation\\.linear",
+                                    "|context_embedder",
+                                    ")\\.weight$"
+)
+
+#' Test whether a FLUX.2 key is in the quantization cast set
+#'
+#' @param key Character vector of parameter names (diffusers-style).
+#'
+#' @return Logical vector.
+#'
+#' @export
+flux2_is_quant_key <- function(key) {
+    grepl(.flux2_quant_cast_pattern, key)
+}
+
+# Model family from a diffusers transformer config
+.flux_family <- function(config) {
+    cls <- config$`_class_name` %||% "FluxTransformer2DModel"
+    if (identical(cls, "Flux2Transformer2DModel")) {
+        "flux2"
+    } else {
+        "flux1"
+    }
+}
+
 #' Open a FLUX transformer checkpoint directory
 #'
 #' Opens a diffusers-layout transformer directory lazily (headers only).

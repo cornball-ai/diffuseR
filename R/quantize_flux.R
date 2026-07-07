@@ -41,6 +41,63 @@ NULL
     lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
 }
 
+.flux2_transformer_args <- function(config) {
+    if (is.null(config)) {
+        return(list())
+    }
+    if (isTRUE(config$guidance_embeds)) {
+        stop("This checkpoint uses guidance embeddings (FLUX.2-dev); ",
+             "only the klein variants (guidance_embeds = false) are supported.")
+    }
+    args <- list(
+                 in_channels = config$in_channels,
+                 num_layers = config$num_layers,
+                 num_single_layers = config$num_single_layers,
+                 attention_head_dim = config$attention_head_dim,
+                 num_attention_heads = config$num_attention_heads,
+                 joint_attention_dim = config$joint_attention_dim,
+                 timestep_guidance_channels = config$timestep_guidance_channels,
+                 axes_dims_rope = config$axes_dims_rope,
+                 out_channels = config$out_channels
+    )
+    args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
+    args <- lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
+    for (field in c("mlp_ratio", "rope_theta", "eps")) {
+        v <- config[[field]]
+        if (!is.null(v) && length(v) == 1L) {
+            args[[field]] <- as.numeric(v)
+        }
+    }
+    args
+}
+
+# Move plain-field fp8 weights (and their scales) onto a device; used
+# for resident fp8 where the whole quantized model fits on the GPU
+.flux_fp8_to_device <- function(module, device) {
+    for (name in names(module$children)) {
+        child <- module$children[[name]]
+        if (!is.null(child$weight_fp8)) {
+            child$weight_fp8 <- child$weight_fp8$to(device = device)
+            child$weight_scale <- child$weight_scale$to(device = device)
+        }
+        .flux_fp8_to_device(child, device)
+    }
+    invisible(module)
+}
+
+# Family-specific hooks for quantization and loading
+.flux_family_hooks <- function(config) {
+    if (.flux_family(config) == "flux2") {
+        list(model_fn = flux2_transformer, args_fn = .flux2_transformer_args,
+             is_quant_key = flux2_is_quant_key, shard_prefix = "flux2-klein")
+    } else {
+        list(model_fn = flux_transformer,
+             args_fn = .flux_transformer_args,
+             is_quant_key = flux_is_quant_key,
+             shard_prefix = "flux1")
+    }
+}
+
 #' Quantize a FLUX transformer to NF4 or fp8 shards
 #'
 #' Streams the bf16 diffusers checkpoint tensor by tensor. Cast-set
@@ -86,6 +143,7 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
     ckpt <- flux_open_checkpoint(transformer_dir)
+    hooks <- .flux_family_hooks(ckpt$config)
     if (format == "fp8") {
         fp8 <- torch::torch_float8_e4m3fn()
     }
@@ -99,8 +157,8 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
         if (!length(shard)) {
             return()
         }
-        fname <- sprintf("flux1-%s-%05d.safetensors", format,
-                         length(shard_files) + 1L)
+        fname <- sprintf("%s-%s-%05d.safetensors", hooks$shard_prefix,
+                         format, length(shard_files) + 1L)
         safetensors::safe_save_file(shard, file.path(output_dir, fname))
         shard_files[[length(shard_files) + 1L]] <<- fname
         if (verbose) {
@@ -117,7 +175,7 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
         key <- keys[[i]]
         tensor <- ckpt$handle$get_tensor(key)
 
-        if (flux_is_quant_key(key)) {
+        if (hooks$is_quant_key(key)) {
             torch::with_no_grad({
                 if (format == "nf4") {
                     q <- ltx23_nf4_quantize(tensor)
@@ -192,7 +250,11 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
 #'   quantized formats this sets the resident (non-quantized) tensors
 #'   and must match the compute dtype: bfloat16 for GPU compute,
 #'   float32 for CPU compute.
-#' @param pin Logical. Pin fp8 host memory for faster transfers.
+#' @param pin Logical. Pin fp8 host memory for faster transfers
+#'   (streamed fp8 only).
+#' @param fp8_resident Logical. Keep the fp8 weights on \code{device}
+#'   instead of streaming from the CPU - right for models whose whole
+#'   quantized footprint fits in VRAM (FLUX.2 klein-4B: ~4 GB).
 #' @param verbose Logical.
 #' @param ... Overrides for \code{\link{flux_transformer}} arguments
 #'   (tiny test configs).
@@ -201,12 +263,14 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
 #'
 #' @export
 flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
-                                  pin = TRUE, verbose = TRUE, ...) {
+                                  pin = TRUE, fp8_resident = FALSE,
+                                  verbose = TRUE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
     format <- ckpt$format %||% "full"
+    hooks <- .flux_family_hooks(ckpt$config)
 
-    args <- utils::modifyList(.flux_transformer_args(ckpt$config), list(...))
-    model <- do.call(flux_transformer, args)
+    args <- utils::modifyList(hooks$args_fn(ckpt$config), list(...))
+    model <- do.call(hooks$model_fn, args)
 
     if (format == "full") {
         model$to(dtype = .flux_dtype(dtype))
@@ -244,7 +308,7 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
         for (i in seq_along(main_keys)) {
             key <- main_keys[[i]]
 
-            if (flux_is_quant_key(key) &&
+            if (hooks$is_quant_key(key) &&
                         paste0(key, sib_suffix) %in% sib_keys) {
                 segments <- strsplit(key, ".", fixed = TRUE)[[1]]
                 parent <- .ltx23_walk_module(model, utils::head(segments, -2L))
@@ -307,7 +371,7 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
              paste(utils::head(unmapped, 3), collapse = ", "))
     }
     # Weight params replaced by quantized modules won't be "filled"
-    expected_missing <- flux_is_quant_key(names(dests))
+    expected_missing <- hooks$is_quant_key(names(dests))
     unfilled <- setdiff(names(dests)[!expected_missing], filled)
     if (length(unfilled)) {
         stop("FLUX ", format, " load: ", length(unfilled),
@@ -316,8 +380,12 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     }
 
     # NF4: everything (packed buffers included) onto the device.
-    # FP8: residents move; fp8 weights are plain fields and stay CPU-side.
+    # FP8: residents move; the plain-field fp8 weights stay CPU-side
+    # unless fp8_resident moves them (small models that fit on the GPU).
     model$to(device = device)
+    if (format == "fp8" && fp8_resident) {
+        .flux_fp8_to_device(model, device)
+    }
     model$eval()
     # Block intermediates are large at image resolutions; per-block gc
     # keeps the quantized-linear temporaries bounded

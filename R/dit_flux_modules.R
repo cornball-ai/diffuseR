@@ -74,12 +74,14 @@ flux_ada_layer_norm_zero_single <- torch::nn_module(
 #'
 #' @param dim Integer. Model dimension.
 #' @param cond_dim Integer. Conditioning embedding dimension.
+#' @param bias Logical. Bias on the projection (TRUE for FLUX.1, FALSE
+#'   for FLUX.2).
 #'
 #' @export
 flux_ada_layer_norm_continuous <- torch::nn_module(
     "flux_ada_layer_norm_continuous",
-    initialize = function(dim, cond_dim = dim) {
-    self$linear <- torch::nn_linear(cond_dim, 2L * dim, bias = TRUE)
+    initialize = function(dim, cond_dim = dim, bias = TRUE) {
+    self$linear <- torch::nn_linear(cond_dim, 2L * dim, bias = bias)
     self$norm <- torch::nn_layer_norm(dim, eps = 1e-6,
                                       elementwise_affine = FALSE)
 },
@@ -107,12 +109,14 @@ flux_ada_layer_norm_continuous <- torch::nn_module(
 #' @param added_kv Logical. Add text-stream projections (double blocks).
 #' @param pre_only Logical. Skip the output projection (single blocks).
 #' @param eps Numeric. RMS norm epsilon.
+#' @param bias Logical. Bias on the linear projections (TRUE for FLUX.1,
+#'   FALSE for FLUX.2).
 #'
 #' @export
 flux_attention <- torch::nn_module(
                                    "flux_attention",
                                    initialize = function(query_dim, heads, dim_head, added_kv = FALSE,
-        pre_only = FALSE, eps = 1e-6) {
+        pre_only = FALSE, eps = 1e-6, bias = TRUE) {
     inner_dim <- heads * dim_head
     self$heads <- heads
     self$dim_head <- dim_head
@@ -121,22 +125,22 @@ flux_attention <- torch::nn_module(
 
     self$norm_q <- ltx23_rms_norm(dim_head, eps = eps)
     self$norm_k <- ltx23_rms_norm(dim_head, eps = eps)
-    self$to_q <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
-    self$to_k <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
-    self$to_v <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
+    self$to_q <- torch::nn_linear(query_dim, inner_dim, bias = bias)
+    self$to_k <- torch::nn_linear(query_dim, inner_dim, bias = bias)
+    self$to_v <- torch::nn_linear(query_dim, inner_dim, bias = bias)
 
     if (!pre_only) {
         self$to_out <- torch::nn_module_list(list(
-                torch::nn_linear(inner_dim, query_dim, bias = TRUE)
+                torch::nn_linear(inner_dim, query_dim, bias = bias)
             ))
     }
     if (added_kv) {
         self$norm_added_q <- ltx23_rms_norm(dim_head, eps = eps)
         self$norm_added_k <- ltx23_rms_norm(dim_head, eps = eps)
-        self$add_q_proj <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
-        self$add_k_proj <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
-        self$add_v_proj <- torch::nn_linear(query_dim, inner_dim, bias = TRUE)
-        self$to_add_out <- torch::nn_linear(inner_dim, query_dim, bias = TRUE)
+        self$add_q_proj <- torch::nn_linear(query_dim, inner_dim, bias = bias)
+        self$add_k_proj <- torch::nn_linear(query_dim, inner_dim, bias = bias)
+        self$add_v_proj <- torch::nn_linear(query_dim, inner_dim, bias = bias)
+        self$to_add_out <- torch::nn_linear(inner_dim, query_dim, bias = bias)
     }
 },
                                    forward = function(hidden_states, encoder_hidden_states = NULL,

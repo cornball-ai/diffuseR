@@ -4,7 +4,7 @@
 \title{Load a FLUX transformer from any checkpoint format}
 \usage{
 flux_load_transformer(ckpt, device = "cuda", dtype = "bfloat16", pin = TRUE,
-                      verbose = TRUE, ...)
+                      fp8_resident = FALSE, verbose = TRUE, ...)
 }
 \arguments{
 \item{ckpt}{A checkpoint from \code{\link{flux_open_checkpoint}} or
@@ -17,7 +17,12 @@ quantized formats this sets the resident (non-quantized) tensors
 and must match the compute dtype: bfloat16 for GPU compute,
 float32 for CPU compute.}
 
-\item{pin}{Logical. Pin fp8 host memory for faster transfers.}
+\item{pin}{Logical. Pin fp8 host memory for faster transfers
+(streamed fp8 only).}
+
+\item{fp8_resident}{Logical. Keep the fp8 weights on \code{device}
+instead of streaming from the CPU - right for models whose whole
+quantized footprint fits in VRAM (FLUX.2 klein-4B: ~4 GB).}
 
 \item{verbose}{Logical.}
 

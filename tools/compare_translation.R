@@ -190,3 +190,32 @@ if (file.exists(t5_path)) {
 } else {
     cat("\n(t5 encoder pairing skipped: tools/cache/modeling_t5.py missing)\n")
 }
+
+# 4. FLUX.2 transformer stack + pipeline
+tf2 <- parse_file(file.path(DIFFUSERS, "models/transformers/transformer_flux2.py"),
+                  ts_language_python())
+report_pair("flux2 transformer",
+            py_scopes(tf2, c("Flux2SwiGLU", "Flux2FeedForward", "Flux2AttnProcessor",
+                             "Flux2Attention", "Flux2ParallelSelfAttnProcessor",
+                             "Flux2ParallelSelfAttention", "Flux2SingleTransformerBlock",
+                             "Flux2TransformerBlock", "Flux2Modulation", "Flux2PosEmbed",
+                             "Flux2TimestepGuidanceEmbeddings", "Flux2Transformer2DModel")),
+            c("R/dit_flux2_modules.R", "R/dit_flux2.R", "R/rope_flux2.R"))
+
+pipe2 <- parse_file(file.path(DIFFUSERS, "pipelines/flux2/pipeline_flux2_klein.py"),
+                    ts_language_python())
+report_pair("flux2 klein pipeline",
+            py_scopes(pipe2, c("Flux2KleinPipeline", "compute_empirical_mu")),
+            c("R/txt2img_flux2.R", "R/vae_flux2.R", "R/rope_flux2.R"))
+
+# 5. Qwen3 encoder (modular reference; requires tools/cache/modular_qwen3.py)
+q3_path <- "tools/cache/modular_qwen3.py"
+if (file.exists(q3_path)) {
+    q3 <- parse_file(q3_path, ts_language_python())
+    report_pair("qwen3 encoder",
+                py_scopes(q3, c("Qwen3MLP", "Qwen3Attention", "Qwen3DecoderLayer",
+                                "Qwen3RMSNorm", "Qwen3Model")),
+                c("R/qwen3_text_encoder.R"))
+} else {
+    cat("\n(qwen3 pairing skipped: tools/cache/modular_qwen3.py missing)\n")
+}

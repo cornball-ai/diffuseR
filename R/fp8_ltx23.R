@@ -62,12 +62,18 @@ ltx23_fp8_linear <- torch::nn_module(
     invisible(self)
 },
                                      forward = function(x) {
-    # Transfer fp8 bytes first, cast on the compute device second
-    w <- self$weight_fp8$to(device = x$device, non_blocking = TRUE)
-    w <- w$to(dtype = x$dtype) * self$weight_scale$to(device = x$device, dtype = x$dtype)
-    out <- torch::nnf_linear(x, w, self$bias)
-    rm(w)
-    out
+    # Transfer fp8 bytes first (no-op when resident), then cast into a
+    # persistent per-shape buffer and scale in place: zero fresh
+    # allocations per call, same math as the allocating upcast
+    w8 <- self$weight_fp8$to(device = x$device, non_blocking = TRUE)
+    w <- .ltx23_get_dequant_buffer(
+                                   c(self$out_features, self$in_features), x$dtype, x$device
+    )
+    torch::with_no_grad({
+        w$copy_(w8)
+        w$mul_(self$weight_scale$to(device = x$device, dtype = x$dtype))
+    })
+    torch::nnf_linear(x, w, self$bias)
 }
 )
 

@@ -3,7 +3,7 @@
 \alias{txt2img}
 \title{Generate an image from a text prompt using a diffusion pipeline}
 \usage{
-txt2img(prompt, model_name = c("sd21", "sdxl", "flux1"), ...)
+txt2img(prompt, model_name = c("sd21", "sdxl", "flux1", "flux2"), ...)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}
