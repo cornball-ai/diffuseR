@@ -214,8 +214,7 @@ encode_unigram <- function(tokenizer, texts, max_length = 256L,
         # Split before each replacement char, keeping it attached.
         # (strsplit with a zero-width lookahead detaches the char, so
         # mark boundaries with a control byte instead.)
-        marked <- gsub(rep_char, paste0("\u0001", rep_char), text,
-                       fixed = TRUE)
+        marked <- gsub(rep_char, paste0("\u0001", rep_char), text, fixed = TRUE)
         words <- strsplit(marked, "\u0001", fixed = TRUE)[[1]]
         words <- words[nzchar(words)]
 
@@ -234,7 +233,11 @@ encode_unigram <- function(tokenizer, texts, max_length = 256L,
     all_ids <- lapply(as.character(texts), encode_one)
 
     if (add_eos) {
-        keep <- if (is.null(max_length)) Inf else max_length - 1L
+        if (is.null(max_length)) {
+            keep <- Inf
+        } else {
+            keep <- max_length - 1L
+        }
         all_ids <- lapply(all_ids, function(ids) {
             if (length(ids) > keep) {
                 ids <- ids[seq_len(keep)]
