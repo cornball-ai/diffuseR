@@ -86,6 +86,17 @@ def mods(tbl: Tensor, temb: Tensor, num: int) -> Tensor:
     t = temb.size(1)
     return tbl.unsqueeze(0).unsqueeze(0) + temb.reshape([b, t, num, -1])
 
+def modtok(vada: Tensor, j: int, idx: Optional[Tensor]) -> Tensor:
+    # One modulation vector [B, T, D]. Without idx, T is 1 (global) or
+    # S (per-token) and broadcasts/aligns directly. With idx (prefix
+    # conditioning), T holds the distinct timestep variants and idx
+    # [S] selects per token -- materializing one [B, S, D] slice on
+    # demand instead of a [B, S, num, D] block.
+    v = vada.select(2, j)
+    if idx is None:
+        return v
+    return v.index_select(1, idx)
+
 def attn_nf4(x: Tensor, ctx: Tensor, ws: List[Tensor], base: int, table: Tensor, heads: int,
              q_cos: Optional[Tensor], q_sin: Optional[Tensor],
              k_cos: Optional[Tensor], k_sin: Optional[Tensor],
@@ -118,14 +129,15 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
               v_cos: Tensor, v_sin: Tensor, a_cos: Tensor, a_sin: Tensor,
               cav_cos: Tensor, cav_sin: Tensor, caa_cos: Tensor, caa_sin: Tensor,
               enc_mask: Optional[Tensor], aenc_mask: Optional[Tensor],
+              cond_idx: Optional[Tensor],
               ws: List[Tensor], base: int, table: Tensor,
               heads: int, aheads: int) -> Tuple[Tensor, Tensor]:
     vada = mods(ws[base + 108], temb, 9)
     aada = mods(ws[base + 109], temb_a, 9)
 
-    nh = rmsn(h) * (vada.select(2, 1) + 1.0) + vada.select(2, 0)
+    nh = rmsn(h) * (modtok(vada, 1, cond_idx) + 1.0) + modtok(vada, 0, cond_idx)
     ax = attn_nf4(nh, nh, ws, base, table, heads, v_cos, v_sin, v_cos, v_sin, None)
-    h = h + ax * vada.select(2, 2)
+    h = h + ax * modtok(vada, 2, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 1) + 1.0) + aada.select(2, 0)
     aax = attn_nf4(nah, nah, ws, base + 16, table, aheads, a_cos, a_sin, a_cos, a_sin, None)
@@ -134,10 +146,10 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
     pada = mods(ws[base + 110], tp, 2)
     apada = mods(ws[base + 111], tpa, 2)
 
-    nh = rmsn(h) * (vada.select(2, 7) + 1.0) + vada.select(2, 6)
+    nh = rmsn(h) * (modtok(vada, 7, cond_idx) + 1.0) + modtok(vada, 6, cond_idx)
     encm = enc * (pada.select(2, 1) + 1.0) + pada.select(2, 0)
     ax = attn_nf4(nh, encm, ws, base + 32, table, heads, None, None, None, None, enc_mask)
-    h = h + ax * vada.select(2, 8)
+    h = h + ax * modtok(vada, 8, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 7) + 1.0) + aada.select(2, 6)
     aencm = aenc * (apada.select(2, 1) + 1.0) + apada.select(2, 0)
@@ -161,8 +173,8 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
     v2a = attn_nf4(mna, mnh, ws, base + 80, table, aheads, caa_cos, caa_sin, cav_cos, cav_sin, None)
     ah = ah + acg.select(2, 0) * v2a
 
-    nh = rmsn(h) * (vada.select(2, 4) + 1.0) + vada.select(2, 3)
-    h = h + ff_nf4(nh, ws, base + 96, table) * vada.select(2, 5)
+    nh = rmsn(h) * (modtok(vada, 4, cond_idx) + 1.0) + modtok(vada, 3, cond_idx)
+    h = h + ff_nf4(nh, ws, base + 96, table) * modtok(vada, 5, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 4) + 1.0) + aada.select(2, 3)
     ah = ah + ff_nf4(nah, ws, base + 102, table) * aada.select(2, 5)
@@ -176,6 +188,7 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
               v_cos: Tensor, v_sin: Tensor, a_cos: Tensor, a_sin: Tensor,
               cav_cos: Tensor, cav_sin: Tensor, caa_cos: Tensor, caa_sin: Tensor,
               enc_mask: Optional[Tensor], aenc_mask: Optional[Tensor],
+              cond_idx: Optional[Tensor],
               ws: List[Tensor], table: Tensor,
               n_blocks: int, heads: int, aheads: int) -> Tuple[Tensor, Tensor]:
     i = 0
@@ -183,7 +196,7 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
         h, ah = block_nf4(h, ah, enc, aenc, temb, temb_a, tcss, tcass, tcg, tcag,
                           tp, tpa, v_cos, v_sin, a_cos, a_sin,
                           cav_cos, cav_sin, caa_cos, caa_sin,
-                          enc_mask, aenc_mask, ws, i * 114, table, heads, aheads)
+                          enc_mask, aenc_mask, cond_idx, ws, i * 114, table, heads, aheads)
         i += 1
     return (h, ah)
 "
@@ -289,7 +302,8 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
                                  audio_rotary_emb, ca_video_rotary_emb,
                                  ca_audio_rotary_emb,
                                  encoder_attention_mask = NULL,
-                                 audio_encoder_attention_mask = NULL) {
+                                 audio_encoder_attention_mask = NULL,
+                                 cond_token_index = NULL) {
     unit <- .ltx23_jit_unit()
     # unname: an nn_module_list yields named children, and a named R
     # list marshals to TorchScript as Dict[str, Tensor], not List[Tensor]
@@ -318,7 +332,8 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
                           ca_video_rotary_emb[[1]], ca_video_rotary_emb[[2]],
                           ca_audio_rotary_emb[[1]], ca_audio_rotary_emb[[2]],
                           fix_mask(encoder_attention_mask),
-                          fix_mask(audio_encoder_attention_mask), ws, table,
+                          fix_mask(audio_encoder_attention_mask),
+                          cond_token_index, ws, table,
                           torch::jit_scalar(length(blocks)),
                           torch::jit_scalar(as.integer(heads)),
                           torch::jit_scalar(as.integer(aheads)))

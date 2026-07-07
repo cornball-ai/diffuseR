@@ -212,3 +212,30 @@ torch::with_no_grad({
 })
 expect_true(max_abs_diff(out_pt[[1]], ref_pt[[1]]) < 1e-4)
 expect_true(max_abs_diff(out_pt[[2]], ref_pt[[2]]) < 1e-4)
+
+# Compact conditioned temb (2 variants + per-token index) must equal
+# the eager block run with the explicitly expanded per-token temb
+temb2 <- torch::torch_randn(B, 2L, 9L * dim)
+cond_idx <- torch::torch_tensor(c(1L, 1L, 0L, 0L, 0L, 0L),
+  dtype = torch::torch_long()) # first two tokens conditioned
+temb_full <- temb2$index_select(2L, cond_idx$add(1L))
+torch::with_no_grad({
+  ref_ci <- blk1(
+    hidden_states = h, audio_hidden_states = ah,
+    encoder_hidden_states = enc, audio_encoder_hidden_states = aenc,
+    temb = temb_full, temb_audio = temb_a,
+    temb_ca_scale_shift = tcss, temb_ca_audio_scale_shift = tcass,
+    temb_ca_gate = tcg, temb_ca_audio_gate = tcag,
+    temb_prompt = tp, temb_prompt_audio = tpa,
+    video_rotary_emb = v_rope, audio_rotary_emb = a_rope,
+    ca_video_rotary_emb = cav_rope, ca_audio_rotary_emb = caa_rope
+  )
+  out_ci <- diffuseR:::.ltx23_jit_run_stack(
+    list(blk1), h, ah, enc, aenc,
+    temb2, temb_a, tcss, tcass, tcg, tcag, tp, tpa,
+    v_rope, a_rope, cav_rope, caa_rope,
+    cond_token_index = cond_idx
+  )
+})
+expect_true(max_abs_diff(out_ci[[1]], ref_ci[[1]]) < 1e-4)
+expect_true(max_abs_diff(out_ci[[2]], ref_ci[[2]]) < 1e-4)

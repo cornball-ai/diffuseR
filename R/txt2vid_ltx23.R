@@ -99,6 +99,15 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     } else {
         NULL
     }
+    # Compact per-token timestep: the conditioned prefix sees exactly
+    # two values (t and 0), so the transformer gets a 2-entry timestep
+    # plus a per-token selector instead of a [B, S] vector -- the
+    # modulation tensors stay [B, 2, ...] until selected on demand
+    cond_idx <- if (!is.null(conditioning_mask)) {
+        conditioning_mask$squeeze(1L)$to(dtype = torch::torch_long())
+    } else {
+        NULL
+    }
     video_coords <- transformer$rope$prepare_video_coords(latents$shape[1],
         latent_frames, latent_height, latent_width, device,
         fps = frame_rate)
@@ -116,8 +125,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
             t_video <- if (is.null(conditioning_mask)) {
                 t
             } else {
-                # Per-token video timestep: conditioned tokens see zero
-                t * (1 - conditioning_mask)
+                # [t, 0]: index 0 = free tokens, index 1 = conditioned
+                torch::torch_tensor(c(sigma * scale_mult, 0),
+                                    device = device, dtype = f32)
             }
 
             out <- transformer(
@@ -138,7 +148,8 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                                audio_num_frames = audio_num_frames,
                                video_coords = video_coords,
                                audio_coords = audio_coords,
-                               use_cross_timestep = TRUE
+                               use_cross_timestep = TRUE,
+                               cond_token_index = cond_idx
             )
 
             # Euler velocity step in float32; dt is negative (sigma decreasing)
