@@ -11,11 +11,12 @@
 #' \dontrun{
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
-txt2img <- function(prompt, model_name = c("sd21", "sdxl"), ...) {
+txt2img <- function(prompt, model_name = c("sd21", "sdxl", "flux1"), ...) {
     switch(model_name,
            # "sd15" = txt2img_sd15(prompt, ...),
            "sd21" = txt2img_sd21(prompt, ...),
            "sdxl" = txt2img_sdxl(prompt, ...),
+           "flux1" = txt2img_flux(prompt, ...),
            # "sd3" = txt2img_sd3(prompt, ...),
            stop("Unsupported model: ", model_name)
     )
