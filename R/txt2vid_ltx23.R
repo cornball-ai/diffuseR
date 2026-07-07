@@ -86,10 +86,16 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                            latent_frames, latent_height, latent_width,
                            audio_num_frames, frame_rate, device,
                            compute_dtype, verbose = TRUE, stage = "",
-                           conditioning_mask = NULL) {
+                           conditioning_mask = NULL,
+                           audio_conditioned = FALSE) {
     f32 <- torch::torch_float32()
     keep_mask <- if (!is.null(conditioning_mask)) {
         conditioning_mask$unsqueeze(3L) # [B, S, 1] for latent blending
+    } else {
+        NULL
+    }
+    t_zero <- if (audio_conditioned) {
+        torch::torch_tensor(0, device = device, dtype = f32)
     } else {
         NULL
     }
@@ -120,8 +126,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                                encoder_hidden_states = video_text_embeds,
                                audio_encoder_hidden_states = audio_text_embeds,
                                timestep = t_video,
-                               audio_timestep = t,
+                               audio_timestep = if (audio_conditioned) t_zero else t,
                                sigma = t,
+                               audio_sigma = if (audio_conditioned) t_zero else t,
                                encoder_attention_mask = text_mask,
                                audio_encoder_attention_mask = text_mask,
                                num_frames = latent_frames,
@@ -143,7 +150,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                 # Conditioned tokens stay clean
                 latents * keep_mask + stepped * (1 - keep_mask)
             }
-            audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+            if (!audio_conditioned) {
+                audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+            }
             rm(out)
             gc(verbose = FALSE)
             if (verbose) {
@@ -401,6 +410,12 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   \code{condition_video} (8k + 1, default 9 = 2 latent frames).
 #' @param cond_noise_scale Numeric in [0, 1]. Optional partial noising
 #'   of the conditioned tokens (0 = keep them exactly).
+#' @param audio Optional conditioning audio for audio-driven generation
+#'   (lip sync): a file path (decoded via \code{av}) or a matrix
+#'   [2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
+#'   clean, frozen audio latents that the video attends to while
+#'   denoising, and the original samples are muxed into the output
+#'   (audio decoding is skipped).
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{video} (array
@@ -420,6 +435,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tone_map_compression = 0, phase_offload = TRUE,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
+                         audio = NULL,
                          verbose = TRUE) {
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
@@ -611,11 +627,34 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
     rm(noise)
 
-    audio_latents <- torch::torch_randn(
-                                        c(1L, 8L, audio_num_frames, latent_mel_bins),
-                                        device = device, dtype = f32
-    )
-    audio_latents <- ltx23_pack_audio_latents(audio_latents)
+    audio_conditioned <- !is.null(audio)
+    input_audio <- NULL
+    if (audio_conditioned) {
+        # Audio-driven generation: the user audio becomes clean,
+        # frozen audio latents; the video denoises while attending to
+        # them (lip sync). The output carries the original audio.
+        input_audio <- if (is.character(audio)) {
+            ltx23_read_audio(audio)
+        } else {
+            audio
+        }
+        audio_vae <- onload("audio_vae")
+        if (verbose) {
+            message("Encoding conditioning audio...")
+        }
+        audio_latents <- ltx23_encode_audio(audio_vae, input_audio,
+                                            audio_num_frames)$
+        to(device = device)
+        offload("audio_vae")
+        gc(verbose = FALSE)
+        decode_audio <- FALSE
+    } else {
+        audio_latents <- torch::torch_randn(
+                                            c(1L, 8L, audio_num_frames, latent_mel_bins),
+                                            device = device, dtype = f32
+        )
+        audio_latents <- ltx23_pack_audio_latents(audio_latents)
+    }
 
     # --- Phase 3: denoising -------------------------------------------------------
     transformer <- onload("transformer")
@@ -630,7 +669,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                audio_num_frames, frame_rate,
                                device, compute_dtype, verbose = verbose,
                                stage = if (two_stage) "stage 1 " else "",
-                               conditioning_mask = conditioning_mask
+                               conditioning_mask = conditioning_mask,
+                               audio_conditioned = audio_conditioned
     )
     latents <- denoised$latents
     audio_latents <- denoised$audio_latents
@@ -702,6 +742,12 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                    audio_latents = audio_latents,
                    sample_rate = 48000L
     )
+    if (audio_conditioned) {
+        # The conditioning audio IS the soundtrack: carry the original
+        # samples through to the result and the mux
+        result$audio <- as.matrix(input_audio)
+        result$sample_rate <- 16000L
+    }
 
     # --- Phase 4: decoding -----------------------------------------------------------
     if (decode_video) {
@@ -776,7 +822,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         phase_t0 <- Sys.time()
         save_video_ltx23(result$video, filename,
                          fps = frame_rate,
-                         audio = if (decode_audio) result$audio else NULL,
+                         audio = result$audio,
                          sample_rate = result$sample_rate,
                          verbose = verbose
         )

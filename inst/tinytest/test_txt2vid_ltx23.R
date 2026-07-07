@@ -46,7 +46,7 @@ vae <- ltx23_video_vae(
 vae$eval()
 
 audio_vae <- ltx23_audio_vae(
-  base_channels = 128L, ch_mult = c(1L, 1L), num_res_blocks = 1L,
+  base_channels = 128L, ch_mult = c(1L, 1L, 1L), num_res_blocks = 1L,
   latent_channels = 8L, mel_bins = 64L
 )
 audio_vae$eval()
@@ -189,3 +189,23 @@ expect_error(
     device = "cpu", dtype = "float32"),
   pattern = "not both"
 )
+
+
+# --- Audio-conditioned generation (lip-sync plumbing) --------------------------------
+
+wav_in <- matrix(runif(2L * 6000L, -0.5, 0.5), nrow = 2L)
+res_audio <- txt2vid_ltx2(
+  prompt = "tiny audio-driven",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  image = start_img,
+  audio = wav_in,
+  verbose = FALSE
+)
+expect_equal(dim(res_audio$video), c(9L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_audio$video)))
+# The original audio rides through untouched
+expect_equal(res_audio$sample_rate, 16000L)
+expect_equal(res_audio$audio, wav_in)

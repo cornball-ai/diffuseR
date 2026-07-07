@@ -12,7 +12,7 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
              decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
              adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
              image = NULL, condition_video = NULL, conditioning_frames = 9L,
-             cond_noise_scale = 0, verbose = TRUE)
+             cond_noise_scale = 0, audio = NULL, verbose = TRUE)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}
@@ -79,6 +79,13 @@ frames overlap the source (trim or crossfade when concatenating).}
 
 \item{cond_noise_scale}{Numeric in [0, 1]. Optional partial noising
 of the conditioned tokens (0 = keep them exactly).}
+
+\item{audio}{Optional conditioning audio for audio-driven generation
+(lip sync): a file path (decoded via \code{av}) or a matrix
+[2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
+clean, frozen audio latents that the video attends to while
+denoising, and the original samples are muxed into the output
+(audio decoding is skipped).}
 
 \item{verbose}{Logical.}
 
