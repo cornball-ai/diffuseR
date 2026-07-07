@@ -386,6 +386,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
     offload <- function(module) {
         if (phase_offload) {
+            # Decode traces capture weight tensors; drop them so the
+            # module's GPU memory actually frees
+            .ltx23_release_vae_traces()
             module$to(device = "cpu")
             clear_vram()
         }
@@ -565,7 +568,10 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             )
             audio_lat <- ltx23_unpack_audio_latents(audio_packed, latent_mel_bins)
             mel <- audio_vae$decode(audio_lat$to(dtype = av_dtype))
-            waveform <- pipeline$vocoder(mel$to(dtype = torch::torch_float32()))
+            waveform <- .ltx23_traced_call(
+                                           pipeline$vocoder,
+                                           mel$to(dtype = torch::torch_float32())
+            )
             waveform <- waveform[1,,]$cpu()
         })
         result$audio <- as.matrix(as.array(waveform))

@@ -347,7 +347,7 @@ ltx23_video_vae <- torch::nn_module(
     if (self$use_tiling && (width > tile_lat_w || height > tile_lat_h)) {
         return(.ltx23_tiled_decode(self, z, causal = causal))
     }
-    self$decoder(z, causal = causal)
+    .ltx23_decode_tile(self, z, causal)
 },
                                     forward = function(z) {
     self$decode(z)
@@ -420,9 +420,10 @@ ltx23_video_vae <- torch::nn_module(
         for (j in seq(0L, width - 1L, by = stride_lat_w)) {
             h_len <- min(tile_lat_h, height - i)
             w_len <- min(tile_lat_w, width - j)
-            tile <- vae$decoder(
-                                z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
-                                causal = causal
+            tile <- .ltx23_decode_tile(
+                                       vae,
+                                       z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
+                                       causal
             )
             row[[length(row) + 1L]] <- tile
             gc(verbose = FALSE)
@@ -476,7 +477,7 @@ ltx23_video_vae <- torch::nn_module(
             (tile$shape[5] > tile_lat_w || tile$shape[4] > tile_lat_h)) {
             decoded <- .ltx23_tiled_decode(vae, tile, causal = causal)
         } else {
-            decoded <- vae$decoder(tile, causal = causal)
+            decoded <- .ltx23_decode_tile(vae, tile, causal)
         }
         if (i > 0L) {
             decoded <- decoded$narrow(3L, 1L, decoded$shape[3] - 1L)

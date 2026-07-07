@@ -289,7 +289,7 @@ ltx23_audio_vae <- torch::nn_module(
     self$latent_channels <- as.integer(latent_channels)
 },
                                     decode = function(z) {
-    self$decoder(z)
+    .ltx23_traced_call(self$decoder, z)
 },
                                     forward = function(z) {
     self$decode(z)
