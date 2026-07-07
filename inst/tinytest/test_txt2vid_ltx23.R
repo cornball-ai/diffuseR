@@ -46,7 +46,7 @@ vae <- ltx23_video_vae(
 vae$eval()
 
 audio_vae <- ltx23_audio_vae(
-  base_channels = 128L, ch_mult = c(1L, 1L), num_res_blocks = 1L,
+  base_channels = 128L, ch_mult = c(1L, 1L, 1L), num_res_blocks = 1L,
   latent_channels = 8L, mel_bins = 64L
 )
 audio_vae$eval()
@@ -137,3 +137,75 @@ if (requireNamespace("av", quietly = TRUE)) {
   expect_true(file.exists(mp4) && file.size(mp4) > 0)
   unlink(mp4)
 }
+
+# --- Prefix conditioning smoke tests -------------------------------------------------
+
+# i2v: start image conditions frame 0; pipeline runs end to end
+start_img <- array(runif(64 * 64 * 3), dim = c(64L, 64L, 3L))
+res_i2v <- txt2vid_ltx2(
+  prompt = "tiny i2v",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  image = start_img,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_i2v$video), c(9L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_i2v$video)))
+
+# Same seed without conditioning gives a different video (mask engaged)
+res_t2v <- txt2vid_ltx2(
+  prompt = "tiny i2v",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_true(max(abs(res_i2v$video - res_t2v$video)) > 1e-4)
+
+# Continuation: 9-frame tail array as the frozen prefix
+tail_arr <- array(runif(9 * 64 * 64 * 3), dim = c(9L, 64L, 64L, 3L))
+res_cont <- txt2vid_ltx2(
+  prompt = "tiny continuation",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 17L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  condition_video = tail_arr, conditioning_frames = 9L,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_cont$video), c(17L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_cont$video)))
+
+# Guardrails
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+    image = start_img, condition_video = tail_arr,
+    device = "cpu", dtype = "float32"),
+  pattern = "not both"
+)
+
+
+# --- Audio-conditioned generation (lip-sync plumbing) --------------------------------
+
+wav_in <- matrix(runif(2L * 6000L, -0.5, 0.5), nrow = 2L)
+res_audio <- txt2vid_ltx2(
+  prompt = "tiny audio-driven",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  image = start_img,
+  audio = wav_in,
+  verbose = FALSE
+)
+expect_equal(dim(res_audio$video), c(9L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_audio$video)))
+# The original audio rides through untouched
+expect_equal(res_audio$sample_rate, 16000L)
+expect_equal(res_audio$audio, wav_in)

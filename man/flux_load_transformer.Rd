@@ -12,8 +12,10 @@ flux_load_transformer(ckpt, device = "cuda", dtype = "bfloat16", pin = TRUE,
 
 \item{device}{Character. Compute device.}
 
-\item{dtype}{Character. Model dtype ("bfloat16" or "float32";
-quantized formats always use bfloat16 residents).}
+\item{dtype}{Character. Model dtype ("bfloat16" or "float32"). For
+quantized formats this sets the resident (non-quantized) tensors
+and must match the compute dtype: bfloat16 for GPU compute,
+float32 for CPU compute.}
 
 \item{pin}{Logical. Pin fp8 host memory for faster transfers.}
 

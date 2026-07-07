@@ -37,6 +37,15 @@ module; this file documents the actual lineage, idea by idea.
 | NF4 4-bit format: 16-level NormalFloat quantile code, per-64-block absmax, packed nibbles | **QLoRA**: Dettmers, Pagnoni, Holtzman, Zettlemoyer (2023), "QLoRA: Efficient Finetuning of Quantized LLMs", arXiv:2305.14314; format details as implemented in bitsandbytes (MIT) — reimplemented here in pure torch ops |
 | 4-bit weights for consumer-GPU video DiTs as a practice | Community standard: GGUF Q4 checkpoints for LTX/ComfyUI (e.g. city96/ComfyUI-GGUF ecosystem), diffusers bitsandbytes integration docs |
 
+## Conditioning (image-to-video, continuation, audio-driven)
+
+| What | Source |
+|---|---|
+| Prefix frame conditioning: VAE-encoded pixels as frozen latent tokens, per-token timestep `t * (1 - mask)`, frozen Euler updates, partial-noise option | Ported from diffusers `pipelines/ltx2/pipeline_ltx2_image2video.py` and `pipeline_ltx2_condition.py` (Apache-2.0), restricted to index-0 / strength-1 |
+| Audio-driven generation (lip sync): user audio encoded to clean, frozen audio latents; audio stream sees timestep/sigma zero while video denoises attending to it | Our own design — the audio-side mirror of the Apache i2v conditioning pattern above (diffusers has no audio-input conditioning) |
+| Audio VAE encoder module | Ported from diffusers `autoencoder_kl_ltx2_audio.py` `LTX2AudioEncoder` (Apache-2.0) |
+| 16 kHz log-mel frontend (causal STFT 1024/160, 64 slaney-normed mel bins to 8 kHz) | Parameters are the checkpoint's embedded preprocessing config (numeric facts); STFT/mel constructions are textbook DSP, verified against the checkpoint's stored vocoder bases |
+
 ## Memory management
 
 | What | Source |

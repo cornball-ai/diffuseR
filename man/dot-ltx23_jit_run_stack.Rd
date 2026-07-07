@@ -10,7 +10,8 @@
                      temb_ca_audio_gate, temb_prompt, temb_prompt_audio,
                      video_rotary_emb, audio_rotary_emb, ca_video_rotary_emb,
                      ca_audio_rotary_emb, encoder_attention_mask = NULL,
-                     audio_encoder_attention_mask = NULL)
+                     audio_encoder_attention_mask = NULL,
+                     cond_token_index = NULL)
 }
 \value{
 list(hidden_states, audio_hidden_states)

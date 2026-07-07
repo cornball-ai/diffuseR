@@ -203,7 +203,8 @@ ltx23_transformer <- torch::nn_module(
         spatio_temporal_guidance_blocks = NULL,
         perturbation_mask = NULL,
         use_cross_timestep = FALSE,
-        video_self_attention_mask = NULL
+        video_self_attention_mask = NULL,
+        cond_token_index = NULL
     ) {
     audio_timestep <- audio_timestep %||% timestep
     audio_sigma <- audio_sigma %||% sigma
@@ -343,13 +344,25 @@ ltx23_transformer <- torch::nn_module(
                                     video_rotary_emb, audio_rotary_emb,
                                     video_ca_rotary_emb, audio_ca_rotary_emb,
                                     encoder_attention_mask,
-                                    audio_encoder_attention_mask
+                                    audio_encoder_attention_mask,
+                                    cond_token_index = cond_token_index
         )
         hidden_states <- res[[1]]
         audio_hidden_states <- res[[2]]
     }
 
     block_gc <- isTRUE(getOption("diffuseR.block_gc"))
+    if (!is.null(cond_token_index)) {
+        # Expand the compact [B, V, ...] timestep variants per token
+        # (1-based index). The output layer always needs the expanded
+        # embedded_timestep; the eager blocks also need expanded temb
+        # (the compiled stack selects per token internally instead).
+        idx1 <- cond_token_index$to(dtype = torch::torch_long())$add(1L)$squeeze(1L)
+        embedded_timestep <- embedded_timestep$index_select(2L, idx1)
+        if (!use_jit) {
+            temb <- temb$index_select(2L, idx1)
+        }
+    }
     eager_blocks <- if (use_jit) integer(0) else seq_along(self$transformer_blocks)
     for (block_idx in eager_blocks) {
         is_stg_block <- (block_idx - 1L) %in% stg_blocks # reference indices are 0-based

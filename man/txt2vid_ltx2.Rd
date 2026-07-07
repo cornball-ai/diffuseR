@@ -11,7 +11,8 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
              max_sequence_length = 1024L, decode_video = TRUE,
              decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
              adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
-             verbose = TRUE)
+             image = NULL, condition_video = NULL, conditioning_frames = 9L,
+             cond_noise_scale = 0, audio = NULL, verbose = TRUE)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}
@@ -62,6 +63,29 @@ mapping before stage 2.}
 device only for its phase (text encoding, upsampling, decoding) and
 back to the CPU afterwards, keeping the denoise phase as the sole
 GPU tenant.}
+
+\item{image}{Optional start image for image-to-video: a PNG/JPEG path
+or an [H, W, 3] array in [0, 1]. The image conditions the first
+frame; the rest of the video is generated (reference i2v).}
+
+\item{condition_video}{Optional continuation source: a video path
+(its trailing \code{conditioning_frames} frames are used) or an
+[F, H, W, 3] array. The clip's tail becomes the frozen prefix of
+the new video, so the output's first \code{conditioning_frames}
+frames overlap the source (trim or crossfade when concatenating).}
+
+\item{conditioning_frames}{Integer. Trailing pixel frames taken from
+\code{condition_video} (8k + 1, default 9 = 2 latent frames).}
+
+\item{cond_noise_scale}{Numeric in [0, 1]. Optional partial noising
+of the conditioned tokens (0 = keep them exactly).}
+
+\item{audio}{Optional conditioning audio for audio-driven generation
+(lip sync): a file path (decoded via \code{av}) or a matrix
+[2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
+clean, frozen audio latents that the video attends to while
+denoising, and the original samples are muxed into the output
+(audio decoding is skipped).}
 
 \item{verbose}{Logical.}
 
