@@ -317,6 +317,7 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 
 ### Model Support
 - [x] Add FLUX model support (FLUX.1-schnell, see below)
+- [x] Add FLUX.2 support (klein-4B, see below)
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
 
@@ -346,6 +347,31 @@ Key components: `flux_transformer` (19 double + 38 single blocks),
 the shipped tokenizer_2 uses Metaspace prepend "always" (a spiece
 conversion gives "never" - different ids for every prompt), and quantized
 residents must follow the compute dtype (bf16 GPU / fp32 CPU).
+
+### FLUX.2 Klein 4B (Complete)
+
+Step-distilled FLUX.2 (4 steps, no CFG): 4B MMDiT (shared modulation,
+SwiGLU, parallel single blocks) + Qwen3-4B text encoder (chat template,
+mid-stack hidden states) + 32-channel `AutoencoderKLFlux2` (BatchNorm
+latent stats) + FlowMatch with the BFL empirical dynamic shift.
+
+```r
+download_flux2_klein()   # ungated, Apache-2.0; ~16 GB download,
+                         # one-time fp8 quantize to a 3.9 GB artifact
+txt2img_flux2("An astronaut riding a horse on Mars, photorealistic",
+              seed = 7)  # or txt2img("...", model_name = "flux2")
+```
+
+Measured on the RTX 5060 Ti 16 GB (fp8 GPU-resident, Qwen3 bf16
+phase-onloaded): 1024x1024 in ~48 s (peak 8.2 GB), 512x512 in ~40 s;
+pipeline load 31 s. Cast census is exactly 104 weights.
+
+Perf lesson that cost an afternoon: generation was 93.8% R garbage
+collection until the tokenizer stopped holding 151k-binding
+environments — R gc cost scales with live object count (12 vs 203 ms),
+and torch's allocator callbacks run gc hundreds of times per
+generation. Keep big lookup tables as atomic vectors (integer-id BPE
+via findInterval), never as environments.
 
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 
