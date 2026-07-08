@@ -76,9 +76,9 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "backend:native")
     }
     if (device == "cuda") {
-        # Sized to the largest phase (the 8 GB Qwen3 encode), same
-        # reasoning as the FLUX.2 klein pipeline
-        ltx23_tune_gc(footprint_gb = 12)
+        # Footprint sized to the largest phase (the 8 GB Qwen3 encode),
+        # same reasoning as the FLUX.2 klein pipeline
+        .flux_gc_gates(footprint_gb = 12)
     }
 
     if (phase_offload) {
