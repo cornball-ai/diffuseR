@@ -162,16 +162,15 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
 
     states <- torch::with_no_grad(model(ids, attention_mask = mask,
                                         out_layers = penult_layer))
-    n_real <- sum(enc$attention_mask[1, ])
-    states[[1]][1, 1:n_real, ] # [L, hidden]
+    n_real <- sum(enc$attention_mask[1,])
+    states[[1]][1, 1:n_real,] # [L, hidden]
 }
 
 # Flow-matching Euler loop; Turbo is CFG-free (one forward per step).
 # The model sees the reversed normalized timestep and predicts the
 # negated velocity.
 .zimage_denoise <- function(transformer, latents, schedule, cap_feats,
-                            compute_dtype, chunk_size = NULL,
-                            verbose = TRUE) {
+                            compute_dtype, chunk_size = NULL, verbose = TRUE) {
     timesteps <- as.numeric(schedule$timesteps$cpu())
     n <- length(timesteps)
     pb <- if (verbose) {
@@ -283,12 +282,10 @@ txt2img_zimage <- function(prompt, pipeline = NULL, width = 1024L,
         }
         onload(pipeline$text_encoder)
         te_device <- pipeline$text_encoder$model$embed_tokens$weight$device
-        prompt_embeds <- .zimage_encode_prompt(
-                                               prompt, pipeline$text_encoder, pipeline$tokenizer,
-                                               penult_layer = pipeline$te_penult_layer %||% 35L,
-                                               max_sequence_length = max_sequence_length,
-                                               device = te_device
-        )
+        prompt_embeds <- .zimage_encode_prompt(prompt, pipeline$text_encoder,
+            pipeline$tokenizer,
+            penult_layer = pipeline$te_penult_layer %||% 35L,
+            max_sequence_length = max_sequence_length, device = te_device)
         offload(pipeline$text_encoder)
     }
     prompt_embeds <- prompt_embeds$to(device = device, dtype = compute_dtype)

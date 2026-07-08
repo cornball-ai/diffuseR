@@ -59,23 +59,21 @@ zimage_transformer <- torch::nn_module(
     self$all_final_layer <- torch::nn_module_dict(finals)
 
     self$noise_refiner <- torch::nn_module_list(lapply(
-                                                       seq_len(n_refiner_layers),
-                                                       function(i) zimage_block(dim, n_heads, norm_eps, modulation = TRUE)
-    ))
+            seq_len(n_refiner_layers),
+            function(i) zimage_block(dim, n_heads, norm_eps, modulation = TRUE)
+        ))
     self$context_refiner <- torch::nn_module_list(lapply(
-                                                         seq_len(n_refiner_layers),
-                                                         function(i) zimage_block(dim, n_heads, norm_eps, modulation = FALSE)
-    ))
-    self$layers <- torch::nn_module_list(lapply(
-                                                seq_len(n_layers),
-                                                function(i) zimage_block(dim, n_heads, norm_eps, modulation = TRUE)
-    ))
+            seq_len(n_refiner_layers),
+            function(i) zimage_block(dim, n_heads, norm_eps, modulation = FALSE)
+        ))
+    self$layers <- torch::nn_module_list(lapply(seq_len(n_layers),
+            function(i) zimage_block(dim, n_heads, norm_eps, modulation = TRUE)))
 
     self$t_embedder <- zimage_t_embedder(out_size = min(dim, 256L),
-                                         mid_size = 1024L)
+        mid_size = 1024L)
     self$cap_embedder <- torch::nn_sequential(
-                                              ltx23_rms_norm(cap_feat_dim, eps = norm_eps),
-                                              torch::nn_linear(cap_feat_dim, dim, bias = TRUE)
+        ltx23_rms_norm(cap_feat_dim, eps = norm_eps),
+        torch::nn_linear(cap_feat_dim, dim, bias = TRUE)
     )
     self$x_pad_token <- torch::nn_parameter(torch::torch_zeros(1L, dim))
     self$cap_pad_token <- torch::nn_parameter(torch::torch_zeros(1L, dim))
@@ -117,20 +115,20 @@ zimage_transformer <- torch::nn_module(
     }
     for (i in seq_len(length(self$noise_refiner))) {
         x_emb <- self$noise_refiner[[i]](x_emb, img_freqs, adaln_input = adaln,
-                                         chunk_size = chunk_size)
+                                       chunk_size = chunk_size)
     }
 
     # Caption tokens: embed, pad, refine
     cap_emb <- self$cap_embedder(cap_feats)$unsqueeze(1L)
     if (cap_padded > cap_len) {
         pad_rows <- self$cap_pad_token$unsqueeze(1L)$expand(
-                                                            c(1L, cap_padded - cap_len, self$dim)
+            c(1L, cap_padded - cap_len, self$dim)
         )
         cap_emb <- torch::torch_cat(list(cap_emb, pad_rows), dim = 2L)
     }
     for (i in seq_len(length(self$context_refiner))) {
         cap_emb <- self$context_refiner[[i]](cap_emb, cap_freqs,
-                                             chunk_size = chunk_size)
+                                       chunk_size = chunk_size)
     }
 
     # Unified sequence, image first
@@ -141,8 +139,8 @@ zimage_transformer <- torch::nn_module(
     )
     for (i in seq_len(length(self$layers))) {
         unified <- self$layers[[i]](unified, unified_freqs,
-                                    adaln_input = adaln,
-                                    chunk_size = chunk_size)
+                                       adaln_input = adaln,
+                                       chunk_size = chunk_size)
     }
 
     out <- self$all_final_layer[[patch_key]](unified, adaln)

@@ -69,8 +69,8 @@ zimage_cap_pos_ids <- function(cap_padded_len, device = "cpu") {
 zimage_img_pos_ids <- function(h_tokens, w_tokens, start0, f_tokens = 1L,
                                device = "cpu") {
     f32 <- torch::torch_float32()
-    ids <- torch::torch_zeros(f_tokens, h_tokens, w_tokens, 3L, dtype = f32,
-                              device = device)
+    ids <- torch::torch_zeros(f_tokens, h_tokens, w_tokens, 3L,
+                              dtype = f32, device = device)
     frames <- torch::torch_arange(start = start0,
                                   end = start0 + f_tokens - 1,
                                   dtype = f32, device = device)
@@ -88,7 +88,7 @@ zimage_img_pos_ids <- function(h_tokens, w_tokens, start0, f_tokens = 1L,
         ids <- torch::torch_cat(list(
                                      ids,
                                      torch::torch_zeros(pad, 3L, dtype = f32, device = device)
-        ))
+            ))
     }
     ids
 }
@@ -187,7 +187,7 @@ zimage_unpatchify <- function(tokens, size, patch_size = 2L,
     h_tokens <- size[2] %/% p
     w_tokens <- size[3] %/% p
     ori_len <- f_tokens * h_tokens * w_tokens
-    x <- tokens[1:ori_len, ]
+    x <- tokens[1:ori_len,]
     x <- x$view(c(f_tokens, h_tokens, w_tokens, pf, p, p, out_channels))
     # Python permute(6, 0, 3, 1, 4, 2, 5) -> R 1-indexed
     x <- x$permute(c(7L, 1L, 4L, 2L, 5L, 3L, 6L))

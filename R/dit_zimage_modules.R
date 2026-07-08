@@ -58,8 +58,8 @@ zimage_block <- torch::nn_module(
                                  initialize = function(dim, n_heads, norm_eps = 1e-5,
         modulation = TRUE) {
     self$attention <- flux_attention(query_dim = dim, heads = n_heads,
-                                     dim_head = dim %/% n_heads,
-                                     eps = 1e-5, bias = FALSE)
+                                     dim_head = dim %/% n_heads, eps = 1e-5,
+                                     bias = FALSE)
     self$feed_forward <- zimage_feed_forward(dim, as.integer(dim / 3 * 8))
 
     self$attention_norm1 <- ltx23_rms_norm(dim, eps = norm_eps)
@@ -70,8 +70,7 @@ zimage_block <- torch::nn_module(
     self$modulation <- modulation
     if (modulation) {
         self$adaLN_modulation <- torch::nn_sequential(
-                                                      torch::nn_linear(min(dim, .zimage_adaln_dim), 4L * dim,
-                bias = TRUE)
+            torch::nn_linear(min(dim, .zimage_adaln_dim), 4L * dim, bias = TRUE)
         )
     }
 },
@@ -115,12 +114,12 @@ zimage_final_layer <- torch::nn_module(
                                        "zimage_final_layer",
                                        initialize = function(hidden_size, out_channels) {
     self$norm_final <- torch::nn_layer_norm(hidden_size, eps = 1e-6,
-                                            elementwise_affine = FALSE)
+        elementwise_affine = FALSE)
     self$linear <- torch::nn_linear(hidden_size, out_channels, bias = TRUE)
     self$adaLN_modulation <- torch::nn_sequential(
-                                                  torch::nn_silu(),
-                                                  torch::nn_linear(min(hidden_size, .zimage_adaln_dim), hidden_size,
-            bias = TRUE)
+        torch::nn_silu(),
+        torch::nn_linear(min(hidden_size, .zimage_adaln_dim), hidden_size,
+                         bias = TRUE)
     )
 },
                                        forward = function(x, c) {
@@ -152,8 +151,7 @@ zimage_t_embedder <- torch::nn_module(
 },
                                       forward = function(t) {
     t_freq <- ltx23_get_timestep_embedding(t, self$freq_size,
-                                           flip_sin_to_cos = TRUE,
-                                           downscale_freq_shift = 0)
+        flip_sin_to_cos = TRUE, downscale_freq_shift = 0)
     self$mlp(t_freq$to(dtype = self$mlp[[1]]$weight$dtype))
 }
 )

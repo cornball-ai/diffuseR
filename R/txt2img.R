@@ -11,8 +11,8 @@
 #' \dontrun{
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
-txt2img <- function(prompt, model_name = c("sd21", "sdxl", "flux1", "flux2",
-                                           "zimage"),
+txt2img <- function(prompt,
+                    model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage"),
                     ...) {
     switch(model_name,
            # "sd15" = txt2img_sd15(prompt, ...),

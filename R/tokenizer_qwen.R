@@ -230,7 +230,7 @@ encode_qwen <- function(tokenizer, texts, max_length = 512L,
         if (chat_template) {
             text <- paste0("<|im_start|>user\n", text, "<|im_end|>\n",
                            "<|im_start|>assistant\n",
-                           if (!enable_thinking) "<think>\n\n</think>\n\n")
+                if (!enable_thinking) "<think>\n\n</think>\n\n")
         }
         ids <- integer(0)
         for (chunk in .qwen_split_added(text, tokenizer)) {

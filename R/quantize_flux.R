@@ -75,17 +75,13 @@ NULL
     if (is.null(config)) {
         return(list())
     }
-    args <- list(
-                 in_channels = config$in_channels,
-                 dim = config$dim,
+    args <- list(in_channels = config$in_channels, dim = config$dim,
                  n_layers = config$n_layers,
                  n_refiner_layers = config$n_refiner_layers,
-                 n_heads = config$n_heads,
-                 cap_feat_dim = config$cap_feat_dim,
+                 n_heads = config$n_heads, cap_feat_dim = config$cap_feat_dim,
                  axes_dims = config$axes_dims,
                  patch_size = config$all_patch_size[[1]],
-                 f_patch_size = config$all_f_patch_size[[1]]
-    )
+                 f_patch_size = config$all_f_patch_size[[1]])
     args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
     args <- lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
     for (field in c("norm_eps", "rope_theta", "t_scale")) {
