@@ -35,6 +35,17 @@ load_pipeline <- function(model_name, m2d, i2i = FALSE, unet_dtype_str,
     device_cpu <- m2d$device_cpu
     device_cuda <- m2d$device_cuda
 
+    if (any(unlist(devices) == "cuda")) {
+        # Same chronic-allocator-gate fix as the FLUX/Z-Image pipelines
+        # (see .flux_gc_gates). Measured at 50 steps (native modules,
+        # decoder on CPU, RTX 5060 Ti 16 GB), warm generation:
+        # SDXL 1024^2 234 -> 100 s (gc 209 -> 75 s); SD 2.1 768^2
+        # 101 -> 26 s (gc 88 -> 15 s). Note the reduced gc cadence lets
+        # the garbage sawtooth ride higher (SD21 peak 5.4 -> 13.3 GB);
+        # cards much smaller than 16 GB may need different gate sizing.
+        .flux_gc_gates(footprint_gb = 12)
+    }
+
     pipeline <- list()
     # Load models into the environment
     if (i2i) {
