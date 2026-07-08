@@ -28,10 +28,7 @@ Imports:
     jpeg
 Suggests:
     av,
-    gpu.ctl,
     hfhub,
     safetensors,
     tinytest
-Remotes:
-    cornball-ai/gpu.ctl
 RoxygenNote: 7.3.3

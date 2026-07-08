@@ -12,7 +12,7 @@ vram_report(label = "")
 Invisibly returns a list with used and free VRAM in GB.
 }
 \description{
-Prints current VRAM usage using gpuctl.
+Prints current VRAM usage from nvidia-smi.
 }
 \examples{
 \dontrun{

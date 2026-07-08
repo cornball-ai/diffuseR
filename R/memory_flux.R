@@ -49,7 +49,7 @@ NULL
 #' Resolve a FLUX memory profile
 #'
 #' @param vram_gb Numeric or NULL. Available VRAM; auto-detected when
-#'   NULL (via gpu.ctl or nvidia-smi).
+#'   NULL (via nvidia-smi).
 #'
 #' @return List with \code{name}, \code{precision} ("nf4"/"fp8"),
 #'   \code{attn_chunk}, \code{text_device}, \code{phase_offload}, and

@@ -4,7 +4,7 @@
 \title{Load the Z-Image-Turbo pipeline}
 \usage{
 zimage_load_pipeline(model_dir = NULL, device = "cuda",
-                     precision = c("fp8", "nf4"), text_device = NULL,
+                     precision = c("auto", "fp8", "nf4"), text_device = NULL,
                      attn_chunk = NULL, phase_offload = TRUE, verbose = TRUE)
 }
 \arguments{
@@ -14,7 +14,8 @@ raw diffusers transformer directory.}
 
 \item{device}{Character. Compute device.}
 
-\item{precision}{"fp8" (default) or "nf4".}
+\item{precision}{"auto" (default: reuse an existing artifact, else
+fp8 when safetensors supports float8, else nf4), "fp8", or "nf4".}
 
 \item{text_device}{Device for the Qwen3 encoder (default:
 \code{device}; it encodes in its own phase and offloads).}

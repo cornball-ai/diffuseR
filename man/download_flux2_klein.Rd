@@ -3,14 +3,15 @@
 \alias{download_flux2_klein}
 \title{Download FLUX.2-klein-4B and build the quantized artifact}
 \usage{
-download_flux2_klein(quantize = TRUE, precision = c("fp8", "nf4"),
+download_flux2_klein(quantize = TRUE, precision = c("auto", "fp8", "nf4"),
                      output_dir = NULL, text_encoders = TRUE, verbose = TRUE)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact.}
 
-\item{precision}{"fp8" (~4 GB, GPU-resident; near-bf16 quality) or
-"nf4" (~2.3 GB).}
+\item{precision}{"auto" (default: fp8 when safetensors supports
+float8, else nf4), "fp8" (~4 GB, GPU-resident; near-bf16 quality),
+or "nf4" (~2.3 GB).}
 
 \item{output_dir}{Directory for the quantized artifact.}
 

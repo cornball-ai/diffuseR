@@ -1,8 +1,7 @@
 #' Auto-Configure Device Assignment
 #'
 #' Automatically determines optimal device configuration for diffusion model
-#' components based on available VRAM and GPU architecture. Uses gpuctl for
-#' detection if available, otherwise falls back to sensible defaults.
+#' components based on available VRAM (via nvidia-smi) and GPU architecture.
 #'
 #' @param model Character. Model type: "sd21" or "sdxl".
 #' @param strategy Character. Memory strategy: "auto" (default), "full_gpu",
@@ -13,17 +12,15 @@
 #' @details
 #' Strategies:
 #' \describe{
-#'   \item{"auto"}{Detect VRAM and choose best strategy (requires gpuctl)}
-#'   \item{"full_gpu"}{All components on CUDA (16GB+ VRAM for SDXL)}
-#'   \item{"unet_gpu"}{Only unet on CUDA, rest on CPU (8GB+ VRAM)}
+#'   \item{"auto"}{Detect free VRAM and choose the best strategy}
+#'   \item{"full_gpu"}{All components on CUDA (10GB+ free VRAM for SDXL)}
+#'   \item{"unet_gpu"}{Only unet on CUDA, rest on CPU (6GB+ for SDXL)}
 #'   \item{"cpu_only"}{All components on CPU}
 #' }
 #'
-#' If gpuctl is not installed, "auto" falls back to "unet_gpu" which works on
-#' most modern GPUs (8GB+ VRAM).
-#'
 #' On Blackwell GPUs (RTX 50xx), "unet_gpu" is forced due to TorchScript
-#' compatibility issues, regardless of available VRAM.
+#' compatibility issues, regardless of available VRAM. The native modules
+#' (`use_native_unet` and friends) do not have this restriction.
 #'
 #' @export
 #'
@@ -39,20 +36,36 @@
 #' devices <- auto_devices("sdxl", strategy = "cpu_only")
 #' }
 auto_devices <- function(model = "sdxl", strategy = "auto") {
-    # If gpuctl is available, use it
-
-    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-        return(gpu.ctl::recommended_devices(model = model, strategy = strategy))
+    # Free-VRAM requirements in GB (float16 component sizes + overhead)
+    requirements <- list(
+                         sd21 = list(full_gpu = 4, unet_gpu = 3),
+                         sdxl = list(full_gpu = 10, unet_gpu = 6)
+    )
+    req <- requirements[[model]]
+    if (is.null(req)) {
+        stop("Unsupported model: ", model, ". Supported: ",
+             paste(names(requirements), collapse = ", "))
     }
 
-    # Fallback when gpuctl not available
     if (strategy == "auto") {
-        message("gpuctl not installed - using unet_gpu strategy as default")
-        message("Install gpuctl for auto-detection: install.packages('gpuctl')")
+        vram <- .detect_vram(use_free = TRUE)
+        strategy <- if (is_blackwell_gpu()) {
+            "unet_gpu"
+        } else if (vram >= req$full_gpu) {
+            "full_gpu"
+        } else if (vram >= req$unet_gpu) {
+            "unet_gpu"
+        } else {
+            "cpu_only"
+        }
+        message(sprintf("auto_devices: %s (%.1f GB free VRAM)", strategy,
+                        vram))
+    } else if (identical(strategy, "full_gpu") && is_blackwell_gpu()) {
+        # TorchScript workaround: full_gpu is not supported on Blackwell
+        message("Blackwell GPU detected - overriding full_gpu to unet_gpu")
         strategy <- "unet_gpu"
     }
 
-    # Build device config manually
     .build_fallback_devices(model, strategy)
 }
 

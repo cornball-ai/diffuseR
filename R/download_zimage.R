@@ -38,8 +38,9 @@ NULL
 #' quantization.
 #'
 #' @param quantize Logical. Build the quantized artifact.
-#' @param precision "fp8" (~6.3 GB, GPU-resident; near-bf16 quality) or
-#'   "nf4" (~3.6 GB).
+#' @param precision "auto" (default: fp8 when safetensors supports
+#'   float8, else nf4), "fp8" (~6.3 GB, GPU-resident; near-bf16
+#'   quality), or "nf4" (~3.6 GB).
 #' @param output_dir Directory for the quantized artifact.
 #' @param text_encoders Logical. Also fetch the Qwen3-4B text encoder,
 #'   tokenizer, VAE, and scheduler config (~8.2 GB).
@@ -50,10 +51,14 @@ NULL
 #'
 #' @export
 download_zimage_turbo <- function(quantize = TRUE,
-                                  precision = c("fp8", "nf4"),
+                                  precision = c("auto", "fp8", "nf4"),
                                   output_dir = NULL, text_encoders = TRUE,
                                   verbose = TRUE) {
     precision <- match.arg(precision)
+    precision <- .flux_resolve_precision(
+        precision,
+        file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-")
+    )
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("zimage-turbo-", precision))

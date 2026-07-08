@@ -3,14 +3,15 @@
 \alias{download_zimage_turbo}
 \title{Download Z-Image-Turbo and build the quantized artifact}
 \usage{
-download_zimage_turbo(quantize = TRUE, precision = c("fp8", "nf4"),
+download_zimage_turbo(quantize = TRUE, precision = c("auto", "fp8", "nf4"),
                       output_dir = NULL, text_encoders = TRUE, verbose = TRUE)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact.}
 
-\item{precision}{"fp8" (~6.3 GB, GPU-resident; near-bf16 quality) or
-"nf4" (~3.6 GB).}
+\item{precision}{"auto" (default: fp8 when safetensors supports
+float8, else nf4), "fp8" (~6.3 GB, GPU-resident; near-bf16
+quality), or "nf4" (~3.6 GB).}
 
 \item{output_dir}{Directory for the quantized artifact.}
 

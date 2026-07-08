@@ -36,7 +36,8 @@ NULL
 #'   \code{download_flux2_klein} location for \code{precision}), or a
 #'   raw diffusers transformer directory.
 #' @param device Character. Compute device.
-#' @param precision "fp8" (default) or "nf4".
+#' @param precision "auto" (default: reuse an existing artifact, else
+#'   fp8 when safetensors supports float8, else nf4), "fp8", or "nf4".
 #' @param text_device Device for the Qwen3 encoder (default:
 #'   \code{device}; it encodes in its own phase and offloads).
 #' @param attn_chunk Integer or NULL. Attention query-chunk override.
@@ -47,10 +48,13 @@ NULL
 #'
 #' @export
 flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
-                                precision = c("fp8", "nf4"),
+                                precision = c("auto", "fp8", "nf4"),
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, verbose = TRUE) {
-    precision <- match.arg(precision)
+    precision <- .flux_resolve_precision(
+        match.arg(precision),
+        file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-")
+    )
     if (is.null(text_device)) {
         if (device == "cuda") {
             text_device <- "cuda"

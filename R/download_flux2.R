@@ -32,8 +32,9 @@ NULL
 #' (~7.8 GB in the HuggingFace cache) may be deleted after quantization.
 #'
 #' @param quantize Logical. Build the quantized artifact.
-#' @param precision "fp8" (~4 GB, GPU-resident; near-bf16 quality) or
-#'   "nf4" (~2.3 GB).
+#' @param precision "auto" (default: fp8 when safetensors supports
+#'   float8, else nf4), "fp8" (~4 GB, GPU-resident; near-bf16 quality),
+#'   or "nf4" (~2.3 GB).
 #' @param output_dir Directory for the quantized artifact.
 #' @param text_encoders Logical. Also fetch the Qwen3 text encoder,
 #'   tokenizer, VAE, and scheduler config (~8.3 GB).
@@ -44,10 +45,14 @@ NULL
 #'
 #' @export
 download_flux2_klein <- function(quantize = TRUE,
-                                 precision = c("fp8", "nf4"),
+                                 precision = c("auto", "fp8", "nf4"),
                                  output_dir = NULL, text_encoders = TRUE,
                                  verbose = TRUE) {
     precision <- match.arg(precision)
+    precision <- .flux_resolve_precision(
+        precision,
+        file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-")
+    )
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("flux2-klein-4b-", precision))
