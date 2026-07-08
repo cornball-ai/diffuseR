@@ -1,6 +1,7 @@
 # Generate the Z-Image phase-3 fixture: a tiny random-init
 # ZImageTransformer2DModel full forward (state dict + input + output),
-# with both caption and image needing pad tokens.
+# with both caption and image needing pad tokens, plus a sharded
+# save_pretrained checkpoint for loader/quantizer tests.
 #
 # Runs the diffusers reference (Apache-2.0) on small fixed inputs. Run
 # via tools/gen_fixtures.sh; never executed at package test/run time.
@@ -25,13 +26,13 @@ fx = {}
 
 model = ZImageTransformer2DModel(
     in_channels=4,
-    dim=32,
+    dim=48,
     n_layers=2,
     n_refiner_layers=1,
     n_heads=2,
     n_kv_heads=2,
     cap_feat_dim=24,
-    axes_dims=[4, 6, 6],
+    axes_dims=[8, 8, 8],
     axes_lens=[128, 32, 32],
 )
 with torch.no_grad():
@@ -57,3 +58,7 @@ fx = {k: v.contiguous() for k, v in fx.items()}
 save_file(fx, os.path.join(OUT_DIR, "zimage_model.safetensors"),
           metadata={"purpose": "diffuseR Z-Image test fixture"})
 print(f"wrote {len(fx)} tensors to {OUT_DIR}/zimage_model.safetensors")
+
+CKPT_DIR = os.path.join(OUT_DIR, "zimage_tiny_ckpt")
+model.save_pretrained(CKPT_DIR, max_shard_size="120KB")
+print(f"wrote sharded checkpoint to {CKPT_DIR}")

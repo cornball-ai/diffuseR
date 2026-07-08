@@ -29,8 +29,8 @@ sd <- fx[grep("^sd\\.", names(fx))]
 names(sd) <- sub("^sd\\.", "", names(sd))
 
 model <- zimage_transformer(
-  in_channels = 4L, dim = 32L, n_layers = 2L, n_refiner_layers = 1L,
-  n_heads = 2L, cap_feat_dim = 24L, axes_dims = c(4L, 6L, 6L)
+  in_channels = 4L, dim = 48L, n_layers = 2L, n_refiner_layers = 1L,
+  n_heads = 2L, cap_feat_dim = 24L, axes_dims = c(8L, 8L, 8L)
 )
 
 # Strict bidirectional key census: every checkpoint key lands, every
