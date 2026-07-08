@@ -37,10 +37,8 @@
 #' }
 auto_devices <- function(model = "sdxl", strategy = "auto") {
     # Free-VRAM requirements in GB (float16 component sizes + overhead)
-    requirements <- list(
-                         sd21 = list(full_gpu = 4, unet_gpu = 3),
-                         sdxl = list(full_gpu = 10, unet_gpu = 6)
-    )
+    requirements <- list(sd21 = list(full_gpu = 4, unet_gpu = 3),
+                         sdxl = list(full_gpu = 10, unet_gpu = 6))
     req <- requirements[[model]]
     if (is.null(req)) {
         stop("Unsupported model: ", model, ". Supported: ",
@@ -58,8 +56,7 @@ auto_devices <- function(model = "sdxl", strategy = "auto") {
         } else {
             "cpu_only"
         }
-        message(sprintf("auto_devices: %s (%.1f GB free VRAM)", strategy,
-                        vram))
+        message(sprintf("auto_devices: %s (%.1f GB free VRAM)", strategy, vram))
     } else if (identical(strategy, "full_gpu") && is_blackwell_gpu()) {
         # TorchScript workaround: full_gpu is not supported on Blackwell
         message("Blackwell GPU detected - overriding full_gpu to unet_gpu")

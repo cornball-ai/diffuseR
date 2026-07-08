@@ -55,10 +55,8 @@ download_zimage_turbo <- function(quantize = TRUE,
                                   output_dir = NULL, text_encoders = TRUE,
                                   verbose = TRUE) {
     precision <- match.arg(precision)
-    precision <- .flux_resolve_precision(
-        precision,
-        file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-")
-    )
+    precision <- .flux_resolve_precision(precision,
+        file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("zimage-turbo-", precision))

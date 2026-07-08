@@ -33,8 +33,7 @@ NULL
         return(cached)
     }
     ok <- requireNamespace("safetensors", quietly = TRUE) && tryCatch({
-        target <- switch(dtype,
-                         bfloat16 = torch::torch_bfloat16(),
+        target <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
                          float8_e4m3fn = torch::torch_float8_e4m3fn())
         x <- torch::torch_zeros(2L)$to(dtype = target)
         tmp <- tempfile(fileext = ".safetensors")
@@ -61,7 +60,11 @@ NULL
             }
         }
     }
-    if (.st_can_write("float8_e4m3fn")) "fp8" else "nf4"
+    if (.st_can_write("float8_e4m3fn")) {
+        "fp8"
+    } else {
+        "nf4"
+    }
 }
 
 # Transformer constructor arguments from a diffusers config.json

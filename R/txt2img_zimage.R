@@ -52,10 +52,8 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                  precision = c("auto", "fp8", "nf4"),
                                  text_device = NULL, attn_chunk = NULL,
                                  phase_offload = TRUE, verbose = TRUE) {
-    precision <- .flux_resolve_precision(
-        match.arg(precision),
-        file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-")
-    )
+    precision <- .flux_resolve_precision(match.arg(precision),
+        file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
     if (is.null(text_device)) {
         if (device == "cuda") {
             text_device <- "cuda"
