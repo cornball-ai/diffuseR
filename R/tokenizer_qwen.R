@@ -201,17 +201,21 @@ print.qwen_tokenizer <- function(x, ...) {
 
 #' Encode prompts with the Qwen tokenizer
 #'
-#' With \code{chat_template = TRUE} (the FLUX.2 klein pipeline behavior)
-#' each prompt is wrapped as a single user turn with the generation
-#' prompt and a disabled thinking block, matching
-#' \code{apply_chat_template(..., add_generation_prompt = TRUE,
-#' enable_thinking = FALSE)}. Right-pads with \code{<|endoftext|>}.
+#' With \code{chat_template = TRUE} each prompt is wrapped as a single
+#' user turn with the generation prompt, matching
+#' \code{apply_chat_template(..., add_generation_prompt = TRUE)}. With
+#' \code{enable_thinking = FALSE} (the FLUX.2 klein pipeline behavior)
+#' the template closes with an empty thinking block; with
+#' \code{enable_thinking = TRUE} (the Z-Image pipeline behavior) it ends
+#' at the assistant turn. Right-pads with \code{<|endoftext|>}.
 #'
 #' @param tokenizer A \code{\link{qwen_bpe_tokenizer}}.
 #' @param texts Character vector of prompts.
 #' @param max_length Integer. Fixed sequence length (klein: 512). NULL
 #'   for no truncation/padding.
 #' @param chat_template Logical. Wrap in the Qwen3 chat template.
+#' @param enable_thinking Logical. Leave the model's thinking enabled
+#'   (no empty think block). Default FALSE.
 #'
 #' @return List with \code{input_ids} and \code{attention_mask} integer
 #'   matrices [length(texts), max_length] (ragged lists when
@@ -219,13 +223,14 @@ print.qwen_tokenizer <- function(x, ...) {
 #'
 #' @export
 encode_qwen <- function(tokenizer, texts, max_length = 512L,
-                        chat_template = TRUE) {
+                        chat_template = TRUE, enable_thinking = FALSE) {
     stopifnot(inherits(tokenizer, "qwen_tokenizer"))
 
     encode_one <- function(text) {
         if (chat_template) {
             text <- paste0("<|im_start|>user\n", text, "<|im_end|>\n",
-                           "<|im_start|>assistant\n<think>\n\n</think>\n\n")
+                           "<|im_start|>assistant\n",
+                           if (!enable_thinking) "<think>\n\n</think>\n\n")
         }
         ids <- integer(0)
         for (chunk in .qwen_split_added(text, tokenizer)) {
