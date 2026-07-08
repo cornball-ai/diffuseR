@@ -208,7 +208,22 @@ report_pair("flux2 klein pipeline",
             py_scopes(pipe2, c("Flux2KleinPipeline", "compute_empirical_mu")),
             c("R/txt2img_flux2.R", "R/vae_flux2.R", "R/rope_flux2.R"))
 
-# 5. Qwen3 encoder (modular reference; requires tools/cache/modular_qwen3.py)
+# 5. Z-Image transformer stack + pipeline
+tfz <- parse_file(file.path(DIFFUSERS, "models/transformers/transformer_z_image.py"),
+                  ts_language_python())
+report_pair("zimage transformer",
+            py_scopes(tfz, c("TimestepEmbedder", "ZSingleStreamAttnProcessor",
+                             "FeedForward", "ZImageTransformerBlock", "FinalLayer",
+                             "RopeEmbedder", "ZImageTransformer2DModel")),
+            c("R/dit_zimage_modules.R", "R/dit_zimage.R", "R/rope_zimage.R"))
+
+pipez <- parse_file(file.path(DIFFUSERS, "pipelines/z_image/pipeline_z_image.py"),
+                    ts_language_python())
+report_pair("zimage pipeline",
+            py_scopes(pipez, c("ZImagePipeline", "get_default_z_image_sigmas")),
+            c("R/txt2img_zimage.R"))
+
+# 6. Qwen3 encoder (modular reference; requires tools/cache/modular_qwen3.py)
 q3_path <- "tools/cache/modular_qwen3.py"
 if (file.exists(q3_path)) {
     q3 <- parse_file(q3_path, ts_language_python())

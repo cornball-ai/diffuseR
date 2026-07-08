@@ -11,7 +11,8 @@
 #' \dontrun{
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
-txt2img <- function(prompt, model_name = c("sd21", "sdxl", "flux1", "flux2"),
+txt2img <- function(prompt, model_name = c("sd21", "sdxl", "flux1", "flux2",
+                                           "zimage"),
                     ...) {
     switch(model_name,
            # "sd15" = txt2img_sd15(prompt, ...),
@@ -19,6 +20,7 @@ txt2img <- function(prompt, model_name = c("sd21", "sdxl", "flux1", "flux2"),
            "sdxl" = txt2img_sdxl(prompt, ...),
            "flux1" = txt2img_flux(prompt, ...),
            "flux2" = txt2img_flux2(prompt, ...),
+           "zimage" = txt2img_zimage(prompt, ...),
            # "sd3" = txt2img_sd3(prompt, ...),
            stop("Unsupported model: ", model_name)
     )
