@@ -7,7 +7,7 @@ flux_memory_profile(vram_gb = NULL)
 }
 \arguments{
 \item{vram_gb}{Numeric or NULL. Available VRAM; auto-detected when
-NULL (via gpu.ctl or nvidia-smi).}
+NULL (via nvidia-smi).}
 }
 \value{
 List with \code{name}, \code{precision} ("nf4"/"fp8"),

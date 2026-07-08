@@ -16,23 +16,20 @@ A named list of device assignments suitable for `models2devices()`.
 }
 \description{
 Automatically determines optimal device configuration for diffusion model
-components based on available VRAM and GPU architecture. Uses gpuctl for
-detection if available, otherwise falls back to sensible defaults.
+components based on available VRAM (via nvidia-smi) and GPU architecture.
 }
 \details{
 Strategies:
 \describe{
-  \item{"auto"}{Detect VRAM and choose best strategy (requires gpuctl)}
-  \item{"full_gpu"}{All components on CUDA (16GB+ VRAM for SDXL)}
-  \item{"unet_gpu"}{Only unet on CUDA, rest on CPU (8GB+ VRAM)}
+  \item{"auto"}{Detect free VRAM and choose the best strategy}
+  \item{"full_gpu"}{All components on CUDA (10GB+ free VRAM for SDXL)}
+  \item{"unet_gpu"}{Only unet on CUDA, rest on CPU (6GB+ for SDXL)}
   \item{"cpu_only"}{All components on CPU}
 }
 
-If gpuctl is not installed, "auto" falls back to "unet_gpu" which works on
-most modern GPUs (8GB+ VRAM).
-
 On Blackwell GPUs (RTX 50xx), "unet_gpu" is forced due to TorchScript
-compatibility issues, regardless of available VRAM.
+compatibility issues, regardless of available VRAM. The native modules
+(`use_native_unet` and friends) do not have this restriction.
 }
 \examples{
 \dontrun{

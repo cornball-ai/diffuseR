@@ -12,6 +12,6 @@
 Numeric. VRAM in GB, or 0 if no GPU detected.
 }
 \description{
-Uses gpuctl if available.
+Asks nvidia-smi.
 }
 \keyword{internal}

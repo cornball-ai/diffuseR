@@ -21,12 +21,7 @@ NULL
 #' }
 #' }
 is_blackwell_gpu <- function() {
-    # Use gpuctl if available
-    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-        return(gpu.ctl::gpu_is_blackwell())
-    }
-
-    # Fallback: check compute capability via torch
+    # Check compute capability via torch
     if (torch::cuda_is_available()) {
         cap <- tryCatch(torch::cuda_get_device_capability(0L),
                         error = function(e) NULL)
@@ -41,27 +36,13 @@ is_blackwell_gpu <- function() {
 
 #' Detect Available VRAM
 #'
-#' Uses gpuctl if available.
+#' Asks nvidia-smi.
 #'
 #' @param use_free Logical. If TRUE, return free VRAM. If FALSE, return total.
 #'
 #' @return Numeric. VRAM in GB, or 0 if no GPU detected.
 #' @keywords internal
 .detect_vram <- function(use_free = FALSE) {
-    # Try gpuctl (preferred - uses nvidia-smi)
-    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-        info <- gpu.ctl::gpu_detect()
-        if (!is.null(info)) {
-            if (use_free && !is.null(info$vram_free_gb)) {
-                return(info$vram_free_gb)
-            }
-            if (!is.null(info$vram_total_gb)) {
-                return(info$vram_total_gb)
-            }
-        }
-    }
-
-    # Fallback: ask nvidia-smi directly
     smi <- suppressWarnings(tryCatch(
                                      system2("nvidia-smi",
                 c(paste0("--query-gpu=memory.",
@@ -78,7 +59,7 @@ is_blackwell_gpu <- function() {
     # Fallback: check if CUDA available but can't determine VRAM
     if (torch::cuda_is_available()) {
         # Conservative estimate - assume 8GB if we can't detect
-        message("Could not detect VRAM. Install gpuctl for accurate detection.")
+        message("Could not detect VRAM via nvidia-smi; assuming 8 GB.")
         return(8)
     }
 
@@ -136,7 +117,7 @@ load_to_gpu <- function(module, device = "cuda") {
 
 #' Report VRAM Usage
 #'
-#' Prints current VRAM usage using gpuctl.
+#' Prints current VRAM usage from nvidia-smi.
 #'
 #' @param label Character. Label for the report.
 #'
@@ -154,19 +135,23 @@ vram_report <- function(label = "") {
         return(invisible(list(used = 0, free = 0)))
     }
 
-    # Use gpuctl for accurate reporting
-    if (requireNamespace("gpu.ctl", quietly = TRUE)) {
-        info <- gpu.ctl::gpu_detect()
-        if (!is.null(info)) {
-            used <- info$vram_used_gb
-            free <- info$vram_free_gb
-            message(sprintf("[%s] VRAM: %.2f GB used, %.2f GB free", label,
-                            used, free))
-            return(invisible(list(used = used, free = free)))
-        }
+    smi <- suppressWarnings(tryCatch(
+                                     system2("nvidia-smi",
+                c("--query-gpu=memory.used,memory.free",
+                    "--format=csv,noheader,nounits"),
+                stdout = TRUE, stderr = FALSE),
+                                     error = function(e) character(0)
+        ))
+    vals <- suppressWarnings(as.numeric(strsplit(smi[1], ",")[[1]]))
+    if (length(vals) == 2L && all(is.finite(vals))) {
+        used <- vals[1] / 1024
+        free <- vals[2] / 1024
+        message(sprintf("[%s] VRAM: %.2f GB used, %.2f GB free", label,
+                        used, free))
+        return(invisible(list(used = used, free = free)))
     }
 
-    message("[", label, "] VRAM: (install gpuctl for detailed stats)")
+    message("[", label, "] VRAM: (nvidia-smi unavailable)")
     invisible(list(used = NA, free = NA))
 }
 

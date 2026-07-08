@@ -16,6 +16,66 @@ NULL
            stop("Unsupported dtype: ", dtype))
 }
 
+# Capability probe: can the installed safetensors round-trip this dtype?
+# CRAN safetensors (<= 0.2.1) can read bfloat16 but not write it, and has
+# no float8 support; the fixes are upstream PRs. Cached per session;
+# options(diffuseR.st_caps = list(bfloat16 = FALSE, ...)) overrides for
+# tests.
+.st_caps <- new.env(parent = emptyenv())
+.st_can_write <- function(dtype = c("bfloat16", "float8_e4m3fn")) {
+    dtype <- match.arg(dtype)
+    override <- getOption("diffuseR.st_caps")
+    if (!is.null(override) && !is.null(override[[dtype]])) {
+        return(isTRUE(override[[dtype]]))
+    }
+    cached <- .st_caps[[dtype]]
+    if (!is.null(cached)) {
+        return(cached)
+    }
+    ok <- requireNamespace("safetensors", quietly = TRUE) && tryCatch({
+        target <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
+                         float8_e4m3fn = torch::torch_float8_e4m3fn())
+        x <- torch::torch_zeros(2L)$to(dtype = target)
+        tmp <- tempfile(fileext = ".safetensors")
+        on.exit(unlink(tmp), add = TRUE)
+        safetensors::safe_save_file(list(w = x), tmp)
+        y <- safetensors::safe_load_file(tmp, framework = "torch")
+        !is.null(y$w)
+    }, error = function(e) FALSE)
+    .st_caps[[dtype]] <- ok
+    ok
+}
+
+# Resolve precision = "auto": prefer an existing quantized artifact
+# (fp8 first), else pick by float8 write capability. An fp8 artifact is
+# only chosen if the installed safetensors can actually read float8 -
+# otherwise a fork-built fp8 artifact on a CRAN-safetensors machine
+# would be selected and then fail at read time. Write capability is a
+# sound proxy for read capability (nothing writes fp8 but cannot read
+# it).
+.flux_resolve_precision <- function(precision, artifact_prefix = NULL) {
+    if (!identical(precision, "auto")) {
+        return(precision)
+    }
+    fp8_ok <- .st_can_write("float8_e4m3fn")
+    if (!is.null(artifact_prefix)) {
+        for (p in c("fp8", "nf4")) {
+            if (p == "fp8" && !fp8_ok) {
+                next
+            }
+            if (file.exists(file.path(paste0(artifact_prefix, p),
+                                      "manifest.json"))) {
+                return(p)
+            }
+        }
+    }
+    if (fp8_ok) {
+        "fp8"
+    } else {
+        "nf4"
+    }
+}
+
 # Transformer constructor arguments from a diffusers config.json
 .flux_transformer_args <- function(config) {
     if (is.null(config)) {
@@ -151,6 +211,22 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
                           format = c("nf4", "fp8"), shard_bytes = 4e9,
                           force = FALSE, verbose = TRUE) {
     format <- match.arg(format)
+    if (format == "fp8" && !.st_can_write("float8_e4m3fn")) {
+        stop("The installed safetensors package cannot write float8 ",
+             "tensors (needs the float8 support pending in ",
+             "mlverse/safetensors#13; until it lands on CRAN, install ",
+             "remotes::install_github(\"cornball-ai/safetensors\") or ",
+             "use format = \"nf4\").", call. = FALSE)
+    }
+    # Residents load into the compute dtype either way; bf16 halves the
+    # artifact but CRAN safetensors (<= 0.2.1) cannot write it yet
+    resident_dtype <- if (.st_can_write("bfloat16")) {
+        torch::torch_bfloat16()
+    } else {
+        message("safetensors cannot write bfloat16; storing resident ",
+                "tensors as float32 (larger artifact, same results)")
+        torch::torch_float32()
+    }
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("flux1-schnell-", format))
@@ -223,7 +299,7 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
             # Residents load into the compute dtype anyway; storing bf16
             # keeps fp32-shipped checkpoints (Z-Image) from doubling the
             # artifact. Identity for bf16 sources.
-            shard[[key]] <- tensor$to(dtype = torch::torch_bfloat16())
+            shard[[key]] <- tensor$to(dtype = resident_dtype)
             shard_size <- shard_size + prod(tensor$shape) * 2
         }
         rm(tensor)
@@ -298,6 +374,12 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
                                   verbose = TRUE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
     format <- ckpt$format %||% "full"
+    if (identical(format, "fp8") && !.st_can_write("float8_e4m3fn")) {
+        stop("This fp8 artifact needs float8 support the installed ",
+             "safetensors lacks (pending in mlverse/safetensors#13). ",
+             "Install remotes::install_github(\"cornball-ai/safetensors\"), ",
+             "or rebuild the artifact as nf4.", call. = FALSE)
+    }
     hooks <- .flux_family_hooks(ckpt$config)
 
     args <- utils::modifyList(hooks$args_fn(ckpt$config), list(...))
