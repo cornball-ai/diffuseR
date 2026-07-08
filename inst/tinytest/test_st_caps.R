@@ -52,6 +52,18 @@ options(diffuseR.st_caps = list(float8_e4m3fn = TRUE))
 expect_equal(resolve_precision("auto", prefix), "fp8")
 options(diffuseR.st_caps = NULL)
 
+# An fp8 artifact present but unreadable (CRAN safetensors) is NOT
+# selected - it would fail at read time. Only nf4 (or a build) is safe.
+dir.create(fp8_dir, showWarnings = FALSE)
+writeLines("{}", file.path(fp8_dir, "manifest.json"))
+options(diffuseR.st_caps = list(float8_e4m3fn = FALSE))
+expect_equal(resolve_precision("auto", prefix), "nf4")
+# With float8 support the same fp8 artifact IS selected
+options(diffuseR.st_caps = list(float8_e4m3fn = TRUE))
+expect_equal(resolve_precision("auto", prefix), "fp8")
+options(diffuseR.st_caps = NULL)
+unlink(fp8_dir, recursive = TRUE)
+
 # --- quantizer gates (tiny checkpoint, CRAN-safetensors emulation) ------------------
 
 ckpt_dir <- system.file("tinytest", "fixtures", "zimage_tiny_ckpt",
@@ -94,3 +106,21 @@ ltx23_release_dequant_buffers()
 options(diffuseR.st_caps = NULL)
 options(diffuseR.block_gc = NULL)
 unlink(c(nf4_out, file.path(tempdir(), "stcaps-fp8")), recursive = TRUE)
+
+# --- load-path guard: fp8 artifact opened without float8 support --------------------
+# Build a real fp8 artifact (needs actual float8 support), then force the
+# probe to "no float8" and confirm loading errors actionably rather than
+# with a raw dtype failure.
+if (can_write("float8_e4m3fn")) {
+  fp8_out <- file.path(tempdir(), "stcaps-loadguard-fp8")
+  unlink(fp8_out, recursive = TRUE)
+  flux_quantize(ckpt_dir, fp8_out, format = "fp8", verbose = FALSE)
+  options(diffuseR.st_caps = list(float8_e4m3fn = FALSE))
+  expect_error(
+    flux_load_transformer(flux_open_quantized(fp8_out), device = "cpu",
+      verbose = FALSE),
+    pattern = "float8"
+  )
+  options(diffuseR.st_caps = NULL)
+  unlink(fp8_out, recursive = TRUE)
+}

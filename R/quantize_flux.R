@@ -47,20 +47,29 @@ NULL
 }
 
 # Resolve precision = "auto": prefer an existing quantized artifact
-# (fp8 first), else pick by float8 write capability
+# (fp8 first), else pick by float8 write capability. An fp8 artifact is
+# only chosen if the installed safetensors can actually read float8 -
+# otherwise a fork-built fp8 artifact on a CRAN-safetensors machine
+# would be selected and then fail at read time. Write capability is a
+# sound proxy for read capability (nothing writes fp8 but cannot read
+# it).
 .flux_resolve_precision <- function(precision, artifact_prefix = NULL) {
     if (!identical(precision, "auto")) {
         return(precision)
     }
+    fp8_ok <- .st_can_write("float8_e4m3fn")
     if (!is.null(artifact_prefix)) {
         for (p in c("fp8", "nf4")) {
+            if (p == "fp8" && !fp8_ok) {
+                next
+            }
             if (file.exists(file.path(paste0(artifact_prefix, p),
                                       "manifest.json"))) {
                 return(p)
             }
         }
     }
-    if (.st_can_write("float8_e4m3fn")) {
+    if (fp8_ok) {
         "fp8"
     } else {
         "nf4"
@@ -365,6 +374,12 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
                                   verbose = TRUE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
     format <- ckpt$format %||% "full"
+    if (identical(format, "fp8") && !.st_can_write("float8_e4m3fn")) {
+        stop("This fp8 artifact needs float8 support the installed ",
+             "safetensors lacks (pending in mlverse/safetensors#13). ",
+             "Install remotes::install_github(\"cornball-ai/safetensors\"), ",
+             "or rebuild the artifact as nf4.", call. = FALSE)
+    }
     hooks <- .flux_family_hooks(ckpt$config)
 
     args <- utils::modifyList(hooks$args_fn(ckpt$config), list(...))
