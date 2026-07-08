@@ -76,12 +76,12 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "backend:native")
     }
     if (device == "cuda") {
-        # Sized to the LARGEST phase (the 8 GB Qwen3 encode), not the
-        # transformer: a low footprint puts the allocator's R-gc
-        # callback threshold under the working set, and every callback
-        # walks the ~300k-object tokenizer heap (measured: 13-20 s
-        # forwards at footprint 6 vs sub-second at 12)
-        ltx23_tune_gc(footprint_gb = 12)
+        # Footprint sized to the LARGEST phase (the 8 GB Qwen3 encode),
+        # not the transformer: a low footprint puts the allocator's
+        # R-gc callback threshold under the working set, and every
+        # callback walks the ~300k-object tokenizer heap (measured:
+        # 13-20 s forwards at footprint 6 vs sub-second at 12)
+        .flux_gc_gates(footprint_gb = 12)
     }
 
     if (phase_offload) {

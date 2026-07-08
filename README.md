@@ -44,7 +44,7 @@ targets::install_github("cornball-ai/diffuseR")
 
 ## Features
 
-- **Text-to-Image Generation**: Stable Diffusion 2.1, SDXL, FLUX.1-schnell, and FLUX.2 Klein (fully native R torch implementations)
+- **Text-to-Image Generation**: Stable Diffusion 2.1, SDXL, FLUX.1-schnell, FLUX.2 Klein, and Z-Image-Turbo (fully native R torch implementations)
 - **Text-to-Video Generation**: LTX-2.3 with synchronized audio
 - **Image-to-Image Generation**: Modify existing images based on text prompts (SD 2.1 / SDXL)
 - **GPU-poor support**: NF4 and fp8 quantization run the 12B FLUX.1 and 22B LTX-2.3 transformers on a 16GB card
@@ -135,13 +135,13 @@ torch::cuda_empty_cache()
 ![](man/figures/gambling_cat.png)
 
 
-### FLUX
+### FLUX and Z-Image
 
-FLUX.1-schnell (12B) and FLUX.2 Klein (4B) are step-distilled models:
-4 denoising steps, no guidance. Both are quantized locally once at
-download time and fit comfortably on a 16GB GPU (measured on an RTX
-5060 Ti: FLUX.1 1024x1024 in ~2 min at 8.7GB peak; FLUX.2 Klein in
-~48s at 8.2GB peak).
+FLUX.1-schnell (12B), FLUX.2 Klein (4B), and Z-Image-Turbo (6B) are
+step-distilled models: 4-8 denoising steps, no guidance. All are
+quantized locally once at download time and fit comfortably on a 16GB
+GPU (measured 1024x1024 on an RTX 5060 Ti: FLUX.1 ~55s at 9.6GB peak;
+FLUX.2 Klein ~13s at 12.5GB; Z-Image-Turbo ~24s at 13.1GB).
 
 ```r
 library(diffuseR)
@@ -159,6 +159,12 @@ download_flux2_klein()
 txt2img_flux2("a red fox sitting in a snowy forest, digital art",
               seed = 42)
 
+# Z-Image-Turbo: ungated, strong at legible text in images (EN + CN).
+# ~33GB download, one-time fp8 quantize to a 5.9GB artifact.
+download_zimage_turbo()
+txt2img_zimage(paste("A storefront with a large wooden sign that reads",
+                     "\"DIFFUSER\" in bold carved letters"), seed = 42)
+
 # Or through the common dispatcher
 txt2img("a lighthouse at dusk", model_name = "flux2")
 ```
@@ -171,6 +177,7 @@ Currently supported models:
 - Stable Diffusion XL (SDXL)
 - FLUX.1-schnell (12B, 4-step distilled)
 - FLUX.2 Klein 4B (4-step distilled)
+- Z-Image-Turbo (6B, 8-step distilled, text rendering)
 - LTX-2.3 Video (with audio)
 
 ### Choosing an image model: SDXL vs FLUX.2
@@ -182,19 +189,19 @@ Same prompt, same seed, 1024x1024, measured on an RTX 5060 Ti 16GB:
 
 | Model | Settings | Load | Warm generation | Peak VRAM |
 |---|---|---|---|---|
-| SDXL | 50 steps, CFG 7.5 | 45 s | **20 s** | 12.7 GB |
-| FLUX.2 Klein 4B | 4 steps, guidance-free | 32 s | 48 s | **8.2 GB** |
+| SDXL | 50 steps, CFG 7.5 | 45 s | 20 s | **12.7 GB** |
+| FLUX.2 Klein 4B | 4 steps, guidance-free | 32 s | **13 s** | 12.5 GB |
 
-SDXL is over twice as fast per image, but FLUX.2's prompt adherence
-and coherence are in a different class — SDXL melts the speaker
-stacks and turns the wall records into neon smears, while FLUX.2
-draws the studio you asked for (SDXL left, FLUX.2 right):
+FLUX.2 is now faster per image (since the allocator gc-gate fix), and
+its prompt adherence and coherence are in a different class — SDXL
+melts the speaker stacks and turns the wall records into neon smears,
+while FLUX.2 draws the studio you asked for (SDXL left, FLUX.2 right):
 
 ![SDXL vs FLUX.2, same prompt and seed](man/figures/sdxl_vs_flux2_radio_studio.jpg)
 
-Rule of thumb: reach for FLUX.2 unless you need images in bulk and
-fast more than you need them right. Note FLUX.2 Klein is
-guidance-free, so negative prompts do not apply.
+Rule of thumb: reach for FLUX.2. Note FLUX.2 Klein is guidance-free,
+so negative prompts do not apply. When the image needs legible text
+(signs, posters, labels), reach for Z-Image-Turbo instead.
 
 ### Downloading Models
 

@@ -71,6 +71,28 @@ NULL
     args
 }
 
+.zimage_transformer_args <- function(config) {
+    if (is.null(config)) {
+        return(list())
+    }
+    args <- list(in_channels = config$in_channels, dim = config$dim,
+                 n_layers = config$n_layers,
+                 n_refiner_layers = config$n_refiner_layers,
+                 n_heads = config$n_heads, cap_feat_dim = config$cap_feat_dim,
+                 axes_dims = config$axes_dims,
+                 patch_size = config$all_patch_size[[1]],
+                 f_patch_size = config$all_f_patch_size[[1]])
+    args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
+    args <- lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
+    for (field in c("norm_eps", "rope_theta", "t_scale")) {
+        v <- config[[field]]
+        if (!is.null(v) && length(v) == 1L) {
+            args[[field]] <- as.numeric(v)
+        }
+    }
+    args
+}
+
 # Move plain-field fp8 weights (and their scales) onto a device; used
 # for resident fp8 where the whole quantized model fits on the GPU
 .flux_fp8_to_device <- function(module, device) {
@@ -87,9 +109,15 @@ NULL
 
 # Family-specific hooks for quantization and loading
 .flux_family_hooks <- function(config) {
-    if (.flux_family(config) == "flux2") {
+    family <- .flux_family(config)
+    if (family == "flux2") {
         list(model_fn = flux2_transformer, args_fn = .flux2_transformer_args,
              is_quant_key = flux2_is_quant_key, shard_prefix = "flux2-klein")
+    } else if (family == "zimage") {
+        list(model_fn = zimage_transformer,
+             args_fn = .zimage_transformer_args,
+             is_quant_key = zimage_is_quant_key,
+             shard_prefix = "zimage-turbo")
     } else {
         list(model_fn = flux_transformer,
              args_fn = .flux_transformer_args,
@@ -192,7 +220,10 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
             })
             n_cast <- n_cast + 1L
         } else {
-            shard[[key]] <- tensor
+            # Residents load into the compute dtype anyway; storing bf16
+            # keeps fp32-shipped checkpoints (Z-Image) from doubling the
+            # artifact. Identity for bf16 sources.
+            shard[[key]] <- tensor$to(dtype = torch::torch_bfloat16())
             shard_size <- shard_size + prod(tensor$shape) * 2
         }
         rm(tensor)

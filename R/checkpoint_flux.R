@@ -61,6 +61,29 @@ flux_is_quant_key <- function(key) {
                                     ")\\.weight$"
 )
 
+# Z-Image cast set: the seven core linears (attention q/k/v/out and the
+# three SwiGLU weights) in all three block stacks. The per-block adaLN
+# modulation linears, embedders, pad tokens and norms stay in the
+# resident dtype. Full Turbo census: (30 layers + 2 noise_refiner + 2
+# context_refiner) x 7 = 238 cast weights, ~6.0B of the 6B parameters.
+.zimage_quant_cast_pattern <- paste0(
+                                     "^(noise_refiner|context_refiner|layers)\\.[0-9]+\\.(",
+                                     "attention\\.(to_q|to_k|to_v|to_out\\.0)",
+                                     "|feed_forward\\.(w1|w2|w3)",
+                                     ")\\.weight$"
+)
+
+#' Test whether a Z-Image key is in the quantization cast set
+#'
+#' @param key Character vector of parameter names (diffusers-style).
+#'
+#' @return Logical vector.
+#'
+#' @export
+zimage_is_quant_key <- function(key) {
+    grepl(.zimage_quant_cast_pattern, key)
+}
+
 #' Test whether a FLUX.2 key is in the quantization cast set
 #'
 #' @param key Character vector of parameter names (diffusers-style).
@@ -77,6 +100,8 @@ flux2_is_quant_key <- function(key) {
     cls <- config$`_class_name` %||% "FluxTransformer2DModel"
     if (identical(cls, "Flux2Transformer2DModel")) {
         "flux2"
+    } else if (identical(cls, "ZImageTransformer2DModel")) {
+        "zimage"
     } else {
         "flux1"
     }

@@ -3,7 +3,8 @@
 \alias{encode_qwen}
 \title{Encode prompts with the Qwen tokenizer}
 \usage{
-encode_qwen(tokenizer, texts, max_length = 512L, chat_template = TRUE)
+encode_qwen(tokenizer, texts, max_length = 512L, chat_template = TRUE,
+            enable_thinking = FALSE)
 }
 \arguments{
 \item{tokenizer}{A \code{\link{qwen_bpe_tokenizer}}.}
@@ -14,6 +15,9 @@ encode_qwen(tokenizer, texts, max_length = 512L, chat_template = TRUE)
 for no truncation/padding.}
 
 \item{chat_template}{Logical. Wrap in the Qwen3 chat template.}
+
+\item{enable_thinking}{Logical. Leave the model's thinking enabled
+(no empty think block). Default FALSE.}
 }
 \value{
 List with \code{input_ids} and \code{attention_mask} integer
@@ -21,9 +25,11 @@ List with \code{input_ids} and \code{attention_mask} integer
   \code{max_length} is NULL). Ids are 0-based.
 }
 \description{
-With \code{chat_template = TRUE} (the FLUX.2 klein pipeline behavior)
-each prompt is wrapped as a single user turn with the generation
-prompt and a disabled thinking block, matching
-\code{apply_chat_template(..., add_generation_prompt = TRUE,
-enable_thinking = FALSE)}. Right-pads with \code{<|endoftext|>}.
+With \code{chat_template = TRUE} each prompt is wrapped as a single
+user turn with the generation prompt, matching
+\code{apply_chat_template(..., add_generation_prompt = TRUE)}. With
+\code{enable_thinking = FALSE} (the FLUX.2 klein pipeline behavior)
+the template closes with an empty thinking block; with
+\code{enable_thinking = TRUE} (the Z-Image pipeline behavior) it ends
+at the assistant turn. Right-pads with \code{<|endoftext|>}.
 }

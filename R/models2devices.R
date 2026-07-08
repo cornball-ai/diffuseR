@@ -59,7 +59,8 @@ get_required_components <- function(model_name) {
                        "sdxl" = c("unet", "decoder", "text_encoder", "text_encoder2",
                                   "encoder"),
                        "flux1" = c("transformer", "decoder", "text_encoder", "text_encoder2"),
-                       "flux2" = c("transformer", "decoder", "text_encoder")
+                       "flux2" = c("transformer", "decoder", "text_encoder"),
+                       "zimage" = c("transformer", "decoder", "text_encoder")
                        # "sd3" = c("transformer", "decoder", "text_encoder", "text_encoder2", "text_encoder3", "encoder"),
                        # "cascade" = c("prior", "decoder", "text_encoder", "vqgan")
     )

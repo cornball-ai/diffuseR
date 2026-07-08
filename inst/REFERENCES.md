@@ -40,6 +40,16 @@ module; this file documents the actual lineage, idea by idea.
 | Qwen2 byte-level BPE tokenization (GPT-2 byte table, GPT-4-style split regex, rank-based merges) | GPT-2 BPE (Radford et al. 2019; openai/gpt-2 `encoder.py`, MIT); format facts from HuggingFace tokenizers documentation |
 | Weights | black-forest-labs/FLUX.2-klein-4B (Apache-2.0, ungated; downloaded by the user, never redistributed) |
 
+## Z-Image Turbo
+
+| What | Source |
+|---|---|
+| Single-stream DiT (sandwich RMSNorms, scale/gate-only tanh modulation, noise/context refiner stacks, SwiGLU with separate gate, 3-axis RoPE theta 256, SEQ_MULTI_OF padding with learned pad tokens) | Ported from HuggingFace **diffusers** (Apache-2.0): `models/transformers/transformer_z_image.py` |
+| Pipeline flow: Qwen3 prompt encoding contract (thinking-enabled chat template, penultimate hidden state, mask-sliced captions), linspace sigma schedule, reversed-timestep + negated-output convention, static shift | diffusers `pipelines/z_image/pipeline_z_image.py` (Apache-2.0) |
+| VAE decode | The FLUX.1 16-channel AutoencoderKL port, unchanged (the checkpoint's VAE config is the flux-dev autoencoder) |
+| Qwen3-4B encoder + Qwen2 byte-level BPE tokenizer | Shared with the FLUX.2 klein port (see above); the tokenizer files are byte-identical between the two checkpoints |
+| Weights | Tongyi-MAI/Z-Image-Turbo (Apache-2.0, ungated; downloaded by the user, never redistributed) |
+
 ## Quantization
 
 | What | Source |

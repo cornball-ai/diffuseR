@@ -131,7 +131,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         } else {
             footprint <- 4
         }
-        ltx23_tune_gc(footprint_gb = footprint)
+        .flux_gc_gates(footprint_gb = footprint)
     }
 
     if (phase_offload) {
