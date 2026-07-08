@@ -201,6 +201,7 @@ export(zimage_img_pos_ids)
 export(zimage_patchify)
 export(zimage_pos_embed)
 export(zimage_t_embedder)
+export(zimage_transformer)
 export(zimage_unpatchify)
 
 S3method(print,bpe_tokenizer)
