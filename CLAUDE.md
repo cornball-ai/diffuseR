@@ -318,6 +318,7 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 ### Model Support
 - [x] Add FLUX model support (FLUX.1-schnell, see below)
 - [x] Add FLUX.2 support (klein-4B, see below)
+- [x] Add Z-Image-Turbo support (text rendering, see below)
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
 
@@ -336,8 +337,9 @@ txt2img_flux("An astronaut riding a horse on Mars, photorealistic",
 ```
 
 Measured on the RTX 5060 Ti 16 GB (NF4 resident, T5 float32 on CPU):
-1024x1024 in ~2 min wall (peak 8.7 GB alloc / 9.0 GB reserved),
-512x512 in ~1.5 min (peak 8.0 GB). CPU-only works too (~9 min at 256px).
+1024x1024 in ~55 s wall (peak 9.6 GB alloc / 9.8 GB reserved) after the
+allocator gc-gate fix (was ~2 min). CPU-only works too (~9 min at
+256px).
 
 Key components: `flux_transformer` (19 double + 38 single blocks),
 `t5_encoder` + `unigram_tokenizer` (pure R SentencePiece Viterbi),
@@ -363,8 +365,9 @@ txt2img_flux2("An astronaut riding a horse on Mars, photorealistic",
 ```
 
 Measured on the RTX 5060 Ti 16 GB (fp8 GPU-resident, Qwen3 bf16
-phase-onloaded): 1024x1024 in ~48 s (peak 8.2 GB), 512x512 in ~40 s;
-pipeline load 31 s. Cast census is exactly 104 weights.
+phase-onloaded): 1024x1024 in ~13 s (peak 12.5 GB alloc) after the
+allocator gc-gate fix (was ~48 s); pipeline load 31 s. Cast census is
+exactly 104 weights.
 
 Perf lesson that cost an afternoon: generation was 93.8% R garbage
 collection until the tokenizer stopped holding 151k-binding
@@ -372,6 +375,43 @@ environments — R gc cost scales with live object count (12 vs 203 ms),
 and torch's allocator callbacks run gc hundreds of times per
 generation. Keep big lookup tables as atomic vectors (integer-id BPE
 via findInterval), never as environments.
+
+### Z-Image-Turbo (Complete)
+
+Guidance-distilled text-to-image (8 steps, no CFG), strong at legible
+text rendering (EN + CN). 6B single-stream DiT (sandwich RMSNorms,
+scale/gate-only tanh modulation, noise/context refiner stacks, 3-axis
+RoPE theta 256) + Qwen3-4B (thinking-enabled chat template, penultimate
+hidden state, mask-sliced captions) + the FLUX.1 16-channel VAE
+verbatim. FlowMatch with static shift 3.0; the model consumes the
+REVERSED timestep (1000 - t)/1000 and its output is negated.
+
+```r
+download_zimage_turbo()  # ungated, Apache-2.0; ~33 GB download (fp32
+                         # shards), one-time fp8 quantize to 5.9 GB
+txt2img_zimage("A sign that reads \"DIFFUSER\" carved in wood",
+               seed = 42)  # or txt2img("...", model_name = "zimage")
+```
+
+Measured on the RTX 5060 Ti 16 GB (fp8 GPU-resident, Qwen3 bf16
+phase-onloaded): 1024x1024 in ~24 s (peak 13.1 GB alloc / 13.9 GB
+reserved), 512x512 in ~12 s; pipeline load 41 s. Cast census is exactly
+238 weights (7 core linears x 34 blocks; adaLN + embedders stay bf16).
+
+Perf lesson (round two of the GC storm): torch's allocated/reserved
+ratio gate (0.95) is chronically exceeded under backend:native
+(steady-state ratio 0.957), so the R-gc callback fired on nearly every
+CUDA allocation — 89% of wall time (~2,200 gcs x 62 ms). And
+`start_torch()` reads the gate options only ONCE at torch init, so
+setting them mid-session is inert: push via
+`cpp_set_cuda_allocator_allocator_thresholds`. See `.flux_gc_gates()`.
+Fixed 1024x1024 across models: Z-Image 143->24 s, klein 48->13 s,
+FLUX.1 121->55 s.
+
+Gotchas that bit once: the caption's RoPE ramp is built over the PADDED
+length (pads continue the ramp; the (0,0,0) pad ids in the reference
+are dead code), and the checkpoint scheduler uses static shift 3.0 —
+the pipeline's calculate_shift/mu path is dead for this model.
 
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 
