@@ -3,8 +3,7 @@
 \alias{memory_flux}
 \title{FLUX Memory Profiles}
 \description{
-VRAM-based execution profiles for the FLUX.1-schnell pipeline,
-following the LTX-2.3 profile pattern. The 12B transformer runs NF4
-(~7 GB, GPU-resident) or fp8 (~12 GB, CPU-resident and streamed);
+VRAM-based execution profiles for the FLUX.1-schnell pipeline. The
+12B transformer runs NF4 (~7 GB) or fp8 (~12 GB), both GPU-resident;
 the T5-XXL text encoder runs float32 on the CPU by default.
 }
