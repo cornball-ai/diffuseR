@@ -120,3 +120,51 @@ load_unet_sdxl_safetensors <- function(native_unet, path, verbose = TRUE) {
     .load_unet_safetensors(native_unet, path, .unet_remap_sdxl, "SDXL UNet",
                            verbose = verbose)
 }
+
+#' Build a native SD21 UNet from a diffusers safetensors directory
+#'
+#' The safetensors counterpart to
+#' \code{\link{unet_native_from_torchscript}}: constructs
+#' \code{\link{unet_native}} and loads its weights from
+#' \code{unet/diffusion_pytorch_model.safetensors} (no TorchScript, so it
+#' works on Blackwell). The default construction matches the canonical
+#' Stable Diffusion 2.1 UNet; pass constructor overrides through
+#' \code{...} for a variant checkpoint (the loader fails loudly on any
+#' shape mismatch, so a wrong architecture surfaces immediately rather
+#' than loading silently wrong weights).
+#'
+#' @param path Path to the UNet directory or its single-file checkpoint.
+#' @param verbose Print how many parameters were loaded.
+#' @param ... Overrides for \code{\link{unet_native}} constructor args.
+#'
+#' @return The native SD21 UNet in eval mode.
+#' @export
+unet_native_from_safetensors <- function(path, verbose = TRUE, ...) {
+    model <- unet_native(...)
+    load_unet_safetensors(model, path, verbose = verbose)
+    model$eval()
+    model
+}
+
+#' Build a native SDXL UNet from a diffusers safetensors directory
+#'
+#' The safetensors counterpart to
+#' \code{\link{unet_sdxl_native_from_torchscript}}: constructs
+#' \code{\link{unet_sdxl_native}} and loads its weights from
+#' \code{unet/diffusion_pytorch_model.safetensors}. Validated against the
+#' cached \code{stabilityai/stable-diffusion-xl-base-1.0} UNet (all 1680
+#' parameters map with matching shapes). Pass constructor overrides
+#' through \code{...} for a variant checkpoint.
+#'
+#' @param path Path to the UNet directory or its single-file checkpoint.
+#' @param verbose Print how many parameters were loaded.
+#' @param ... Overrides for \code{\link{unet_sdxl_native}} constructor args.
+#'
+#' @return The native SDXL UNet in eval mode.
+#' @export
+unet_sdxl_native_from_safetensors <- function(path, verbose = TRUE, ...) {
+    model <- unet_sdxl_native(...)
+    load_unet_sdxl_safetensors(model, path, verbose = verbose)
+    model$eval()
+    model
+}

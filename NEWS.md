@@ -25,6 +25,13 @@
 * Reading a legacy oversize (>2 GB) shard on stock safetensors raises an
   actionable "rebuild with smaller shards or install the fork" message
   instead of a raw 32-bit overflow error.
+* Native SD21/SDXL UNet weights now load from diffusers safetensors
+  (`load_unet_safetensors`, `load_unet_sdxl_safetensors`, and the
+  `unet_native_from_safetensors` / `unet_sdxl_native_from_safetensors`
+  constructors), with no TorchScript step (Blackwell-safe). The VAE
+  decoder and CLIP text encoder already had safetensors loaders; the
+  UNet was the gap. Validated against the cached SDXL base UNet (all
+  1680 keys map with matching shapes).
 
 All of the above is capability-**probed**, not version-pinned, so the
 fork requirement self-heals when the safetensors fixes reach CRAN

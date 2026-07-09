@@ -114,3 +114,20 @@ expect_error(
   pattern = "shape mismatch")
 
 unlink(c(dir, dir2), recursive = TRUE)
+
+# --- end-to-end against real SDXL weights (opt-in; heavy ~9.6 GB load) -------------
+# Runs only with DIFFUSER_TEST_SDXL_LOAD=1 and the cached diffusers UNet
+# present, so a normal suite run never pulls 9.6 GB. Validated manually:
+# builds + loads all 1680 params in ~20 s.
+sdxl_dir <- Sys.glob(file.path("~/.cache/huggingface/hub",
+  "models--stabilityai--stable-diffusion-xl-base-1.0/snapshots/*/unet"))
+if (at_home() && nzchar(Sys.getenv("DIFFUSER_TEST_SDXL_LOAD")) &&
+    length(sdxl_dir) && dir.exists(sdxl_dir[1])) {
+  m <- unet_sdxl_native_from_safetensors(sdxl_dir[1], verbose = FALSE)
+  expect_equal(length(m$named_parameters()), 1680L)
+  w <- m$named_parameters()[["conv_in.weight"]]
+  expect_true(as.numeric(w$abs()$sum()$item()) > 0)
+  expect_false(m$training)
+  rm(m)
+  gc()
+}
