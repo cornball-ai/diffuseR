@@ -1,8 +1,7 @@
 #' FLUX Memory Profiles
 #'
-#' VRAM-based execution profiles for the FLUX.1-schnell pipeline,
-#' following the LTX-2.3 profile pattern. The 12B transformer runs NF4
-#' (~7 GB, GPU-resident) or fp8 (~12 GB, CPU-resident and streamed);
+#' VRAM-based execution profiles for the FLUX.1-schnell pipeline. The
+#' 12B transformer runs NF4 (~7 GB) or fp8 (~12 GB), both GPU-resident;
 #' the T5-XXL text encoder runs float32 on the CPU by default.
 #'
 #' @name memory_flux
@@ -48,37 +47,36 @@ NULL
 
 #' Resolve a FLUX memory profile
 #'
+#' A thin adapter over \code{\link{recommend}} for the FLUX.1 pipeline,
+#' kept for back-compatibility. \code{recommend("flux1")} is the policy;
+#' this reshapes it into the legacy profile fields the loader consumes.
+#' Precision now rises with VRAM (nf4 default, fp8 GPU-resident on 14 GB+
+#' cards when safetensors can read float8, bf16 on 24 GB+); the old
+#' bands, which put fp8 in a narrow low-VRAM slot it can no longer fit,
+#' were backwards.
+#'
 #' @param vram_gb Numeric or NULL. Available VRAM; auto-detected when
 #'   NULL (via nvidia-smi).
 #'
-#' @return List with \code{name}, \code{precision} ("nf4"/"fp8"),
-#'   \code{attn_chunk}, \code{text_device}, \code{phase_offload}, and
-#'   \code{max_pixels} (largest validated image area).
+#' @return List with \code{name}, \code{precision} ("nf4"/"fp8"/"bf16"),
+#'   \code{attn_chunk}, \code{text_device}, \code{phase_offload},
+#'   \code{max_pixels}, and (advisory) \code{fork_suggested} and
+#'   \code{note}.
 #'
 #' @export
 flux_memory_profile <- function(vram_gb = NULL) {
-    if (is.null(vram_gb)) {
-        vram_gb <- .detect_vram(use_free = TRUE)
-        if (is.null(vram_gb) || is.na(vram_gb) || vram_gb <= 0) {
-            vram_gb <- 0
-        }
-    }
-
-    if (vram_gb >= 12) {
-        list(name = "high", precision = "nf4", attn_chunk = NULL,
-             text_device = "cpu", phase_offload = TRUE,
-             max_pixels = 1536L * 1536L)
-    } else if (vram_gb >= 9) {
-        list(name = "medium", precision = "nf4", attn_chunk = 2048L,
-             text_device = "cpu", phase_offload = TRUE,
-             max_pixels = 1024L * 1024L)
-    } else if (vram_gb >= 7) {
-        list(name = "low", precision = "fp8", attn_chunk = 1024L,
-             text_device = "cpu", phase_offload = TRUE,
-             max_pixels = 768L * 768L)
+    r <- recommend("flux1", vram_gb = vram_gb)
+    name <- if (identical(r$devices$transformer, "cpu")) {
+        "cpu_only"
+    } else if (r$precision %in% c("bf16", "fp8")) {
+        "high"
+    } else if (r$max_pixels >= 1024L * 1024L) {
+        "medium"
     } else {
-        list(name = "cpu_only", precision = "nf4", attn_chunk = NULL,
-             text_device = "cpu", phase_offload = FALSE,
-             max_pixels = 512L * 512L)
+        "low"
     }
+    list(name = name, precision = r$precision, attn_chunk = r$attn_chunk,
+         text_device = r$text_device, phase_offload = r$offload,
+         max_pixels = r$max_pixels, fork_suggested = r$fork_suggested,
+         note = r$note)
 }
