@@ -231,6 +231,31 @@ load_decoder_safetensors <- function(native_decoder, path, verbose = TRUE) {
     invisible(native_decoder)
 }
 
+#' Build a native VAE decoder from a diffusers safetensors directory
+#'
+#' The safetensors counterpart to the TorchScript decoder path:
+#' constructs \code{\link{vae_decoder_native}} and loads the decoder half
+#' of a diffusers AutoencoderKL checkpoint (no TorchScript, so it works
+#' on Blackwell). \code{latent_channels} defaults to 4 (SD/SDXL); pass 16
+#' for the FLUX/SD3 VAE. The SD/SDXL and FLUX VAEs share the decoder
+#' shape and differ only in that channel count.
+#'
+#' @param path Path to the VAE directory (containing
+#'   \code{diffusion_pytorch_model.safetensors}) or the file itself.
+#' @param latent_channels Latent channel count (4 for SD/SDXL, 16 for FLUX).
+#' @param verbose Print how many parameters were loaded.
+#' @param ... Overrides for \code{\link{vae_decoder_native}} constructor args.
+#'
+#' @return The native VAE decoder in eval mode.
+#' @export
+vae_decoder_native_from_safetensors <- function(path, latent_channels = 4L,
+                                                verbose = TRUE, ...) {
+    model <- vae_decoder_native(latent_channels = latent_channels, ...)
+    load_decoder_safetensors(model, path, verbose = verbose)
+    model$eval()
+    model
+}
+
 #' Load weights from TorchScript decoder into native decoder
 #'
 #' @param native_decoder Native VAE decoder module

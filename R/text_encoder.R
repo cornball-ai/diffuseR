@@ -386,6 +386,62 @@ load_text_encoder_safetensors <- function(native_encoder, path,
     invisible(native_encoder)
 }
 
+# Detect a CLIP text encoder's architecture from a diffusers
+# config.json (the config counterpart to
+# detect_text_encoder_architecture, which reads a TorchScript file).
+# Accepts a directory or a config.json path.
+.detect_text_encoder_config <- function(path) {
+    cfg_path <- if (dir.exists(path)) file.path(path, "config.json") else path
+    if (!file.exists(cfg_path)) {
+        stop("No config.json for the text encoder at ", path)
+    }
+    cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = TRUE)
+    list(
+         vocab_size = as.integer(cfg$vocab_size),
+         context_length = as.integer(cfg$max_position_embeddings),
+         embed_dim = as.integer(cfg$hidden_size),
+         num_layers = as.integer(cfg$num_hidden_layers),
+         num_heads = as.integer(cfg$num_attention_heads),
+         mlp_dim = as.integer(cfg$intermediate_size)
+    )
+}
+
+#' Build a native CLIP text encoder from a diffusers safetensors directory
+#'
+#' Reads the CLIPTextConfig from \code{<dir>/config.json}, constructs
+#' \code{\link{text_encoder_native}} to match, and loads
+#' \code{model.safetensors} - the safetensors counterpart to the
+#' TorchScript text-encoder path (no TorchScript, Blackwell-safe).
+#' Handles SD21's OpenCLIP ViT-H and SDXL's CLIP ViT-L (which is the same
+#' checkpoint as FLUX's \code{text_encoder}). \code{apply_final_ln}
+#' governs only the forward output; the \code{final_layer_norm} weights
+#' load either way. Use \code{TRUE} for SD21 and pooled CLIP outputs,
+#' \code{FALSE} for the SDXL penultimate-layer prompt embeds.
+#'
+#' @param path diffusers text_encoder directory (config.json +
+#'   model.safetensors) or the config.json path.
+#' @param apply_final_ln Apply the final layer norm in forward (default TRUE).
+#' @param verbose Print how many parameters were loaded.
+#' @param ... Overrides for \code{\link{text_encoder_native}} args (e.g.
+#'   \code{gelu_type}).
+#'
+#' @return The native text encoder in eval mode.
+#' @export
+text_encoder_native_from_safetensors <- function(path, apply_final_ln = TRUE,
+                                                 verbose = TRUE, ...) {
+    arch <- .detect_text_encoder_config(path)
+    args <- list(vocab_size = arch$vocab_size,
+                 context_length = arch$context_length,
+                 embed_dim = arch$embed_dim, num_layers = arch$num_layers,
+                 num_heads = arch$num_heads, mlp_dim = arch$mlp_dim,
+                 apply_final_ln = apply_final_ln)
+    args <- utils::modifyList(args, list(...))
+    model <- do.call(text_encoder_native, args)
+    load_text_encoder_safetensors(model, path, verbose = verbose)
+    model$eval()
+    model
+}
+
 #' Load weights from TorchScript text encoder into native encoder
 #'
 #' @param native_encoder Native text encoder module
