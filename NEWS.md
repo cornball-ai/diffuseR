@@ -1,0 +1,31 @@
+# diffuseR 0.1.0.6 (development)
+
+## Uniform native-safetensors + hosted quantization (in progress)
+
+* New `recommend(model, vram_gb, st_caps)`: one VRAM- and
+  capability-aware precision/device recommendation for every model
+  (sd21, sdxl, flux1, flux2, zimage, ltx). nf4 is the default tier; fp8
+  or bf16 is recommended only when the card fits it *and* the installed
+  safetensors can **read** that dtype, otherwise it recommends nf4 and
+  surfaces the `cornball-ai/safetensors` suggestion in `$note` (never an
+  error).
+* `flux_memory_profile()` now delegates to `recommend("flux1")`,
+  correcting the stale tiers that placed fp8 (GPU-resident now, not
+  streamed) in a narrow low-VRAM band it can no longer fit.
+* Quantizer shards default to `shard_bytes = 1.9e9` (`flux_quantize`,
+  `ltx23_quantize_nf4`, `ltx23_quantize_fp8`). This is *what makes* nf4
+  artifacts load on stock CRAN safetensors: R safetensors overflows a
+  32-bit offset on any file at or above 2^31 bytes (~2.15 GB), so the
+  old 4e9 default produced shards only the fork could read. nf4 is
+  CRAN-readable **because of** the sub-2 GB shards, not automatically;
+  4e9 remains available for local fork builds.
+* Explicitly requesting fp8/bf16 without the needed safetensors support
+  now warns and falls back to nf4 instead of failing
+  (`download_flux1`, `download_flux2_klein`, `download_zimage_turbo`).
+* Reading a legacy oversize (>2 GB) shard on stock safetensors raises an
+  actionable "rebuild with smaller shards or install the fork" message
+  instead of a raw 32-bit overflow error.
+
+All of the above is capability-**probed**, not version-pinned, so the
+fork requirement self-heals when the safetensors fixes reach CRAN
+(mlverse/safetensors#11, #13).
