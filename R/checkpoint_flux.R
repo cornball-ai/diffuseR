@@ -170,7 +170,8 @@ flux_open_checkpoint <- function(transformer_dir) {
             if (is.null(shard) || is.na(shard)) {
                 stop("Key not found in checkpoint index: ", key)
             }
-            handles[[shard]]$get_tensor(key)
+            .st_read_or_breadcrumb(function() handles[[shard]]$get_tensor(key),
+                                   file.path(dir, shard))
         }
         )
     } else {
@@ -180,7 +181,9 @@ flux_open_checkpoint <- function(transformer_dir) {
         }
         h <- safetensors::safetensors$new(single_path, framework = "torch")
         keys <- setdiff(h$keys(), "__metadata__")
-        handle <- list(get_tensor = function(key) h$get_tensor(key))
+        handle <- list(get_tensor = function(key) {
+            .st_read_or_breadcrumb(function() h$get_tensor(key), single_path)
+        })
     }
     list(handle = handle, keys = keys)
 }

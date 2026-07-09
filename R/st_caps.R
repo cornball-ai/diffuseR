@@ -95,10 +95,11 @@ NULL
 }
 
 # The standard "install the fork, or press on with nf4" message. Shared
-# by the recommender (read side) and the download graceful-fallback path
-# (write side) so the wording stays identical everywhere. No em dashes
-# (house style).
-.st_fork_note <- function(precision) {
+# by the recommender (read side, fit = TRUE: "best fit for your card")
+# and the download graceful-fallback path (write side, fit = FALSE, since
+# the user asked for it outright) so the wording stays identical
+# everywhere. No em dashes (house style).
+.st_fork_note <- function(precision, fit = TRUE) {
     precision <- as.character(precision)
     detail <- switch(precision,
                      fp8 = "float8 support (mlverse/safetensors#13)",
@@ -106,11 +107,77 @@ NULL
                      bf16 = "bfloat16 write support (mlverse/safetensors#11)",
                      bfloat16 = "bfloat16 write support (mlverse/safetensors#11)",
                      paste0(precision, " support (mlverse/safetensors)"))
+    lead <- if (fit) {
+        sprintf("%s is the best fit for your card but needs", precision)
+    } else {
+        sprintf("%s needs", precision)
+    }
     sprintf(paste0(
-                   "%s is the best fit for your card but needs ",
-                   "cornball-ai/safetensors until CRAN safetensors ships %s. ",
-                   "Install remotes::install_github(\"cornball-ai/safetensors\"), ",
-                   "or press on with nf4: same weights, slightly lower ",
-                   "precision, and it just works."),
-            precision, detail)
+                   "%s cornball-ai/safetensors until CRAN safetensors ships ",
+                   "%s. Install ",
+                   "remotes::install_github(\"cornball-ai/safetensors\"), or ",
+                   "press on with nf4: same weights, slightly lower precision, ",
+                   "and it just works."),
+            lead, detail)
+}
+
+# When a user explicitly asks for fp8/bf16 but the needed safetensors
+# capability is missing, print the fork suggestion and fall back to nf4
+# instead of letting a downstream builder or loader fail. nf4, fp16,
+# fp32 and anything unrecognized pass through untouched. `mode` selects
+# the capability that matters: "write" when about to BUILD an artifact,
+# "read" when about to LOAD one.
+.st_graceful_precision <- function(precision, mode = c("write", "read"),
+                                   verbose = TRUE) {
+    mode <- match.arg(mode)
+    cap <- switch(precision, fp8 = "float8_e4m3fn", bf16 = "bfloat16",
+                  bfloat16 = "bfloat16", NULL)
+    if (is.null(cap)) {
+        return(precision)
+    }
+    ok <- if (mode == "write") .st_can_write(cap) else .st_can_read(cap)
+    if (ok) {
+        return(precision)
+    }
+    if (verbose) {
+        message(.st_fork_note(precision, fit = FALSE),
+                "\nFalling back to nf4 for now.")
+    }
+    "nf4"
+}
+
+# Actionable message for the >2 GB shard-read overflow. Split out from
+# .st_read_or_breadcrumb so it can be unit-tested without a real 2 GB
+# file.
+.st_overflow_message <- function(file_path, size_bytes, underlying) {
+    sprintf(paste0(
+                   "Could not read %s (%.1f GB). Stock CRAN safetensors ",
+                   "overflows a 32-bit offset on files at or above 2^31 ",
+                   "bytes (~2.15 GB). Rebuild the artifact with smaller ",
+                   "shards (the quantizers now default to ",
+                   "shard_bytes = 1.9e9), or install ",
+                   "remotes::install_github(\"cornball-ai/safetensors\"). ",
+                   "Underlying error: %s"),
+            basename(file_path), size_bytes / 1e9, underlying)
+}
+
+# Run a safetensors read; if it fails AND the backing shard is at/above
+# the 2^31-byte ceiling, translate the cryptic overflow into the
+# fork-or-smaller-shards breadcrumb. A read that succeeds (fork, or a
+# sub-2 GB shard) is untouched; a failure on a small shard rethrows
+# verbatim. Reactive by design, so it never false-alarms on a machine
+# that can read large files.
+.st_read_or_breadcrumb <- function(read_fn, file_path = NULL) {
+    tryCatch(read_fn(), error = function(e) {
+        sz <- if (!is.null(file_path)) {
+            tryCatch(file.size(file_path), error = function(...) NA_real_)
+        } else {
+            NA_real_
+        }
+        if (!is.na(sz) && sz >= 2^31) {
+            stop(.st_overflow_message(file_path, sz, conditionMessage(e)),
+                 call. = FALSE)
+        }
+        stop(e)
+    })
 }

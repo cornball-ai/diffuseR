@@ -224,13 +224,17 @@ ltx23_open_fp8_checkpoint <- function(dir) {
     }
     manifest <- jsonlite::fromJSON(manifest_path, simplifyVector = TRUE)
 
-    handles <- lapply(file.path(dir, manifest$shards), function(p) {
+    shard_paths <- file.path(dir, manifest$shards)
+    handles <- lapply(shard_paths, function(p) {
         safetensors::safetensors$new(p, framework = "torch")
     })
     key_to_handle <- list()
-    for (h in handles) {
+    key_to_path <- list()
+    for (i in seq_along(handles)) {
+        h <- handles[[i]]
         for (k in setdiff(h$keys(), "__metadata__")) {
             key_to_handle[[k]] <- h
+            key_to_path[[k]] <- shard_paths[[i]]
         }
     }
 
@@ -238,7 +242,8 @@ ltx23_open_fp8_checkpoint <- function(dir) {
                    get_tensor = function(key) {
         h <- key_to_handle[[key]]
         if (is.null(h)) stop("Key not found in fp8 shards: ", key)
-        h$get_tensor(key)
+        .st_read_or_breadcrumb(function() h$get_tensor(key),
+                               key_to_path[[key]])
     }
     )
 

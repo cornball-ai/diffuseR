@@ -111,3 +111,48 @@ p2 <- flux_memory_profile(vram_gb = 16)
 expect_equal(p2$precision, "nf4")
 expect_true(isTRUE(p2$fork_suggested))
 options(diffuseR.st_read_caps = NULL)
+
+# --- graceful fallback for an explicitly requested precision ----------------------
+
+grc <- diffuseR:::.st_graceful_precision
+# nf4/fp16 pass through untouched
+expect_equal(grc("nf4", "write"), "nf4")
+expect_equal(grc("fp16", "write"), "fp16")
+# fp8 without float8 WRITE support -> nf4 + fork message
+options(diffuseR.st_caps = list(float8_e4m3fn = FALSE))
+expect_message(rr <- grc("fp8", "write"), pattern = "safetensors#13")
+expect_equal(rr, "nf4")
+options(diffuseR.st_caps = list(float8_e4m3fn = TRUE))
+expect_equal(grc("fp8", "write"), "fp8")   # present -> passes through
+options(diffuseR.st_caps = NULL)
+# bf16 gate goes through the READ probe in read mode
+options(diffuseR.st_read_caps = list(bfloat16 = FALSE))
+expect_message(rr2 <- grc("bf16", "read"), pattern = "safetensors#11")
+expect_equal(rr2, "nf4")
+options(diffuseR.st_read_caps = NULL)
+
+# --- fork note fit parameter ------------------------------------------------------
+
+fn <- diffuseR:::.st_fork_note
+expect_true(grepl("best fit for your card", fn("fp8", fit = TRUE)))
+expect_false(grepl("best fit for your card", fn("fp8", fit = FALSE)))
+expect_false(grepl("—", fn("fp8")))   # no em dash, either variant
+
+# --- multi-GB read breadcrumb -----------------------------------------------------
+
+msg <- diffuseR:::.st_overflow_message("shard-00001.safetensors", 3.4e9, "boom")
+expect_true(grepl("3.4 GB", msg))
+expect_true(grepl("2\\^31", msg))
+expect_true(grepl("shard-00001", msg))
+
+brc <- diffuseR:::.st_read_or_breadcrumb
+# a read that succeeds is returned untouched
+expect_equal(brc(function() 42L, NULL), 42L)
+# a failure on a small (or absent) file rethrows verbatim, no breadcrumb
+small <- tempfile()
+writeLines("x", small)
+e <- tryCatch(brc(function() stop("plain boom"), small),
+  error = function(err) conditionMessage(err))
+expect_true(grepl("plain boom", e))
+expect_false(grepl("2\\^31", e))
+unlink(small)
