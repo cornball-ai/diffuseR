@@ -32,6 +32,17 @@
   decoder and CLIP text encoder already had safetensors loaders; the
   UNet was the gap. Validated against the cached SDXL base UNet (all
   1680 keys map with matching shapes).
+* `vae_decoder_native_from_safetensors` and
+  `text_encoder_native_from_safetensors` (config-driven CLIP arch
+  detection) complete the native SD component set.
+* `download_sd21()` + `sd_pipeline_from_safetensors()` run Stable
+  Diffusion 2.1 fully natively from diffusers safetensors;
+  `txt2img_sd21(diffusers_dir=)` uses it. The SD VAE decode now applies
+  the `post_quant_conv` the FLUX-derived native decoder omitted (the
+  decode was badly wrong without it). SD 2.1 defaults to float32 on this
+  path (fp16 attention overflows to NaN). A pre-existing spatial-coherence
+  ("tiling") bug in the native SD 2.1 UNet is tracked separately; it
+  affects the `.pt`-native path identically (same weights).
 
 All of the above is capability-**probed**, not version-pinned, so the
 fork requirement self-heals when the safetensors fixes reach CRAN

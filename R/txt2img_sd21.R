@@ -24,6 +24,10 @@
 #'   Native text encoder has better GPU compatibility (especially Blackwell).
 #' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 #'   Native UNet has better GPU compatibility (especially Blackwell).
+#' @param diffusers_dir Optional path to a HuggingFace diffusers
+#'   directory (with `unet/`, `vae/`, `text_encoder/`). When set, the
+#'   pipeline is built natively from safetensors (no TorchScript), via
+#'   [sd_pipeline_from_safetensors()]. See [download_sd21()].
 #' @param ... Additional parameters passed to the diffusion process.
 #'
 #' @return An image array and metadata
@@ -42,7 +46,7 @@ txt2img_sd21 <- function(prompt, negative_prompt = NULL, img_dim = 768,
                          filename = NULL, metadata_path = NULL,
                          use_native_decoder = FALSE,
                          use_native_text_encoder = FALSE,
-                         use_native_unet = FALSE, ...) {
+                         use_native_unet = FALSE, diffusers_dir = NULL, ...) {
     model_name <- "sd21"
 
     # Handle "auto" devices
@@ -50,20 +54,43 @@ txt2img_sd21 <- function(prompt, negative_prompt = NULL, img_dim = 768,
         devices <- auto_devices(model_name)
     }
 
-    m2d <- models2devices(model_name = model_name, devices = devices,
-                          unet_dtype_str = unet_dtype_str,
-                          download_models = download_models)
-    devices <- m2d$devices
-    unet_dtype <- m2d$unet_dtype
-    device_cpu <- m2d$device_cpu
-    device_cuda <- m2d$device_cuda
+    device_cpu <- torch::torch_device("cpu")
+    device_cuda <- torch::torch_device("cuda")
+    if (!is.null(diffusers_dir)) {
+        # Native safetensors path: resolve devices/dtype with the pure
+        # helpers, skipping the .pt model verification models2devices runs.
+        # SD 2.1 attention overflows in float16 (all-NaN output), so
+        # default this path to float32 unless float16 is asked for.
+        devices <- standardize_devices(devices,
+                                       get_required_components(model_name))
+        if (is.null(unet_dtype_str)) {
+            unet_dtype_str <- "float32"
+        }
+        unet_dtype <- setup_dtype(devices, unet_dtype_str)
+    } else {
+        m2d <- models2devices(model_name = model_name, devices = devices,
+                              unet_dtype_str = unet_dtype_str,
+                              download_models = download_models)
+        devices <- m2d$devices
+        unet_dtype <- m2d$unet_dtype
+        device_cpu <- m2d$device_cpu
+        device_cuda <- m2d$device_cuda
+    }
 
     if (is.null(pipeline)) {
-        pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-                                  unet_dtype_str = unet_dtype_str,
-                                  use_native_decoder = use_native_decoder,
-                                  use_native_text_encoder = use_native_text_encoder,
-                                  use_native_unet = use_native_unet)
+        if (!is.null(diffusers_dir)) {
+            # Native pipeline straight from HuggingFace diffusers
+            # safetensors (no TorchScript .pt); see download_sd21().
+            pipeline <- sd_pipeline_from_safetensors(diffusers_dir,
+                model_name = model_name, devices = devices,
+                unet_dtype = unet_dtype)
+        } else {
+            pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+                                      unet_dtype_str = unet_dtype_str,
+                                      use_native_decoder = use_native_decoder,
+                                      use_native_text_encoder = use_native_text_encoder,
+                                      use_native_unet = use_native_unet)
+        }
     }
 
     # Start timing
