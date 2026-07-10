@@ -40,9 +40,16 @@
   `txt2img_sd21(diffusers_dir=)` uses it. The SD VAE decode now applies
   the `post_quant_conv` the FLUX-derived native decoder omitted (the
   decode was badly wrong without it). SD 2.1 defaults to float32 on this
-  path (fp16 attention overflows to NaN). A pre-existing spatial-coherence
-  ("tiling") bug in the native SD 2.1 UNet is tracked separately; it
-  affects the `.pt`-native path identically (same weights).
+  path (fp16 attention overflows to NaN).
+* Fixed a native SD 2.1 UNet **tiling** bug (pre-existing; the
+  `.pt`-native path shared it). The timestep embedding used
+  `flip_sin_to_cos=FALSE, downscale_freq_shift=1`, scrambling the
+  sin/cos ordering the trained `time_embedding` weights expect (standard
+  diffusers SD, and the native SDXL UNet, use `TRUE/0`). Constant-input
+  parity tests could not see it (GroupNorm sits at its bias, attention is
+  uniform); it compounded through the spatial path into tiled output.
+  The native UNet now matches the TorchScript reference at cos 0.99999,
+  and `test_unet.R` gains a random-input parity check.
 
 All of the above is capability-**probed**, not version-pinned, so the
 fork requirement self-heals when the safetensors fixes reach CRAN

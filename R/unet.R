@@ -258,10 +258,15 @@ unet_native <- torch::nn_module(
     # Get model dtype from weights
     model_dtype <- self$time_embedding_linear_1$weight$dtype
 
-    # Time embedding (computed in float32, then cast to model dtype)
-    # SD21 uses flip_sin_to_cos=FALSE, downscale_freq_shift=1
+    # Time embedding (computed in float32, then cast to model dtype).
+    # SD 2.1 uses the standard diffusers timestep embedding
+    # (flip_sin_to_cos=TRUE, downscale_freq_shift=0), same as SDXL. The
+    # old FALSE/1 scrambled the sin/cos ordering the trained
+    # time_embedding weights expect - masked by constant inputs (so the
+    # parity test missed it) but compounding through the spatial path
+    # into tiled output. Verified cos 1.0 vs the TorchScript reference.
     t_emb <- timestep_embedding(timestep, self$block_out_channels[1],
-                                flip_sin_to_cos = FALSE, downscale_freq_shift = 1L)
+                                flip_sin_to_cos = TRUE, downscale_freq_shift = 0L)
     t_emb <- t_emb$to(dtype = model_dtype)
     t_emb <- self$time_embedding_linear_1(t_emb)
     t_emb <- torch::nnf_silu(t_emb)
