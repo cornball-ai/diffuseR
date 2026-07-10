@@ -10,7 +10,7 @@
 #' @name sd_pipeline_safetensors
 NULL
 
-.sd21_repo <- "stabilityai/stable-diffusion-2-1"
+.sd21_repo <- "cornball-ai/sd21-R"
 
 # The SD/SDXL AutoencoderKL applies a 1x1 post_quant_conv to the latent
 # before the decoder (decode(z) = decoder(post_quant_conv(z))). The
@@ -48,19 +48,21 @@ sd_vae_decode <- torch::nn_module(
     m
 }
 
-.sd21_files <- c("unet/config.json",
-                 "unet/diffusion_pytorch_model.safetensors",
-                 "vae/config.json",
-                 "vae/diffusion_pytorch_model.safetensors",
-                 "text_encoder/config.json",
-                 "text_encoder/model.safetensors")
+# Hosted on the cornball-ai/sd21-R dataset under diffusers/. fp16, sub-2 GB
+# per file (CRAN-safetensors readable). No unet/vae config.json: the native
+# constructors use the SD 2.1 defaults; only the CLIP encoder needs one.
+.sd21_files <- c("diffusers/unet/diffusion_pytorch_model.safetensors",
+                 "diffusers/vae/diffusion_pytorch_model.safetensors",
+                 "diffusers/text_encoder/config.json",
+                 "diffusers/text_encoder/model.safetensors")
 
 #' Download the Stable Diffusion 2.1 diffusers weights
 #'
-#' Fetches the UNet, VAE, and CLIP text encoder (config + safetensors)
-#' from \code{stabilityai/stable-diffusion-2-1} into the hfhub cache. The
-#' native tokenizer and DDIM scheduler need no downloads. About 5 GB
-#' (fp32 UNet); one-time.
+#' Fetches the UNet, VAE, and CLIP text encoder from the
+#' \code{cornball-ai/sd21-R} HuggingFace dataset (fp16 diffusers
+#' safetensors, converted from the original OpenRAIL weights; the
+#' upstream \code{stabilityai} repo was deprecated). About 2.5 GB,
+#' one-time. The native tokenizer and DDIM scheduler need no downloads.
 #'
 #' @param verbose Logical.
 #'
@@ -73,13 +75,13 @@ download_sd21 <- function(verbose = TRUE) {
         stop("The hfhub package is required to download model weights.")
     }
     have <- !is.null(tryCatch(
-                              hfhub::hub_download(.sd21_repo, .sd21_files[[2]],
-            local_files_only = TRUE),
+                              hfhub::hub_download(.sd21_repo, .sd21_files[[1]],
+            repo_type = "dataset", local_files_only = TRUE),
                               error = function(e) NULL
         ))
     if (!have) {
         ok <- .ltx23_consent(
-                             "Stable Diffusion 2.1 UNet + VAE + CLIP text encoder (~5 GB)"
+                             "Stable Diffusion 2.1 UNet + VAE + CLIP text encoder (~2.5 GB)"
         )
         if (!ok) {
             stop("Download cancelled.", call. = FALSE)
@@ -88,27 +90,10 @@ download_sd21 <- function(verbose = TRUE) {
             message("Downloading Stable Diffusion 2.1 (diffusers safetensors)...")
         }
     }
-    dl <- function(f) {
-        tryCatch(hfhub::hub_download(.sd21_repo, f), error = function(e) {
-            msg <- conditionMessage(e)
-            if (grepl("404|not found|[Uu]nauthorized|[Ff]orbidden|401|403",
-                      msg)) {
-                stop(
-                     "Could not fetch ", .sd21_repo, " (", sub("\n.*", "", msg),
-                     "). This repo is gated on HuggingFace; a 404 with a valid ",
-                     "token means the license has not been accepted yet. To fix:\n",
-                     "  1. Visit https://huggingface.co/", .sd21_repo,
-                     " and accept the license.\n",
-                     "  2. Ensure HF_TOKEN is set (Sys.getenv(\"HF_TOKEN\")).\n",
-                     "Or pass an accessible diffusers directory straight to ",
-                     "sd_pipeline_from_safetensors() / txt2img_sd21(diffusers_dir=).",
-                     call. = FALSE)
-            }
-            stop(e)
-        })
-    }
-    paths <- vapply(.sd21_files, dl, character(1))
-    # the diffusers root is the parent of unet/ (paths[[1]] is unet/config.json)
+    paths <- vapply(.sd21_files, function(f) {
+        hfhub::hub_download(.sd21_repo, f, repo_type = "dataset")
+    }, character(1))
+    # diffusers root = parent of unet/ (paths[[1]] is diffusers/unet/*.safetensors)
     diffusers_dir <- dirname(dirname(paths[[1]]))
     if (verbose) {
         message("SD 2.1 ready: ", diffusers_dir)
