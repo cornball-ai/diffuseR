@@ -51,6 +51,8 @@ download_flux2_klein <- function(quantize = TRUE,
     precision <- match.arg(precision)
     precision <- .flux_resolve_precision(precision,
         file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-"))
+    # Explicit fp8 without float8 support: warn + build nf4 rather than fail.
+    precision <- .st_graceful_precision(precision, mode = "write")
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("flux2-klein-4b-", precision))

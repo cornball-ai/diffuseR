@@ -78,6 +78,9 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
                            output_dir = NULL, text_encoders = TRUE,
                            verbose = TRUE) {
     precision <- match.arg(precision)
+    # Explicit fp8 without float8 support: warn + build nf4 instead of
+    # failing in flux_quantize.
+    precision <- .st_graceful_precision(precision, mode = "write")
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("flux1-schnell-", precision))

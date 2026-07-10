@@ -57,6 +57,8 @@ download_zimage_turbo <- function(quantize = TRUE,
     precision <- match.arg(precision)
     precision <- .flux_resolve_precision(precision,
         file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
+    # Explicit fp8 without float8 support: warn + build nf4 rather than fail.
+    precision <- .st_graceful_precision(precision, mode = "write")
     if (is.null(output_dir)) {
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("zimage-turbo-", precision))

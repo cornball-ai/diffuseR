@@ -71,3 +71,19 @@ max_diff <- as.numeric(diff$max())
 mean_diff <- as.numeric(diff$mean())
 expect_true(max_diff < 0.1, info = paste("max_diff:", max_diff))  # deterministic inputs
 expect_true(mean_diff < 0.02, info = paste("mean_diff:", mean_diff))
+
+# Random (non-constant) inputs at generation resolution. Constant inputs
+# leave GroupNorm at its bias and attention uniform, so they cannot catch
+# a scrambled timestep embedding; random inputs give cos ~0.82 with that
+# bug and ~1.0 when correct.
+torch::torch_manual_seed(123)
+r_sample <- torch::torch_randn(c(1L, 4L, 64L, 64L))
+r_ctx <- torch::torch_randn(c(1L, 77L, 1024L))
+with_no_grad({
+  ts_r <- ts_unet(r_sample, torch::torch_tensor(c(500L)), r_ctx)
+  nt_r <- native_unet$forward(r_sample, torch::torch_tensor(c(500L)), r_ctx)
+})
+cos_sim <- as.numeric(torch::torch_sum(ts_r * nt_r)$item() /
+  (sqrt(torch::torch_sum(ts_r * ts_r)$item()) *
+   sqrt(torch::torch_sum(nt_r * nt_r)$item())))
+expect_true(cos_sim > 0.999, info = paste("random-input cos:", cos_sim))

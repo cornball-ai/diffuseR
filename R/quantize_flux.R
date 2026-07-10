@@ -200,7 +200,11 @@ NULL
 #' @param output_dir Output directory for shards + manifest (default:
 #'   the per-format location under \code{tools::R_user_dir}).
 #' @param format "nf4" or "fp8".
-#' @param shard_bytes Numeric. Approximate shard size.
+#' @param shard_bytes Numeric. Target shard size in bytes. The default
+#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that
+#'   stock CRAN safetensors can read, so the artifact loads fork-free.
+#'   Pass a larger value (e.g. 4e9) only for local builds you will read
+#'   back with a fork-patched safetensors.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
 #' @param verbose Logical.
 #'
@@ -208,7 +212,7 @@ NULL
 #'
 #' @export
 flux_quantize <- function(transformer_dir, output_dir = NULL,
-                          format = c("nf4", "fp8"), shard_bytes = 4e9,
+                          format = c("nf4", "fp8"), shard_bytes = 1.9e9,
                           force = FALSE, verbose = TRUE) {
     format <- match.arg(format)
     if (format == "fp8" && !.st_can_write("float8_e4m3fn")) {

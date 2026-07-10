@@ -98,15 +98,22 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                attn_chunk = NULL, phase_offload = TRUE,
                                verbose = TRUE) {
     profile <- flux_memory_profile()
-    if (is.null(precision)) {
-        precision <- profile$precision
+    if (verbose && !is.null(profile$note)) {
+        message(profile$note)
     }
     if (is.null(attn_chunk)) {
         attn_chunk <- profile$attn_chunk
     }
+    prefix <- file.path(tools::R_user_dir("diffuseR", "data"),
+                        "flux1-schnell-")
+    if (is.null(precision)) {
+        # Reconcile the VRAM recommendation with what is on disk: prefer
+        # a built artifact (fp8 first when readable), else nf4. Keeps a
+        # widened fp8 recommendation from pointing at an unbuilt artifact.
+        precision <- .flux_resolve_precision("auto", prefix)
+    }
     if (is.null(model_dir)) {
-        model_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
-                               paste0("flux1-schnell-", precision))
+        model_dir <- paste0(prefix, precision)
     }
 
     ckpt <- if (file.exists(file.path(model_dir, "manifest.json"))) {
