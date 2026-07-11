@@ -23,7 +23,11 @@ NULL
     }
     j <- jsonlite::fromJSON(cfg, simplifyVector = TRUE)
     sf <- j$scaling_factor
-    if (is.null(sf) || !is.numeric(sf)) default else as.numeric(sf)
+    if (is.null(sf) || !is.numeric(sf)) {
+        default
+    } else {
+        as.numeric(sf)
+    }
 }
 
 #' Assemble a native SDXL pipeline from a diffusers safetensors directory
@@ -59,11 +63,11 @@ NULL
 #'
 #' @export
 sdxl_pipeline_from_safetensors <- function(diffusers_dir, devices = NULL,
-                                           unet_dtype = NULL, verbose = TRUE) {
+    unet_dtype = NULL, verbose = TRUE) {
     diffusers_dir <- path.expand(diffusers_dir)
     if (is.null(devices)) {
-        devices <- list(unet = "cpu", decoder = "cpu",
-                        text_encoder = "cpu", text_encoder2 = "cpu")
+        devices <- list(unet = "cpu", decoder = "cpu", text_encoder = "cpu",
+                        text_encoder2 = "cpu")
     }
     if (is.null(devices$text_encoder2)) {
         devices$text_encoder2 <- devices$text_encoder
@@ -101,7 +105,7 @@ sdxl_pipeline_from_safetensors <- function(diffusers_dir, devices = NULL,
         message("Building UNet...")
     }
     unet <- unet_sdxl_native_from_safetensors(file.path(diffusers_dir, "unet"),
-                                              verbose = FALSE)
+        verbose = FALSE)
     unet$to(device = torch::torch_device(devices$unet), dtype = unet_dtype)
 
     if (verbose) {
@@ -110,7 +114,7 @@ sdxl_pipeline_from_safetensors <- function(diffusers_dir, devices = NULL,
     # decode = post_quant_conv + decoder, in float32 (the SDXL fp16 VAE
     # overflows in fp16; up-casting the stored fp16 weights is lossless).
     decoder <- .sd_vae_decode_from_safetensors(file.path(diffusers_dir, "vae"),
-                                               latent_channels = 4L)
+        latent_channels = 4L)
     decoder$to(device = torch::torch_device(devices$decoder),
                dtype = torch::torch_float32())
 
@@ -156,12 +160,12 @@ download_sdxl <- function(verbose = TRUE) {
         stop("The hfhub package is required to download model weights.")
     }
     have <- !is.null(tryCatch(
-        hfhub::hub_download(.sdxl_repo, .sdxl_files[[1]],
-            repo_type = "dataset", local_files_only = TRUE),
-        error = function(e) NULL))
+                              hfhub::hub_download(.sdxl_repo, .sdxl_files[[1]],
+                repo_type = "dataset", local_files_only = TRUE),
+                              error = function(e) NULL))
     if (!have) {
         ok <- .ltx23_consent(
-            "Stable Diffusion XL UNet + VAE + 2 CLIP text encoders (~7 GB)")
+                             "Stable Diffusion XL UNet + VAE + 2 CLIP text encoders (~7 GB)")
         if (!ok) {
             stop("Download cancelled.", call. = FALSE)
         }
@@ -187,3 +191,4 @@ download_sdxl <- function(verbose = TRUE) {
     }
     invisible(diffusers_dir)
 }
+

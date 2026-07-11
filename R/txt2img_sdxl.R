@@ -273,8 +273,8 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
         decoded_output <- pipeline$decoder(scaled_latent)
     } else {
         post_conv_latent <- post_quant_conv(x = scaled_latent,
-                                            dtype = torch::torch_float32(),
-                                            device = devices$decoder)
+            dtype = torch::torch_float32(),
+            device = devices$decoder)
         decoded_output <- pipeline$decoder(post_conv_latent)
     }
     # Ensure tensor is on CPU
@@ -334,3 +334,4 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
     # Return the generated image and metadata
     return(list(image = img_array, metadata = metadata))
 }
+
