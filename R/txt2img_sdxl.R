@@ -26,6 +26,11 @@
 #'   Native text encoder has better GPU compatibility (especially Blackwell).
 #' @param use_native_unet Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 #'   Native UNet has better GPU compatibility (especially Blackwell).
+#' @param diffusers_dir Optional path to a diffusers safetensors directory
+#'   (\code{unet/}, \code{vae/}, \code{text_encoder/}, \code{text_encoder_2/}).
+#'   When supplied, the pipeline is built end-to-end from safetensors via
+#'   \code{\link{sdxl_pipeline_from_safetensors}} (native, Blackwell-safe,
+#'   no TorchScript) and the other \code{use_native_*} flags are ignored.
 #' @param verbose Logical. Print progress and memory status messages.
 #' @param ... Additional parameters passed to the diffusion process.
 #'
@@ -53,7 +58,8 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
                          seed = NULL, save_file = TRUE, filename = NULL,
                          metadata_path = NULL, use_native_decoder = FALSE,
                          use_native_text_encoder = FALSE,
-                         use_native_unet = FALSE, verbose = TRUE, ...) {
+                         use_native_unet = FALSE, diffusers_dir = NULL,
+                         verbose = TRUE, ...) {
     model_name <- "sdxl"
 
     # Resolve memory profile if provided
@@ -101,11 +107,16 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
     device_cuda <- m2d$device_cuda
 
     if (is.null(pipeline)) {
-        pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
-                                  unet_dtype_str = unet_dtype_str,
-                                  use_native_decoder = use_native_decoder,
-                                  use_native_text_encoder = use_native_text_encoder,
-                                  use_native_unet = use_native_unet)
+        if (!is.null(diffusers_dir)) {
+            pipeline <- sdxl_pipeline_from_safetensors(diffusers_dir,
+                devices = devices, unet_dtype = unet_dtype, verbose = verbose)
+        } else {
+            pipeline <- load_pipeline(model_name = model_name, m2d = m2d,
+                                      unet_dtype_str = unet_dtype_str,
+                                      use_native_decoder = use_native_decoder,
+                                      use_native_text_encoder = use_native_text_encoder,
+                                      use_native_unet = use_native_unet)
+        }
     }
 
     # Start timing
@@ -242,19 +253,30 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
         clear_vram(verbose = FALSE)
     }
 
-    # Decode latents to image
-    scaled_latent <- latents / 0.18215
+    # Decode latents to image. SDXL's VAE scaling_factor is 0.13025 (vs SD
+    # 2.1's 0.18215); the safetensors pipeline reads it from the VAE config
+    # and its decoder already applies post_quant_conv, so skip the separate
+    # TorchScript post_quant_conv in that path.
+    vae_scaling <- if (!is.null(pipeline$vae_scaling)) {
+        pipeline$vae_scaling
+    } else {
+        0.18215
+    }
+    scaled_latent <- latents / vae_scaling
     scaled_latent <- scaled_latent$to(dtype = torch::torch_float32(),
                                       device = torch::torch_device(devices$decoder))
 
-    # message("Loading post_quant_conv...")
-    post_conv_latent <- post_quant_conv(x = scaled_latent,
-                                        dtype = torch::torch_float32(),
-                                        device = devices$decoder)
     if (verbose) {
         message("Decoding image...")
     }
-    decoded_output <- pipeline$decoder(post_conv_latent)
+    if (isTRUE(pipeline$native_decode)) {
+        decoded_output <- pipeline$decoder(scaled_latent)
+    } else {
+        post_conv_latent <- post_quant_conv(x = scaled_latent,
+                                            dtype = torch::torch_float32(),
+                                            device = devices$decoder)
+        decoded_output <- pipeline$decoder(post_conv_latent)
+    }
     # Ensure tensor is on CPU
     img <- decoded_output$cpu()
 
