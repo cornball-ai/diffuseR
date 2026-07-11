@@ -27,8 +27,10 @@ Imports:
     png,
     jpeg
 Suggests:
+    anvl,
+    yunque,
     av,
     hfhub,
     safetensors,
     tinytest
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.0.0
