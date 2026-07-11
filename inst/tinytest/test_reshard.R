@@ -33,7 +33,7 @@ expect_true(all(grepl("model-\\d{5}-of-\\d{5}\\.safetensors",
 
 # read back through the sharded reader: same keys, same values
 opened <- diffuseR:::.flux_open_sharded_dir(out, "model")
-expect_setequal(opened$keys, c("a", "b", "c"))
+expect_true(setequal(opened$keys, c("a", "b", "c")))
 for (k in c("a", "b", "c")) {
   expect_true(as.logical(torch::torch_allclose(
     opened$handle$get_tensor(k), tensors[[k]])))
