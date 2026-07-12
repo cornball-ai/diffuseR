@@ -13,8 +13,9 @@ Invisibly, the diffusers directory (the parent of
   \code{unet/}, \code{vae/}, \code{text_encoder/}).
 }
 \description{
-Fetches the UNet, VAE, and CLIP text encoder (config + safetensors)
-from \code{stabilityai/stable-diffusion-2-1} into the hfhub cache. The
-native tokenizer and DDIM scheduler need no downloads. About 5 GB
-(fp32 UNet); one-time.
+Fetches the UNet, VAE, and CLIP text encoder from the
+\code{cornball-ai/sd21-R} HuggingFace dataset (fp16 diffusers
+safetensors, converted from the original OpenRAIL weights; the
+upstream \code{stabilityai} repo was deprecated). About 2.5 GB,
+one-time. The native tokenizer and DDIM scheduler need no downloads.
 }
