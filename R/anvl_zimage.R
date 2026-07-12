@@ -303,12 +303,20 @@ yq_zimage_rope <- function(h_tokens, w_tokens, cap_len, f_tokens = 1L,
 yq_zimage_load_weights <- function(path, patch_key = "2-1", device = "cpu") {
     st <- yunque::yq_st_open(path)
     on.exit(close(st$con))
-    keys <- names(st$header)
     lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
     vec <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
                                         dtype = "f32", device = device)
+    .yq_zimage_assemble_weights(lin, vec, names(st$header), patch_key)
+}
 
+# Assemble the DiT pytree from a checkpoint's key census and two readers:
+# lin() reads a 2-D linear transposed to [in, out]; vec() reads a raw
+# vector/scalar. Shared by the single-file f32 loader
+# (\code{yq_zimage_load_weights}) and the sharded fp8 loader
+# (\code{yq_zimage_load_transformer_fp8}), which differ only in how those
+# two readers open shards and apply per-tensor dequant scales.
+.yq_zimage_assemble_weights <- function(lin, vec, keys, patch_key) {
     count_blocks <- function(prefix) {
         m <- regmatches(keys, regexpr(paste0("^", prefix, "\\.[0-9]+\\."), keys))
         idx <- as.integer(sub(paste0("^", prefix, "\\.([0-9]+)\\.$"), "\\1", m))
