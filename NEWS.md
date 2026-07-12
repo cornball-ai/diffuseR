@@ -1,3 +1,27 @@
+# diffuseR 0.1.0.7 (development)
+
+## SDXL native pipeline from safetensors
+
+* `sdxl_pipeline_from_safetensors()` and `txt2img_sdxl(diffusers_dir=)`
+  run SDXL end to end from a diffusers safetensors directory (no
+  TorchScript, so it works on Blackwell): the two CLIP encoders
+  (ViT-L with `quick_gelu`, OpenCLIP bigG) are concatenated at their
+  penultimate hidden state into the 2048-dim UNet conditioning, with
+  pooled `text_embeds` + `time_ids` added conditioning and the VAE
+  `scaling_factor` (0.13025) read from `vae/config.json`.
+* `text_encoder_native()` and `text_encoder2_native()` gain
+  `return_penultimate` for the SDXL `hidden_states[-2]` prompt embeds;
+  the encoder-2 pooled output still comes from the full stack.
+* `text_encoder2_native_from_safetensors()` and
+  `load_text_encoder2_safetensors()` load the OpenCLIP bigG
+  `text_encoder_2` (including its top-level `text_projection`); the
+  encoder-1 and encoder-2 loaders now share one key remap and core.
+* `reshard_safetensors()` splits an oversize (>= 2 GB) safetensors into
+  sub-2 GB diffusers shards plus an index, so large fp16 weights load on
+  stock CRAN safetensors.
+* `download_sdxl()` fetches the SDXL diffusers weights from the
+  `cornball-ai/sdxl-R` dataset (hosting in progress).
+
 # diffuseR 0.1.0.6 (development)
 
 ## Uniform native-safetensors + hosted quantization (in progress)
