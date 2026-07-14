@@ -145,10 +145,10 @@ yq_ltx_causal_conv3d <- function(x, weight, bias, causal = FALSE,
 # is only wired defensively.
 .yq_ltx_resnet <- function(x, w, causal) {
     h <- .yq_ltx_rms_norm(x)
-    h <- yunque::yq_silu(h)
+    h <- yunque::silu(h)
     h <- yq_ltx_causal_conv3d(h, w$conv1_w, w$conv1_b, causal)
     h <- .yq_ltx_rms_norm(h)
-    h <- yunque::yq_silu(h)
+    h <- yunque::silu(h)
     h <- yq_ltx_causal_conv3d(h, w$conv2_w, w$conv2_b, causal)
     if (!is.null(w$shortcut_w)) {
         x <- .yq_ltx_conv1x1(x, w$shortcut_w, w$shortcut_b)
@@ -234,7 +234,7 @@ yq_ltx_vae_decode <- function(z, w, causal = FALSE) {
         x <- .yq_ltx_up_block(x, blk, causal)
     }
     x <- .yq_ltx_rms_norm(x)
-    x <- yunque::yq_silu(x)
+    x <- yunque::silu(x)
     x <- yq_ltx_causal_conv3d(x, w$conv_out_w, w$conv_out_b, causal)
     .yq_ltx_unpatchify(x, w$patch_size_t, w$patch_size)
 }
@@ -294,12 +294,12 @@ yq_ltx_vae_prepare <- function(z, latents_mean, latents_std) {
 #' @export
 yq_ltx_vae_load_weights <- function(path, device = "cpu", strict = TRUE,
                                     patch_size = 4L, patch_size_t = 1L) {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     seen <- new.env(parent = emptyenv())
     raw <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32",
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32",
                        device = device)
     }
     has <- function(key) !is.null(st$header[[key]])

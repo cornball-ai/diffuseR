@@ -87,15 +87,15 @@ yq_qwen3_embed <- function(embed, ids, device = "cpu") {
         s <- anvl::shape(x)
         b <- s[1L]; n <- s[2L]
 
-        h <- yunque::yq_rms_norm(x, w$in_ln, eps = eps)
-        q <- anvl::nv_reshape(yunque::yq_linear(h, w$q_proj, precision = precision),
+        h <- yunque::rms_norm(x, w$in_ln, eps = eps)
+        q <- anvl::nv_reshape(yunque::linear(h, w$q_proj, precision = precision),
                               c(b, n, num_heads, head_dim))
-        k <- anvl::nv_reshape(yunque::yq_linear(h, w$k_proj, precision = precision),
+        k <- anvl::nv_reshape(yunque::linear(h, w$k_proj, precision = precision),
                               c(b, n, num_kv, head_dim))
-        v <- anvl::nv_reshape(yunque::yq_linear(h, w$v_proj, precision = precision),
+        v <- anvl::nv_reshape(yunque::linear(h, w$v_proj, precision = precision),
                               c(b, n, num_kv, head_dim))
-        q <- yunque::yq_rms_norm(q, w$q_norm, eps = eps)
-        k <- yunque::yq_rms_norm(k, w$k_norm, eps = eps)
+        q <- yunque::rms_norm(q, w$q_norm, eps = eps)
+        k <- yunque::rms_norm(k, w$k_norm, eps = eps)
 
         perm <- c(1L, 3L, 2L, 4L)              # [B, S, H, D] -> [B, H, S, D]
         q <- anvl::nv_transpose(q, perm)
@@ -110,21 +110,21 @@ yq_qwen3_embed <- function(embed, ids, device = "cpu") {
                                     c(b, num_kv, n, r))
         sk <- anvl::nv_broadcast_to(anvl::nv_reshape(sin, c(1L, 1L, n, r)),
                                     c(b, num_kv, n, r))
-        q <- yunque::yq_rope_split(q, cq, sq)
-        k <- yunque::yq_rope_split(k, ck, sk)
+        q <- yunque::rope_split(q, cq, sq)
+        k <- yunque::rope_split(k, ck, sk)
 
-        k <- yunque::yq_repeat_kv(k, groups)
-        v <- yunque::yq_repeat_kv(v, groups)
+        k <- yunque::repeat_kv(k, groups)
+        v <- yunque::repeat_kv(v, groups)
 
-        attn <- yunque::yq_sdpa(q, k, v, mask = mask, precision = precision)
+        attn <- yunque::sdpa(q, k, v, mask = mask, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm),
                                  c(b, n, inner))
-        x <- x + yunque::yq_linear(attn, w$o_proj, precision = precision)
+        x <- x + yunque::linear(attn, w$o_proj, precision = precision)
 
-        h2 <- yunque::yq_rms_norm(x, w$post_ln, eps = eps)
-        mlp <- yunque::yq_linear(
-            yunque::yq_silu(yunque::yq_linear(h2, w$gate, precision = precision)) *
-            yunque::yq_linear(h2, w$up, precision = precision),
+        h2 <- yunque::rms_norm(x, w$post_ln, eps = eps)
+        mlp <- yunque::linear(
+            yunque::silu(yunque::linear(h2, w$gate, precision = precision)) *
+            yunque::linear(h2, w$up, precision = precision),
             w$down, precision = precision)
         x + mlp
     }

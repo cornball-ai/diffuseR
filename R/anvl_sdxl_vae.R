@@ -43,8 +43,8 @@ yq_sdxl_vae_decode <- function(z, w) {
     x <- .yq_vae_attention(x, w$mid$attn)
     x <- .yq_vae_resnet(x, w$mid$resnet2)
     for (blk in w$up_blocks) x <- .yq_vae_up_block(x, blk)
-    x <- yunque::yq_group_norm(x, w$norm_out_w, w$norm_out_b, 32L, .YQ_VAE_EPS)
-    yq_conv3x3(yunque::yq_silu(x), w$conv_out_w, w$conv_out_b)
+    x <- yunque::group_norm(x, w$norm_out_w, w$norm_out_b, 32L, .YQ_VAE_EPS)
+    yq_conv3x3(yunque::silu(x), w$conv_out_w, w$conv_out_b)
 }
 
 #' Prepare SDXL latents for the VAE decoder (scaling factor)
@@ -87,16 +87,16 @@ yq_sdxl_vae_prepare <- function(z, scaling_factor = .YQ_SDXL_VAE_SCALING) {
 #'
 #' @export
 yq_sdxl_vae_load_weights <- function(path, device = "cpu", strict = TRUE) {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     seen <- new.env(parent = emptyenv())
     raw <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32", device = device)
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32", device = device)
     }
     lin <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+        anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                        dtype = "f32", device = device)
     }
     has <- function(key) !is.null(st$header[[key]])

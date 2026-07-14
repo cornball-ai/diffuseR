@@ -17,15 +17,15 @@
 #' @export
 yq_flux2_load_weights <- function(path, num_layers = 5L,
                                   num_single_layers = 20L, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     lin <- function(key) {
-        a <- anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+        a <- anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                             dtype = "f32", device = device)
         a
     }
     vec <- function(key) {
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32", device = device)
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32", device = device)
     }
 
     w <- list(
@@ -94,14 +94,14 @@ yq_flux2_load_weights <- function(path, num_layers = 5L,
 #'
 #' @export
 yq_qwen3_load_weights <- function(dir, n_layers = 27L, device = "cpu") {
-    st <- yunque::yq_st_open_sharded(dir)
-    on.exit(yunque::yq_st_close(st))
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+    st <- yunque::st_open_sharded(dir)
+    on.exit(yunque::st_close(st))
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
-    vec <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
+    vec <- function(key) anvl::nv_array(yunque::st_read(st, key),
                                         dtype = "f32", device = device)
 
-    embed <- yunque::yq_st_read(st, "model.embed_tokens.weight")   # [vocab, hidden]
+    embed <- yunque::st_read(st, "model.embed_tokens.weight")   # [vocab, hidden]
 
     layers <- lapply(seq_len(n_layers) - 1L, function(i) {
         p <- sprintf("model.layers.%d.", i)
@@ -142,11 +142,11 @@ yq_qwen3_load_weights <- function(dir, n_layers = 27L, device = "cpu") {
 #'
 #' @export
 yq_flux2_load_vae <- function(path, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
-    raw <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
+    raw <- function(key) anvl::nv_array(yunque::st_read(st, key),
                                         dtype = "f32", device = device)
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
     has <- function(key) !is.null(st$header[[key]])
 
@@ -178,8 +178,8 @@ yq_flux2_load_vae <- function(path, device = "cpu") {
         norm_out_b = raw(paste0(dp, "conv_norm_out.bias")),
         conv_out_w = raw(paste0(dp, "conv_out.weight")),
         conv_out_b = raw(paste0(dp, "conv_out.bias")),
-        bn_mean = yunque::yq_st_read(st, "bn.running_mean"),
-        bn_var = yunque::yq_st_read(st, "bn.running_var")
+        bn_mean = yunque::st_read(st, "bn.running_mean"),
+        bn_var = yunque::st_read(st, "bn.running_var")
     )
 
     mp <- paste0(dp, "mid_block.")

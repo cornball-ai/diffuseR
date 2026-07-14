@@ -3,7 +3,7 @@
 # bf16->f32 weights from the sharded FLUX.2 text_encoder checkpoint,
 # runs on fixed random token ids with a padding mask, and saves ids +
 # mask + concatenated mid-stack output. Weights are reloaded by the test
-# via yunque::yq_qwen3_load_weights.
+# via yq_qwen3_load_weights.
 #
 # Usage: r tools/gen_fixture_qwen3.R
 

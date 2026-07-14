@@ -72,17 +72,17 @@ yq_flux2_transformer <- function(num_layers = 5L, num_single_layers = 20L,
                                          precision)
 
     function(latents, text_embeds, time_proj, cos, sin, w) {
-        x <- yunque::yq_linear(latents, w$x_embedder, precision = precision)
-        cc <- yunque::yq_linear(text_embeds, w$context_embedder, precision = precision)
+        x <- yunque::linear(latents, w$x_embedder, precision = precision)
+        cc <- yunque::linear(text_embeds, w$context_embedder, precision = precision)
         dim <- anvl::shape(x)[3L]
 
-        temb <- yunque::yq_linear(yunque::yq_silu(yunque::yq_linear(time_proj, w$time_1,
+        temb <- yunque::linear(yunque::silu(yunque::linear(time_proj, w$time_1,
                                             precision = precision)),
                           w$time_2, precision = precision)
-        sil <- yunque::yq_silu(temb)
-        mod_img <- yunque::yq_linear(sil, w$dsm_img, precision = precision)
-        mod_txt <- yunque::yq_linear(sil, w$dsm_txt, precision = precision)
-        mod_single <- yunque::yq_linear(sil, w$single_mod, precision = precision)
+        sil <- yunque::silu(temb)
+        mod_img <- yunque::linear(sil, w$dsm_img, precision = precision)
+        mod_txt <- yunque::linear(sil, w$dsm_txt, precision = precision)
+        mod_single <- yunque::linear(sil, w$single_mod, precision = precision)
         msingle <- .yq_mod_split(mod_single, 1L, dim)[[1L]]
 
         for (i in seq_len(num_layers)) {
@@ -99,20 +99,20 @@ yq_flux2_transformer <- function(num_layers = 5L, num_single_layers = 20L,
                              cos, sin, wi$qkv, wi$out, wi$norm_q, wi$norm_k)
         }
         s_all <- anvl::shape(hs)[2L]
-        hs <- yunque::yq_slice_seq(hs, s_txt + 1L, s_all)
+        hs <- yunque::slice_seq(hs, s_txt + 1L, s_all)
 
         # adaLN-continuous output norm: scale, shift from silu(temb)
-        no <- yunque::yq_linear(yunque::yq_silu(temb), w$norm_out, precision = precision)
-        scale <- yunque::yq_slice_lastdim(no, 1L, dim)
-        shift <- yunque::yq_slice_lastdim(no, dim + 1L, 2L * dim)
+        no <- yunque::linear(yunque::silu(temb), w$norm_out, precision = precision)
+        scale <- yunque::slice_lastdim(no, 1L, dim)
+        shift <- yunque::slice_lastdim(no, dim + 1L, 2L * dim)
         sh <- anvl::shape(hs)
         s2 <- anvl::shape(scale)
         scale <- anvl::nv_reshape(scale, c(s2[1L], 1L, s2[2L]))
         shift <- anvl::nv_reshape(shift, c(s2[1L], 1L, s2[2L]))
-        hs <- yunque::yq_layer_norm(hs, eps = eps) *
+        hs <- yunque::layer_norm(hs, eps = eps) *
         anvl::nv_broadcast_to(scale + 1, sh) +
         anvl::nv_broadcast_to(shift, sh)
 
-        yunque::yq_linear(hs, w$proj_out, precision = precision)
+        yunque::linear(hs, w$proj_out, precision = precision)
     }
 }

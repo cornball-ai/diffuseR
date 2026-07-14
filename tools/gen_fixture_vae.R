@@ -1,7 +1,7 @@
 # FLUX.2 VAE decoder parity fixture (torch reference). Loads the real
 # decoder weights (bf16->f32) into diffuseR::flux2_vae_decoder, decodes
 # a random 32-channel latent, saves input + output. The anvl test
-# reloads weights via yunque::yq_flux2_load_vae.
+# reloads weights via yq_flux2_load_vae.
 #
 # Usage: r tools/gen_fixture_vae.R
 

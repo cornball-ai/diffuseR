@@ -53,31 +53,31 @@ NULL
         perm <- c(1L, 3L, 2L, 4L)              # [B, S, H, D] <-> [B, H, S, D]
 
         # --- self-attention (pre-norm) ---
-        h <- yunque::yq_rms_norm(x, w$attn_ln, eps = eps)
+        h <- yunque::rms_norm(x, w$attn_ln, eps = eps)
         q <- anvl::nv_transpose(
-            anvl::nv_reshape(yunque::yq_linear(h, w$q, precision = precision), per),
+            anvl::nv_reshape(yunque::linear(h, w$q, precision = precision), per),
             perm)
         k <- anvl::nv_transpose(
-            anvl::nv_reshape(yunque::yq_linear(h, w$k, precision = precision), per),
+            anvl::nv_reshape(yunque::linear(h, w$k, precision = precision), per),
             perm)
         v <- anvl::nv_transpose(
-            anvl::nv_reshape(yunque::yq_linear(h, w$v, precision = precision), per),
+            anvl::nv_reshape(yunque::linear(h, w$v, precision = precision), per),
             perm)
 
         # scores = q k^T with NO 1/sqrt(d) scaling; add shared rel-pos bias
         scores <- .yq_t5_matmul(q, anvl::nv_transpose(k, c(1L, 2L, 4L, 3L)),
                                 precision = precision)
         scores <- scores + anvl::nv_broadcast_to(position_bias, anvl::shape(scores))
-        attn <- yunque::yq_softmax(scores)
+        attn <- yunque::softmax(scores)
         out <- .yq_t5_matmul(attn, v, precision = precision)
         out <- anvl::nv_reshape(anvl::nv_transpose(out, perm), c(b, n, inner))
-        x <- x + yunque::yq_linear(out, w$o, precision = precision)
+        x <- x + yunque::linear(out, w$o, precision = precision)
 
         # --- gated-GELU feed-forward (pre-norm) ---
-        h2 <- yunque::yq_rms_norm(x, w$ff_ln, eps = eps)
-        gated <- .yq_t5_gelu_tanh(yunque::yq_linear(h2, w$wi_0, precision = precision)) *
-            yunque::yq_linear(h2, w$wi_1, precision = precision)
-        x + yunque::yq_linear(gated, w$wo, precision = precision)
+        h2 <- yunque::rms_norm(x, w$ff_ln, eps = eps)
+        gated <- .yq_t5_gelu_tanh(yunque::linear(h2, w$wi_0, precision = precision)) *
+            yunque::linear(h2, w$wi_1, precision = precision)
+        x + yunque::linear(gated, w$wo, precision = precision)
     }
 }
 
@@ -173,15 +173,15 @@ yq_t5_embed <- function(embed, ids, device = "cpu") {
 #'
 #' @export
 yq_t5_load_weights <- function(path, num_layers = 24L, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
-    vec <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
+    vec <- function(key) anvl::nv_array(yunque::st_read(st, key),
                                         dtype = "f32", device = device)
 
-    embed <- yunque::yq_st_read(st, "shared.weight")           # [vocab, d_model]
-    rel_bias <- yunque::yq_st_read(st,
+    embed <- yunque::st_read(st, "shared.weight")           # [vocab, d_model]
+    rel_bias <- yunque::st_read(st,
         "block.0.layer.0.SelfAttention.relative_attention_bias.weight")  # [buckets, heads]
 
     layers <- lapply(seq_len(num_layers) - 1L, function(i) {
@@ -233,6 +233,6 @@ yq_t5_encoder <- function(num_layers = 24L, num_heads = 64L, d_kv = 64L,
         for (i in seq_len(num_layers)) {
             x <- layer(x, position_bias, w$layers[[i]])
         }
-        yunque::yq_rms_norm(x, w$final_ln, eps = eps)
+        yunque::rms_norm(x, w$final_ln, eps = eps)
     }
 }

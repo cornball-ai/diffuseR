@@ -54,7 +54,7 @@ NULL
 # cross-file collisions.)
 .yq_sdxl_clip_ln <- function(x, weight, bias, eps = .YQ_SDXL_CLIP_EPS) {
     s <- anvl::shape(x)
-    yunque::yq_layer_norm(x, eps = eps) *
+    yunque::layer_norm(x, eps = eps) *
         anvl::nv_broadcast_to(weight, s) + anvl::nv_broadcast_to(bias, s)
 }
 
@@ -71,22 +71,22 @@ NULL
         n <- s[2L]
 
         h <- .yq_sdxl_clip_ln(x, w$ln1_w, w$ln1_b, eps)
-        q <- yunque::yq_linear(h, w$q_w, w$q_b, precision = precision)
-        k <- yunque::yq_linear(h, w$k_w, w$k_b, precision = precision)
-        v <- yunque::yq_linear(h, w$v_w, w$v_b, precision = precision)
+        q <- yunque::linear(h, w$q_w, w$q_b, precision = precision)
+        k <- yunque::linear(h, w$k_w, w$k_b, precision = precision)
+        v <- yunque::linear(h, w$v_w, w$v_b, precision = precision)
         to_heads <- function(t) anvl::nv_transpose(
             anvl::nv_reshape(t, c(b, n, n_heads, head_dim)), c(1L, 3L, 2L, 4L))
         q <- to_heads(q)
         k <- to_heads(k)
         v <- to_heads(v)
-        attn <- yunque::yq_sdpa(q, k, v, mask = mask, precision = precision)
+        attn <- yunque::sdpa(q, k, v, mask = mask, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, c(1L, 3L, 2L, 4L)),
                                  c(b, n, inner))
-        x <- x + yunque::yq_linear(attn, w$out_w, w$out_b, precision = precision)
+        x <- x + yunque::linear(attn, w$out_w, w$out_b, precision = precision)
 
         h2 <- .yq_sdxl_clip_ln(x, w$ln2_w, w$ln2_b, eps)
-        mlp <- yunque::yq_linear(
-            gelu(yunque::yq_linear(h2, w$fc1_w, w$fc1_b, precision = precision)),
+        mlp <- yunque::linear(
+            gelu(yunque::linear(h2, w$fc1_w, w$fc1_b, precision = precision)),
             w$fc2_w, w$fc2_b, precision = precision)
         x + mlp
     }
@@ -275,7 +275,7 @@ yq_sdxl_clip_encoders <- function(clipl_embeds, bigg_embeds, mask, eos_index,
 
     # Pooled: EOS-position hidden state (final-LN) through text_projection.
     pooled_row <- anvl::nv_select(out_g$hidden_ln, 2L, as.integer(eos_index))
-    pooled <- yunque::yq_linear(pooled_row, w_bigg$text_projection,
+    pooled <- yunque::linear(pooled_row, w_bigg$text_projection,
                                 precision = precision)
 
     list(context = context, pooled = pooled)
@@ -308,23 +308,23 @@ yq_sdxl_clip_encoders <- function(clipl_embeds, bigg_embeds, mask, eos_index,
 yq_sdxl_clip_load_weights <- function(path, num_layers,
                                       has_text_projection = FALSE,
                                       device = "cpu", strict = TRUE) {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     seen <- new.env(parent = emptyenv())
     mark <- function(key) assign(key, TRUE, envir = seen)
     raw <- function(key) {
         mark(key)
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32",
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32",
                        device = device)
     }
     lin <- function(key) {
         mark(key)
-        anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+        anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                        dtype = "f32", device = device)
     }
     rmat <- function(key) {
         mark(key)
-        yunque::yq_st_read(st, key)              # R matrix [rows, hidden]
+        yunque::st_read(st, key)              # R matrix [rows, hidden]
     }
 
     w <- list(

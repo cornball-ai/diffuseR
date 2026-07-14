@@ -52,7 +52,7 @@ NULL
 .yq_ltx_mod <- function(temb, table, num, dim) {
     s <- anvl::shape(temb) ; b <- s[1L]; v <- s[2L]
     lapply(seq_len(num), function(p) {
-        chunk <- yunque::yq_slice_lastdim(temb, (p - 1L) * dim + 1L, p * dim)
+        chunk <- yunque::slice_lastdim(temb, (p - 1L) * dim + 1L, p * dim)
         row <- anvl::nv_broadcast_to(anvl::nv_reshape(.yq_ltx_row(table, p),
                 c(1L, 1L, dim)),
                                      c(b, v, dim))
@@ -64,11 +64,11 @@ NULL
 # mod = linear(silu(embedded_timestep)). sinusoid is [N, 256]; returns
 # list(mod [N, num_mod*dim], emb [N, dim]).
 .yq_ltx_adaln <- function(sinusoid, w, precision) {
-    e <- yunque::yq_linear(
-                           yunque::yq_silu(yunque::yq_linear(sinusoid, w$l1, bias = w$l1b,
+    e <- yunque::linear(
+                           yunque::silu(yunque::linear(sinusoid, w$l1, bias = w$l1b,
                 precision = precision)),
                            w$l2, bias = w$l2b, precision = precision)
-    mod <- yunque::yq_linear(yunque::yq_silu(e), w$lin, bias = w$linb,
+    mod <- yunque::linear(yunque::silu(e), w$lin, bias = w$linb,
                              precision = precision)
     list(mod = mod, emb = e)
 }
@@ -81,7 +81,7 @@ NULL
     d <- inner %/% rope_heads
     perm <- c(1L, 3L, 2L, 4L)
     xh <- anvl::nv_transpose(anvl::nv_reshape(x, c(b, n, rope_heads, d)), perm)
-    xh <- yunque::yq_rope_split(xh, cos, sin)
+    xh <- yunque::rope_split(xh, cos, sin)
     anvl::nv_reshape(anvl::nv_transpose(xh, perm), c(b, n, inner))
 }
 
@@ -99,15 +99,15 @@ NULL
         nk <- anvl::shape(kin)[2L]
 
         gate_logits <- if (gated) {
-            yunque::yq_linear(qin, w$gate, bias = w$gate_b,
+            yunque::linear(qin, w$gate, bias = w$gate_b,
                               precision = precision)
         }
-        v <- yunque::yq_linear(kin, w$to_v, bias = w$to_v_b, precision = precision)
-        q <- yunque::yq_rms_norm(
-                                 yunque::yq_linear(qin, w$to_q, bias = w$to_q_b, precision = precision),
+        v <- yunque::linear(kin, w$to_v, bias = w$to_v_b, precision = precision)
+        q <- yunque::rms_norm(
+                                 yunque::linear(qin, w$to_q, bias = w$to_q_b, precision = precision),
                                  w$norm_q, eps = eps)
-        k <- yunque::yq_rms_norm(
-                                 yunque::yq_linear(kin, w$to_k, bias = w$to_k_b, precision = precision),
+        k <- yunque::rms_norm(
+                                 yunque::linear(kin, w$to_k, bias = w$to_k_b, precision = precision),
                                  w$norm_k, eps = eps)
         if (!is.null(cos_q)) {
             q <- .yq_ltx_rope_flat(q, cos_q, sin_q, rope_heads_q)
@@ -116,7 +116,7 @@ NULL
         qh <- anvl::nv_transpose(anvl::nv_reshape(q, c(b, nq, heads, head_dim)), perm)
         kh <- anvl::nv_transpose(anvl::nv_reshape(k, c(b, nk, heads, head_dim)), perm)
         vh <- anvl::nv_transpose(anvl::nv_reshape(v, c(b, nk, heads, head_dim)), perm)
-        attn <- yunque::yq_sdpa(qh, kh, vh, mask = mask, precision = precision)
+        attn <- yunque::sdpa(qh, kh, vh, mask = mask, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm), c(b, nq, inner))
         if (gated) {
             gates <- anvl::nv_logistic(gate_logits) * 2 # [B, nq, heads]
@@ -125,7 +125,7 @@ NULL
                                         c(b, nq, heads, head_dim))
             attn <- anvl::nv_reshape(a4 * g4, c(b, nq, inner))
         }
-        yunque::yq_linear(attn, w$to_out, bias = w$to_out_b, precision = precision)
+        yunque::linear(attn, w$to_out, bias = w$to_out_b, precision = precision)
     }
 }
 
@@ -408,12 +408,12 @@ yq_ltx_dit <- function(heads = 3L, head_dim = 8L, a_heads = 2L,
     attn_v2a <- .yq_ltx_attn(a_heads, a_head_dim, TRUE, precision, eps)
 
     ff <- function(x, w) {
-        h1 <- yunque::yq_linear(x, w$net0, bias = w$net0_b,
+        h1 <- yunque::linear(x, w$net0, bias = w$net0_b,
                                 precision = precision)
-        yunque::yq_linear(.yq_ltx_gelu_tanh(h1), w$net2, bias = w$net2_b,
+        yunque::linear(.yq_ltx_gelu_tanh(h1), w$net2, bias = w$net2_b,
                           precision = precision)
     }
-    rms <- function(x) yunque::yq_rms_norm(x, NULL, eps = eps)
+    rms <- function(x) yunque::rms_norm(x, NULL, eps = eps)
 
     block <- function(h, ah, enc, aenc, temb, temb_a, temb_p, temb_ap,
                       vca_ss, vca_gate, aca_ss, aca_gate,
@@ -493,9 +493,9 @@ yq_ltx_dit <- function(heads = 3L, head_dim = 8L, a_heads = 2L,
         sa <- anvl::shape(audio_hidden)[2L]
 
         # 2. input projections
-        h <- yunque::yq_linear(hidden, w$proj_in, bias = w$proj_in_b,
+        h <- yunque::linear(hidden, w$proj_in, bias = w$proj_in_b,
                                precision = precision)
-        ah <- yunque::yq_linear(audio_hidden, w$audio_proj_in,
+        ah <- yunque::linear(audio_hidden, w$audio_proj_in,
                                 bias = w$audio_proj_in_b, precision = precision)
 
         # 3. timestep embeddings + global modulation
@@ -543,13 +543,13 @@ yq_ltx_dit <- function(heads = 3L, head_dim = 8L, a_heads = 2L,
             scale <- anvl::nv_broadcast_to(anvl::nv_reshape(.yq_ltx_row(table, 2L),
                     c(1L, 1L, sdim)),
                 c(b, S, sdim)) + embt
-            yunque::yq_layer_norm(x, eps = 1e-6) * (scale + 1) + shift
+            yunque::layer_norm(x, eps = 1e-6) * (scale + 1) + shift
         }
         vo <- out_mod(h, w$scale_shift_table, emb_v, inner, sv)
         ao <- out_mod(ah, w$audio_scale_shift_table, emb_a, ainner, sa)
-        list(video = yunque::yq_linear(vo, w$proj_out, bias = w$proj_out_b,
+        list(video = yunque::linear(vo, w$proj_out, bias = w$proj_out_b,
                                        precision = precision),
-             audio = yunque::yq_linear(ao, w$audio_proj_out, bias = w$audio_proj_out_b,
+             audio = yunque::linear(ao, w$audio_proj_out, bias = w$audio_proj_out_b,
                                        precision = precision))
     }
 }
@@ -571,14 +571,14 @@ yq_ltx_dit <- function(heads = 3L, head_dim = 8L, a_heads = 2L,
 #'
 #' @export
 yq_ltx_dit_load_weights <- function(path, isolate = TRUE, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key,
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key,
             transpose = TRUE),
                                         dtype = "f32", device = device)
-    vec <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
+    vec <- function(key) anvl::nv_array(yunque::st_read(st, key),
                                         dtype = "f32", device = device)
-    tab <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = FALSE),
+    tab <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = FALSE),
                                         dtype = "f32", device = device)
 
     adaln <- function(p) list(

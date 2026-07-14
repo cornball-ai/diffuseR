@@ -73,10 +73,10 @@ yq_flux1_time_embed <- function(timestep, dim = 256L, max_period = 10000,
 .yq_flux1_qkv_head <- function(x, w_t, bias, norm_w, heads, head_dim, eps,
                                precision) {
     s <- anvl::shape(x)
-    proj <- yunque::yq_linear(x, w_t, bias = bias, precision = precision)
+    proj <- yunque::linear(x, w_t, bias = bias, precision = precision)
     r <- anvl::nv_reshape(proj, c(s[1L], s[2L], heads, head_dim))
     if (!is.null(norm_w)) {
-        r <- yunque::yq_rms_norm(r, norm_w, eps = eps)
+        r <- yunque::rms_norm(r, norm_w, eps = eps)
     }
     r
 }
@@ -111,9 +111,9 @@ yq_flux1_double_block <- function(heads = 24L, head_dim = 128L, eps = 1e-6,
     inner <- heads * head_dim
 
     ff <- function(x, w_in, b_in, w_out, b_out) {
-        h <- yunque::yq_linear(x, w_in, bias = b_in, precision = precision)
+        h <- yunque::linear(x, w_in, bias = b_in, precision = precision)
         h <- .yq_flux1_gelu_tanh(h)
-        yunque::yq_linear(h, w_out, bias = b_out, precision = precision)
+        yunque::linear(h, w_out, bias = b_out, precision = precision)
     }
 
     function(h, c, sil, cos, sin, w) {
@@ -123,9 +123,9 @@ yq_flux1_double_block <- function(heads = 24L, head_dim = 128L, eps = 1e-6,
         b <- anvl::shape(h)[1L]
 
         # Per-block modulation (adaLN-Zero): [N, 6*dim] each stream.
-        mod_img <- yunque::yq_linear(sil, w$norm1_lin, bias = w$norm1_lin_b,
+        mod_img <- yunque::linear(sil, w$norm1_lin, bias = w$norm1_lin_b,
                                      precision = precision)
-        mod_txt <- yunque::yq_linear(sil, w$norm1c_lin, bias = w$norm1c_lin_b,
+        mod_txt <- yunque::linear(sil, w$norm1c_lin, bias = w$norm1c_lin_b,
                                      precision = precision)
         mi <- .yq_mod_split(mod_img, 2L, dim)
         mt <- .yq_mod_split(mod_txt, 2L, dim)
@@ -136,7 +136,7 @@ yq_flux1_double_block <- function(heads = 24L, head_dim = 128L, eps = 1e-6,
         cs <- anvl::shape(c)
         modulate <- function(x, shift, scale) {
             sh <- anvl::shape(x)
-            yunque::yq_layer_norm(x, eps = eps) *
+            yunque::layer_norm(x, eps = eps) *
             anvl::nv_broadcast_to(scale + 1, sh) +
             anvl::nv_broadcast_to(shift, sh)
         }
@@ -171,18 +171,18 @@ yq_flux1_double_block <- function(heads = 24L, head_dim = 128L, eps = 1e-6,
         chs <- c(b, heads, s_all, head_dim)
         cb <- anvl::nv_broadcast_to(cos, chs)
         sb <- anvl::nv_broadcast_to(sin, chs)
-        q <- yunque::yq_rope_apply(q, cb, sb)
-        k <- yunque::yq_rope_apply(k, cb, sb)
+        q <- yunque::rope_apply(q, cb, sb)
+        k <- yunque::rope_apply(k, cb, sb)
 
-        attn <- yunque::yq_sdpa(q, k, v, precision = precision)
+        attn <- yunque::sdpa(q, k, v, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm),
                                  c(b, s_all, inner))
 
-        ctx <- yunque::yq_slice_seq(attn, 1L, s_txt)
-        img <- yunque::yq_slice_seq(attn, s_txt + 1L, s_all)
-        attn_img <- yunque::yq_linear(img, w$to_out, bias = w$to_out_b,
+        ctx <- yunque::slice_seq(attn, 1L, s_txt)
+        img <- yunque::slice_seq(attn, s_txt + 1L, s_all)
+        attn_img <- yunque::linear(img, w$to_out, bias = w$to_out_b,
                                       precision = precision)
-        attn_ctx <- yunque::yq_linear(ctx, w$to_add_out, bias = w$to_add_out_b,
+        attn_ctx <- yunque::linear(ctx, w$to_add_out, bias = w$to_add_out_b,
                                       precision = precision)
 
         h <- h + anvl::nv_broadcast_to(msa[[3L]], hs) * attn_img
@@ -231,16 +231,16 @@ yq_flux1_single_block <- function(heads = 24L, head_dim = 128L,
         n <- s[2L]
         dim <- s[3L]
 
-        mod <- yunque::yq_linear(sil, w$norm_lin, bias = w$norm_lin_b,
+        mod <- yunque::linear(sil, w$norm_lin, bias = w$norm_lin_b,
                                  precision = precision)
         ms <- .yq_mod_split(mod, 1L, dim)[[1L]]  # shift, scale, gate
 
-        norm_h <- yunque::yq_layer_norm(h, eps = eps) *
+        norm_h <- yunque::layer_norm(h, eps = eps) *
         anvl::nv_broadcast_to(ms[[2L]] + 1, s) +
         anvl::nv_broadcast_to(ms[[1L]], s)
 
         mlp <- .yq_flux1_gelu_tanh(
-            yunque::yq_linear(norm_h, w$proj_mlp, bias = w$proj_mlp_b,
+            yunque::linear(norm_h, w$proj_mlp, bias = w$proj_mlp_b,
                               precision = precision))
 
         q <- .yq_flux1_qkv_head(norm_h, w$to_q, w$to_q_b, w$norm_q,
@@ -257,14 +257,14 @@ yq_flux1_single_block <- function(heads = 24L, head_dim = 128L,
         chs <- c(b, heads, n, head_dim)
         cb <- anvl::nv_broadcast_to(cos, chs)
         sb <- anvl::nv_broadcast_to(sin, chs)
-        q <- yunque::yq_rope_apply(q, cb, sb)
-        k <- yunque::yq_rope_apply(k, cb, sb)
+        q <- yunque::rope_apply(q, cb, sb)
+        k <- yunque::rope_apply(k, cb, sb)
 
-        attn <- yunque::yq_sdpa(q, k, v, precision = precision)
+        attn <- yunque::sdpa(q, k, v, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm),
                                  c(b, n, inner))
 
-        out <- yunque::yq_linear(
+        out <- yunque::linear(
             anvl::nv_concatenate(attn, mlp, dimension = 3L),
             w$proj_out, bias = w$proj_out_b, precision = precision)
         h + anvl::nv_broadcast_to(ms[[3L]], s) * out
@@ -314,23 +314,23 @@ yq_flux1_transformer <- function(num_layers = 19L, num_single_layers = 38L,
                                         precision)
 
     function(latents, text_embeds, pooled, time_sin, cos, sin, w) {
-        x <- yunque::yq_linear(latents, w$x_embedder, bias = w$x_embedder_b,
+        x <- yunque::linear(latents, w$x_embedder, bias = w$x_embedder_b,
                                precision = precision)
-        cc <- yunque::yq_linear(text_embeds, w$context_embedder,
+        cc <- yunque::linear(text_embeds, w$context_embedder,
                                 bias = w$context_embedder_b, precision = precision)
         dim <- anvl::shape(x)[3L]
 
         # temb = timestep_embedder(sinusoid) + text_embedder(pooled)
-        ts <- yunque::yq_linear(
-            yunque::yq_silu(yunque::yq_linear(time_sin, w$ts_1, bias = w$ts_1_b,
+        ts <- yunque::linear(
+            yunque::silu(yunque::linear(time_sin, w$ts_1, bias = w$ts_1_b,
                                               precision = precision)),
             w$ts_2, bias = w$ts_2_b, precision = precision)
-        txt <- yunque::yq_linear(
-            yunque::yq_silu(yunque::yq_linear(pooled, w$txt_1, bias = w$txt_1_b,
+        txt <- yunque::linear(
+            yunque::silu(yunque::linear(pooled, w$txt_1, bias = w$txt_1_b,
                                               precision = precision)),
             w$txt_2, bias = w$txt_2_b, precision = precision)
         temb <- ts + txt
-        sil <- yunque::yq_silu(temb)
+        sil <- yunque::silu(temb)
 
         for (i in seq_len(num_layers)) {
             res <- double_blk(x, cc, sil, cos, sin, w$double[[i]])
@@ -344,22 +344,22 @@ yq_flux1_transformer <- function(num_layers = 19L, num_single_layers = 38L,
             hs <- single_blk(hs, sil, cos, sin, w$single[[i]])
         }
         s_all <- anvl::shape(hs)[2L]
-        hs <- yunque::yq_slice_seq(hs, s_txt + 1L, s_all)
+        hs <- yunque::slice_seq(hs, s_txt + 1L, s_all)
 
         # adaLN-continuous output norm: scale first, then shift.
-        no <- yunque::yq_linear(sil, w$norm_out, bias = w$norm_out_b,
+        no <- yunque::linear(sil, w$norm_out, bias = w$norm_out_b,
                                 precision = precision)
-        scale <- yunque::yq_slice_lastdim(no, 1L, dim)
-        shift <- yunque::yq_slice_lastdim(no, dim + 1L, 2L * dim)
+        scale <- yunque::slice_lastdim(no, 1L, dim)
+        shift <- yunque::slice_lastdim(no, dim + 1L, 2L * dim)
         sh <- anvl::shape(hs)
         s2 <- anvl::shape(scale)
         scale <- anvl::nv_reshape(scale, c(s2[1L], 1L, s2[2L]))
         shift <- anvl::nv_reshape(shift, c(s2[1L], 1L, s2[2L]))
-        hs <- yunque::yq_layer_norm(hs, eps = eps) *
+        hs <- yunque::layer_norm(hs, eps = eps) *
         anvl::nv_broadcast_to(scale + 1, sh) +
         anvl::nv_broadcast_to(shift, sh)
 
-        yunque::yq_linear(hs, w$proj_out, bias = w$proj_out_b,
+        yunque::linear(hs, w$proj_out, bias = w$proj_out_b,
                           precision = precision)
     }
 }
@@ -386,13 +386,13 @@ yq_flux1_transformer <- function(num_layers = 19L, num_single_layers = 38L,
 #' @export
 yq_flux1_load_weights <- function(path, num_layers = 19L,
                                   num_single_layers = 38L, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     lin <- function(key) anvl::nv_array(
-        yunque::yq_st_read(st, key, transpose = TRUE),
+        yunque::st_read(st, key, transpose = TRUE),
         dtype = "f32", device = device)
     vec <- function(key) anvl::nv_array(
-        yunque::yq_st_read(st, key), dtype = "f32", device = device)
+        yunque::st_read(st, key), dtype = "f32", device = device)
 
     tt <- "time_text_embed."
     w <- list(

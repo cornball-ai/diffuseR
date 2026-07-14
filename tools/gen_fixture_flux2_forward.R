@@ -2,7 +2,7 @@
 # Loads all bf16 weights (upcast f32) into diffuseR::flux2_transformer,
 # runs at a small resolution, saves inputs + output. Weights are NOT
 # saved (the test reloads them from the checkpoint via
-# yunque::yq_flux2_load_weights). CPU f32 reference.
+# yq_flux2_load_weights). CPU f32 reference.
 #
 # Usage: r tools/gen_fixture_flux2_forward.R
 

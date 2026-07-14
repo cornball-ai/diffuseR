@@ -17,10 +17,10 @@ NULL
 # channel count changes). Weights list: norm1_w/b, conv1_w/b, norm2_w/b,
 # conv2_w/b, and optionally shortcut_w/b.
 .yq_vae_resnet <- function(x, w) {
-    h <- yunque::yq_group_norm(x, w$norm1_w, w$norm1_b, 32L, .YQ_VAE_EPS)
-    h <- yq_conv3x3(yunque::yq_silu(h), w$conv1_w, w$conv1_b)
-    h <- yunque::yq_group_norm(h, w$norm2_w, w$norm2_b, 32L, .YQ_VAE_EPS)
-    h <- yq_conv3x3(yunque::yq_silu(h), w$conv2_w, w$conv2_b)
+    h <- yunque::group_norm(x, w$norm1_w, w$norm1_b, 32L, .YQ_VAE_EPS)
+    h <- yq_conv3x3(yunque::silu(h), w$conv1_w, w$conv1_b)
+    h <- yunque::group_norm(h, w$norm2_w, w$norm2_b, 32L, .YQ_VAE_EPS)
+    h <- yq_conv3x3(yunque::silu(h), w$conv2_w, w$conv2_b)
     if (!is.null(w$shortcut_w)) {
         x <- yq_conv1x1(x, w$shortcut_w, w$shortcut_b)
     }
@@ -50,16 +50,16 @@ yq_add_conv_bias <- function(y, bias) {
     s <- anvl::shape(x)
     b <- s[1L]; c <- s[2L]; h <- s[3L]; wd <- s[4L]
     residual <- x
-    xn <- yunque::yq_group_norm(x, w$gn_w, w$gn_b, 32L, .YQ_VAE_EPS)
+    xn <- yunque::group_norm(x, w$gn_w, w$gn_b, 32L, .YQ_VAE_EPS)
     # [B, C, H, W] -> [B, H*W, C]
     seq <- anvl::nv_transpose(anvl::nv_reshape(xn, c(b, c, h * wd)), c(1L, 3L, 2L))
-    q <- yunque::yq_linear(seq, w$q_w, w$q_b)
-    k <- yunque::yq_linear(seq, w$k_w, w$k_b)
-    v <- yunque::yq_linear(seq, w$v_w, w$v_b)
+    q <- yunque::linear(seq, w$q_w, w$q_b)
+    k <- yunque::linear(seq, w$k_w, w$k_b)
+    v <- yunque::linear(seq, w$v_w, w$v_b)
     add_head <- function(t) anvl::nv_reshape(t, c(b, 1L, h * wd, c))
-    attn <- yunque::yq_sdpa(add_head(q), add_head(k), add_head(v))   # scale 1/sqrt(C)
+    attn <- yunque::sdpa(add_head(q), add_head(k), add_head(v))   # scale 1/sqrt(C)
     attn <- anvl::nv_reshape(attn, c(b, h * wd, c))
-    out <- yunque::yq_linear(attn, w$out_w, w$out_b)
+    out <- yunque::linear(attn, w$out_w, w$out_b)
     # [B, H*W, C] -> [B, C, H, W]
     out <- anvl::nv_reshape(anvl::nv_transpose(out, c(1L, 3L, 2L)), c(b, c, h, wd))
     out + residual
@@ -69,7 +69,7 @@ yq_add_conv_bias <- function(y, bias) {
 .yq_vae_up_block <- function(x, w) {
     for (r in w$resnets) x <- .yq_vae_resnet(x, r)
     if (!is.null(w$up_conv_w)) {
-        x <- yq_conv3x3(yunque::yq_upsample_nearest2d(x), w$up_conv_w, w$up_conv_b)
+        x <- yq_conv3x3(yunque::upsample_nearest2d(x), w$up_conv_w, w$up_conv_b)
     }
     x
 }
@@ -90,8 +90,8 @@ yq_flux2_vae_decode <- function(z, w) {
     x <- .yq_vae_attention(x, w$mid$attn)
     x <- .yq_vae_resnet(x, w$mid$resnet2)
     for (blk in w$up_blocks) x <- .yq_vae_up_block(x, blk)
-    x <- yunque::yq_group_norm(x, w$norm_out_w, w$norm_out_b, 32L, .YQ_VAE_EPS)
-    yq_conv3x3(yunque::yq_silu(x), w$conv_out_w, w$conv_out_b)
+    x <- yunque::group_norm(x, w$norm_out_w, w$norm_out_b, 32L, .YQ_VAE_EPS)
+    yq_conv3x3(yunque::silu(x), w$conv_out_w, w$conv_out_b)
 }
 
 #' Prepare DiT latents for the FLUX.2 VAE decoder (host-side)

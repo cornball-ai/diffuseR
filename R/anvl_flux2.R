@@ -45,16 +45,16 @@ yq_flux2_single_block <- function(heads = 24L, head_dim = 128L,
         dim <- s[3L]
         mlp_hidden <- as.integer(dim * mlp_ratio)
 
-        norm_h <- yunque::yq_layer_norm(h, eps = eps)
+        norm_h <- yunque::layer_norm(h, eps = eps)
         norm_h <- norm_h * anvl::nv_broadcast_to(scale + 1, s) +
         anvl::nv_broadcast_to(shift, s)
 
-        proj <- yunque::yq_linear(norm_h, w_qkv_t, precision = precision)
-        q <- yunque::yq_slice_lastdim(proj, 1L, inner)
-        k <- yunque::yq_slice_lastdim(proj, inner + 1L, 2L * inner)
-        v <- yunque::yq_slice_lastdim(proj, 2L * inner + 1L, 3L * inner)
-        m1 <- yunque::yq_slice_lastdim(proj, 3L * inner + 1L, 3L * inner + mlp_hidden)
-        m2 <- yunque::yq_slice_lastdim(proj, 3L * inner + mlp_hidden + 1L,
+        proj <- yunque::linear(norm_h, w_qkv_t, precision = precision)
+        q <- yunque::slice_lastdim(proj, 1L, inner)
+        k <- yunque::slice_lastdim(proj, inner + 1L, 2L * inner)
+        v <- yunque::slice_lastdim(proj, 2L * inner + 1L, 3L * inner)
+        m1 <- yunque::slice_lastdim(proj, 3L * inner + 1L, 3L * inner + mlp_hidden)
+        m2 <- yunque::slice_lastdim(proj, 3L * inner + mlp_hidden + 1L,
                                3L * inner + 2L * mlp_hidden)
 
         # [B, S, inner] -> [B, S, H, D], q/k norms on the head dim,
@@ -62,8 +62,8 @@ yq_flux2_single_block <- function(heads = 24L, head_dim = 128L,
         q <- anvl::nv_reshape(q, c(b, n, heads, head_dim))
         k <- anvl::nv_reshape(k, c(b, n, heads, head_dim))
         v <- anvl::nv_reshape(v, c(b, n, heads, head_dim))
-        q <- yunque::yq_rms_norm(q, norm_q_w, eps = eps)
-        k <- yunque::yq_rms_norm(k, norm_k_w, eps = eps)
+        q <- yunque::rms_norm(q, norm_q_w, eps = eps)
+        k <- yunque::rms_norm(k, norm_k_w, eps = eps)
         perm <- c(1L, 3L, 2L, 4L)
         q <- anvl::nv_transpose(q, perm)
         k <- anvl::nv_transpose(k, perm)
@@ -72,15 +72,15 @@ yq_flux2_single_block <- function(heads = 24L, head_dim = 128L,
         hs <- c(b, heads, n, head_dim)
         cs <- anvl::nv_broadcast_to(cos, hs)
         sn <- anvl::nv_broadcast_to(sin, hs)
-        q <- yunque::yq_rope_apply(q, cs, sn)
-        k <- yunque::yq_rope_apply(k, cs, sn)
+        q <- yunque::rope_apply(q, cs, sn)
+        k <- yunque::rope_apply(k, cs, sn)
 
-        attn <- yunque::yq_sdpa(q, k, v, precision = precision)
+        attn <- yunque::sdpa(q, k, v, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm),
                                  c(b, n, inner))
 
-        mlp <- yunque::yq_silu(m1) * m2
-        out <- yunque::yq_linear(anvl::nv_concatenate(attn, mlp, dimension = 3L),
+        mlp <- yunque::silu(m1) * m2
+        out <- yunque::linear(anvl::nv_concatenate(attn, mlp, dimension = 3L),
                          w_out_t, precision = precision)
         h + anvl::nv_broadcast_to(gate, s) * out
     }

@@ -47,7 +47,7 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
     heads <- as.integer(heads)
 
     lin <- function(x, w_t, bias = NULL) {
-        yunque::yq_linear(x, w_t, bias = bias, precision = precision)
+        yunque::linear(x, w_t, bias = bias, precision = precision)
     }
 
     attention <- function(x, cos, sin, wb) {
@@ -62,8 +62,8 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
         q <- anvl::nv_reshape(q, c(b, n, heads, head_dim))
         k <- anvl::nv_reshape(k, c(b, n, heads, head_dim))
         v <- anvl::nv_reshape(v, c(b, n, heads, head_dim))
-        q <- yunque::yq_rms_norm(q, wb$norm_q, eps = eps)
-        k <- yunque::yq_rms_norm(k, wb$norm_k, eps = eps)
+        q <- yunque::rms_norm(q, wb$norm_q, eps = eps)
+        k <- yunque::rms_norm(k, wb$norm_k, eps = eps)
 
         perm <- c(1L, 3L, 2L, 4L)              # [B, S, H, D] -> [B, H, S, D]
         q <- anvl::nv_transpose(q, perm)
@@ -73,16 +73,16 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
         hs <- c(b, heads, n, head_dim)
         cs <- anvl::nv_broadcast_to(cos, hs)
         sn <- anvl::nv_broadcast_to(sin, hs)
-        q <- yunque::yq_rope_apply(q, cs, sn)
-        k <- yunque::yq_rope_apply(k, cs, sn)
+        q <- yunque::rope_apply(q, cs, sn)
+        k <- yunque::rope_apply(k, cs, sn)
 
-        attn <- yunque::yq_sdpa(q, k, v, precision = precision)
+        attn <- yunque::sdpa(q, k, v, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm), c(b, n, inner))
         lin(attn, wb$to_out)
     }
 
     feed_forward <- function(x, wb) {
-        lin(yunque::yq_silu(lin(x, wb$w1)) * lin(x, wb$w3), wb$w2)
+        lin(yunque::silu(lin(x, wb$w1)) * lin(x, wb$w3), wb$w2)
     }
 
     block <- function(x, cos, sin, adaln, wb, modulation) {
@@ -92,30 +92,30 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
             b <- anvl::shape(adaln)[1L]
             mod <- anvl::nv_reshape(lin(adaln, wb$adaLN, wb$adaLN_b),
                                     c(b, 1L, 4L * dim))
-            scale_msa <- yunque::yq_slice_lastdim(mod, 1L, dim) + 1
-            gate_msa <- anvl::nv_tanh(yunque::yq_slice_lastdim(mod, dim + 1L, 2L * dim))
-            scale_mlp <- yunque::yq_slice_lastdim(mod, 2L * dim + 1L, 3L * dim) + 1
-            gate_mlp <- anvl::nv_tanh(yunque::yq_slice_lastdim(mod, 3L * dim + 1L,
+            scale_msa <- yunque::slice_lastdim(mod, 1L, dim) + 1
+            gate_msa <- anvl::nv_tanh(yunque::slice_lastdim(mod, dim + 1L, 2L * dim))
+            scale_mlp <- yunque::slice_lastdim(mod, 2L * dim + 1L, 3L * dim) + 1
+            gate_mlp <- anvl::nv_tanh(yunque::slice_lastdim(mod, 3L * dim + 1L,
                                                                4L * dim))
 
-            n1 <- yunque::yq_rms_norm(x, wb$attn_norm1, eps = eps) *
+            n1 <- yunque::rms_norm(x, wb$attn_norm1, eps = eps) *
                 anvl::nv_broadcast_to(scale_msa, s)
             attn <- attention(n1, cos, sin, wb)
             x <- x + anvl::nv_broadcast_to(gate_msa, s) *
-                yunque::yq_rms_norm(attn, wb$attn_norm2, eps = eps)
+                yunque::rms_norm(attn, wb$attn_norm2, eps = eps)
 
-            n2 <- yunque::yq_rms_norm(x, wb$ffn_norm1, eps = eps) *
+            n2 <- yunque::rms_norm(x, wb$ffn_norm1, eps = eps) *
                 anvl::nv_broadcast_to(scale_mlp, s)
             ff <- feed_forward(n2, wb)
             x + anvl::nv_broadcast_to(gate_mlp, s) *
-                yunque::yq_rms_norm(ff, wb$ffn_norm2, eps = eps)
+                yunque::rms_norm(ff, wb$ffn_norm2, eps = eps)
         } else {
-            n1 <- yunque::yq_rms_norm(x, wb$attn_norm1, eps = eps)
+            n1 <- yunque::rms_norm(x, wb$attn_norm1, eps = eps)
             attn <- attention(n1, cos, sin, wb)
-            x <- x + yunque::yq_rms_norm(attn, wb$attn_norm2, eps = eps)
-            n2 <- yunque::yq_rms_norm(x, wb$ffn_norm1, eps = eps)
+            x <- x + yunque::rms_norm(attn, wb$attn_norm2, eps = eps)
+            n2 <- yunque::rms_norm(x, wb$ffn_norm1, eps = eps)
             ff <- feed_forward(n2, wb)
-            x + yunque::yq_rms_norm(ff, wb$ffn_norm2, eps = eps)
+            x + yunque::rms_norm(ff, wb$ffn_norm2, eps = eps)
         }
     }
 
@@ -126,7 +126,7 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
 
     function(tokens, cap_feats, t_freq, cos_img, sin_img, cos_cap, sin_cap, w) {
         # Timestep -> adaLN conditioning: MLP over the host-side sinusoid.
-        adaln <- lin(yunque::yq_silu(lin(t_freq, w$t_mlp0, w$t_mlp0_b)),
+        adaln <- lin(yunque::silu(lin(t_freq, w$t_mlp0, w$t_mlp0_b)),
                      w$t_mlp2, w$t_mlp2_b)
 
         # Image tokens: embed, pad to a multiple of 32, refine.
@@ -143,7 +143,7 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
         }
 
         # Caption tokens: RMS-norm + embed, pad, refine (no modulation).
-        cap <- yunque::yq_rms_norm(cap_feats, w$cap_norm, eps = eps)
+        cap <- yunque::rms_norm(cap_feats, w$cap_norm, eps = eps)
         cap <- lin(cap, w$cap_lin, w$cap_lin_b)
         cap_len <- anvl::shape(cap)[2L]
         cap_pad <- (-cap_len) %% 32L
@@ -165,10 +165,10 @@ yq_zimage_dit <- function(heads = 30L, eps = 1e-5, final_eps = 1e-6,
 
         # adaLN final layer: scale-only modulation (silu then linear, +1).
         su <- anvl::shape(unified)
-        scale <- anvl::nv_reshape(lin(yunque::yq_silu(adaln), w$final_adaLN,
+        scale <- anvl::nv_reshape(lin(yunque::silu(adaln), w$final_adaLN,
                                       w$final_adaLN_b) + 1,
                                   c(su[1L], 1L, dim))
-        normed <- yunque::yq_layer_norm(unified, eps = final_eps) *
+        normed <- yunque::layer_norm(unified, eps = final_eps) *
             anvl::nv_broadcast_to(scale, su)
         lin(normed, w$final_lin, w$final_lin_b)
     }
@@ -301,11 +301,11 @@ yq_zimage_rope <- function(h_tokens, w_tokens, cap_len, f_tokens = 1L,
 #'
 #' @export
 yq_zimage_load_weights <- function(path, patch_key = "2-1", device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
-    vec <- function(key) anvl::nv_array(yunque::yq_st_read(st, key),
+    vec <- function(key) anvl::nv_array(yunque::st_read(st, key),
                                         dtype = "f32", device = device)
     .yq_zimage_assemble_weights(lin, vec, names(st$header), patch_key)
 }

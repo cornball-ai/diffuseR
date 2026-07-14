@@ -35,7 +35,7 @@ expect_true(mean(abs(got - want)) < 1e-4)
 
 # group norm + nearest upsample unit checks
 x <- anvl::nv_array(array(rnorm(2 * 8 * 4 * 4), c(2, 8, 4, 4)), dtype = "f32")
-up <- as.array(yunque::yq_upsample_nearest2d(x))
+up <- as.array(yunque::upsample_nearest2d(x))
 expect_equal(dim(up), c(2L, 8L, 8L, 8L))
 xa <- as.array(x)
 expect_equal(up[1, 1, 1:2, 1:2], matrix(xa[1, 1, 1, 1], 2, 2))

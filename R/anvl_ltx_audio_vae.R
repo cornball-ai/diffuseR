@@ -88,10 +88,10 @@ yq_ltx_audio_causal_conv2d <- function(x, weight, bias,
 # 1x1 causal-conv shortcut on channel change.
 .yq_ltx_audio_resnet <- function(x, w, causality_axis) {
     h <- .yq_ltx_rms_norm(x, .YQ_LTX_AUDIO_RMS_EPS)
-    h <- yunque::yq_silu(h)
+    h <- yunque::silu(h)
     h <- yq_ltx_audio_causal_conv2d(h, w$conv1_w, w$conv1_b, causality_axis)
     h <- .yq_ltx_rms_norm(h, .YQ_LTX_AUDIO_RMS_EPS)
-    h <- yunque::yq_silu(h)
+    h <- yunque::silu(h)
     h <- yq_ltx_audio_causal_conv2d(h, w$conv2_w, w$conv2_b, causality_axis)
     if (!is.null(w$shortcut_w)) {
         # kernel 1 -> no padding, plain 1x1 conv.
@@ -104,7 +104,7 @@ yq_ltx_audio_causal_conv2d <- function(x, weight, bias,
 # Upsampler: nearest-2x on both axes, causal conv, then drop the leading
 # (causally duplicated) time frame.
 .yq_ltx_audio_upsample <- function(x, u, causality_axis) {
-    x <- yunque::yq_upsample_nearest2d(x)
+    x <- yunque::upsample_nearest2d(x)
     x <- yq_ltx_audio_causal_conv2d(x, u$w, u$b, causality_axis)
     s <- anvl::shape(x)
     if (causality_axis == "height") {
@@ -154,7 +154,7 @@ yq_ltx_audio_vae_decode <- function(z, w) {
         }
     }
     x <- .yq_ltx_rms_norm(x, .YQ_LTX_AUDIO_RMS_EPS)
-    x <- yunque::yq_silu(x)
+    x <- yunque::silu(x)
     x <- yq_ltx_audio_causal_conv2d(x, w$conv_out$w, w$conv_out$b, ca)
 
     # Crop/pad to (out_ch, target_frames, mel_bins).
@@ -237,12 +237,12 @@ yq_ltx_audio_vae_prepare <- function(z_packed, latents_mean, latents_std,
 yq_ltx_audio_vae_load_weights <- function(path, device = "cpu",
     strict = TRUE, mel_bins = 64L,
     causality_axis = "height") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     seen <- new.env(parent = emptyenv())
     raw <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32",
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32",
                        device = device)
     }
     has <- function(key) !is.null(st$header[[key]])

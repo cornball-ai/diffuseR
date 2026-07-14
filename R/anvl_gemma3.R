@@ -115,15 +115,15 @@ yq_gemma3_embed <- function(embed, ids, device = "cpu") {
         s <- anvl::shape(x)
         b <- s[1L]; n <- s[2L]
 
-        h <- yunque::yq_rms_norm(x, w$input_ln, eps = eps)
-        q <- anvl::nv_reshape(yunque::yq_linear(h, w$q_proj, precision = precision),
+        h <- yunque::rms_norm(x, w$input_ln, eps = eps)
+        q <- anvl::nv_reshape(yunque::linear(h, w$q_proj, precision = precision),
                               c(b, n, num_heads, head_dim))
-        k <- anvl::nv_reshape(yunque::yq_linear(h, w$k_proj, precision = precision),
+        k <- anvl::nv_reshape(yunque::linear(h, w$k_proj, precision = precision),
                               c(b, n, num_kv, head_dim))
-        v <- anvl::nv_reshape(yunque::yq_linear(h, w$v_proj, precision = precision),
+        v <- anvl::nv_reshape(yunque::linear(h, w$v_proj, precision = precision),
                               c(b, n, num_kv, head_dim))
-        q <- yunque::yq_rms_norm(q, w$q_norm, eps = eps)   # over head_dim
-        k <- yunque::yq_rms_norm(k, w$k_norm, eps = eps)
+        q <- yunque::rms_norm(q, w$q_norm, eps = eps)   # over head_dim
+        k <- yunque::rms_norm(k, w$k_norm, eps = eps)
 
         perm <- c(1L, 3L, 2L, 4L)              # [B, S, H, D] -> [B, H, S, D]
         q <- anvl::nv_transpose(q, perm)
@@ -138,27 +138,27 @@ yq_gemma3_embed <- function(embed, ids, device = "cpu") {
                                     c(b, num_kv, n, r))
         sk <- anvl::nv_broadcast_to(anvl::nv_reshape(sin, c(1L, 1L, n, r)),
                                     c(b, num_kv, n, r))
-        q <- yunque::yq_rope_split(q, cq, sq)
-        k <- yunque::yq_rope_split(k, ck, sk)
+        q <- yunque::rope_split(q, cq, sq)
+        k <- yunque::rope_split(k, ck, sk)
 
-        k <- yunque::yq_repeat_kv(k, groups)
-        v <- yunque::yq_repeat_kv(v, groups)
+        k <- yunque::repeat_kv(k, groups)
+        v <- yunque::repeat_kv(v, groups)
 
         # scale = 1/sqrt(head_dim); the reference uses 1/sqrt(query_pre_attn
         # _scalar) with query_pre_attn_scalar == head_dim (real: 256 == 256).
-        attn <- yunque::yq_sdpa(q, k, v, mask = mask, precision = precision)
+        attn <- yunque::sdpa(q, k, v, mask = mask, precision = precision)
         attn <- anvl::nv_reshape(anvl::nv_transpose(attn, perm),
                                  c(b, n, inner))
-        attn <- yunque::yq_linear(attn, w$o_proj, precision = precision)
-        attn <- yunque::yq_rms_norm(attn, w$post_attn_ln, eps = eps)  # post-attn
+        attn <- yunque::linear(attn, w$o_proj, precision = precision)
+        attn <- yunque::rms_norm(attn, w$post_attn_ln, eps = eps)  # post-attn
         x <- x + attn
 
-        h2 <- yunque::yq_rms_norm(x, w$pre_ff_ln, eps = eps)   # pre-feedforward
-        mlp <- yunque::yq_linear(
-            .yq_gelu_tanh(yunque::yq_linear(h2, w$gate, precision = precision)) *
-            yunque::yq_linear(h2, w$up, precision = precision),
+        h2 <- yunque::rms_norm(x, w$pre_ff_ln, eps = eps)   # pre-feedforward
+        mlp <- yunque::linear(
+            .yq_gelu_tanh(yunque::linear(h2, w$gate, precision = precision)) *
+            yunque::linear(h2, w$up, precision = precision),
             w$down, precision = precision)
-        mlp <- yunque::yq_rms_norm(mlp, w$post_ff_ln, eps = eps)  # post-feedforward
+        mlp <- yunque::rms_norm(mlp, w$post_ff_ln, eps = eps)  # post-feedforward
         x + mlp
     }
 }
@@ -212,7 +212,7 @@ yq_gemma3_encoder <- function(num_layers = 6L, num_heads = 4L, num_kv = 2L,
             }
             x <- layer(x, rp$cos, rp$sin, mask, w$layers[[i]])
         }
-        states[[num_layers + 1L]] <- yunque::yq_rms_norm(x, w$norm, eps = eps)
+        states[[num_layers + 1L]] <- yunque::rms_norm(x, w$norm, eps = eps)
 
         nd <- anvl::ndims(x) + 1L                # new trailing axis (stack dim)
         states <- lapply(states, function(s) anvl::nv_unsqueeze(s, nd))
@@ -241,15 +241,15 @@ yq_gemma3_encoder <- function(num_layers = 6L, num_heads = 4L, num_kv = 2L,
 #'
 #' @export
 yq_gemma3_load_weights <- function(path, num_layers = 6L, device = "cpu") {
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
-    lin <- function(key) anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+    lin <- function(key) anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                                         dtype = "f32", device = device)
     # RMSNorm weight with Gemma's +1 folded in.
-    nrm <- function(key) anvl::nv_array(yunque::yq_st_read(st, key) + 1,
+    nrm <- function(key) anvl::nv_array(yunque::st_read(st, key) + 1,
                                         dtype = "f32", device = device)
 
-    embed <- yunque::yq_st_read(st, "embed_tokens.weight")   # [vocab, hidden]
+    embed <- yunque::st_read(st, "embed_tokens.weight")   # [vocab, hidden]
 
     layers <- lapply(seq_len(num_layers) - 1L, function(i) {
         p <- sprintf("layers.%d.", i)

@@ -19,7 +19,7 @@ NULL
 
 # Open a sharded quantized transformer artifact (manifest.json listing
 # shard files, no HF-style index.json) as a yunque "yq_sharded" object so
-# yunque::yq_st_read dispatches reads to the owning shard. Each key maps
+# yunque::st_read dispatches reads to the owning shard. Each key maps
 # to the shard whose header carries it; the F8_E4M3 weights upcast to f32
 # through the reader and are dequantized against their <key>_scale sibling
 # by the loader below.
@@ -27,7 +27,7 @@ NULL
     manifest <- jsonlite::fromJSON(file.path(dir, "manifest.json"),
                                    simplifyVector = TRUE)
     shard_paths <- file.path(dir, manifest$shards)
-    sts <- lapply(shard_paths, yunque::yq_st_open)
+    sts <- lapply(shard_paths, yunque::st_open)
     names(sts) <- manifest$shards
     # unname the per-shard headers before merging: c() on a *named* list of
     # lists would prefix every key with its shard filename, which breaks the
@@ -70,10 +70,10 @@ yq_zimage_load_transformer_fp8 <- function(dir, patch_key = "2-1",
     on.exit(.yq_zimage_close_fp8(st))
     has <- function(key) !is.null(st$header[[key]])
     read_w <- function(key, transpose) {
-        w <- yunque::yq_st_read(st, key, transpose = transpose)
+        w <- yunque::st_read(st, key, transpose = transpose)
         sk <- paste0(key, "_scale")
         if (has(sk)) {
-            w <- w * as.numeric(yunque::yq_st_read(st, sk))
+            w <- w * as.numeric(yunque::st_read(st, sk))
         }
         anvl::nv_array(w, dtype = "f32", device = device)
     }

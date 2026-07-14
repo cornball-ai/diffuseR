@@ -43,7 +43,7 @@ NULL
 # with w/b [D] broadcast over [..., D].
 .yq_sdxl_ln <- function(x, weight, bias, eps = .YQ_SDXL_EPS) {
     s <- anvl::shape(x)
-    yunque::yq_layer_norm(x, eps = eps) *
+    yunque::layer_norm(x, eps = eps) *
     anvl::nv_broadcast_to(weight, s) + anvl::nv_broadcast_to(bias, s)
 }
 
@@ -57,29 +57,29 @@ NULL
     sq <- sx[2L]
     sk <- anvl::shape(context)[2L]
     inner <- n_heads * head_dim
-    q <- yunque::yq_linear(x, w$to_q_w)
-    k <- yunque::yq_linear(context, w$to_k_w)
-    v <- yunque::yq_linear(context, w$to_v_w)
+    q <- yunque::linear(x, w$to_q_w)
+    k <- yunque::linear(context, w$to_k_w)
+    v <- yunque::linear(context, w$to_v_w)
     # [B, S, inner] -> [B, S, H, D] -> [B, H, S, D]
     to_heads <- function(t, sl) anvl::nv_transpose(
         anvl::nv_reshape(t, c(b, sl, n_heads, head_dim)), c(1L, 3L, 2L, 4L))
     q <- to_heads(q, sq)
     k <- to_heads(k, sk)
     v <- to_heads(v, sk)
-    attn <- yunque::yq_sdpa(q, k, v)                 # [B, H, Sq, D]
+    attn <- yunque::sdpa(q, k, v)                 # [B, H, Sq, D]
     out <- anvl::nv_reshape(anvl::nv_transpose(attn, c(1L, 3L, 2L, 4L)),
                             c(b, sq, inner))
-    yunque::yq_linear(out, w$to_out_w, w$to_out_b)
+    yunque::linear(out, w$to_out_w, w$to_out_b)
 }
 
 # GEGLU feed-forward: linear -> [.., 2*inner]; gate = second half; return
 # linear(first * gelu(gate)).
 .yq_sdxl_ff <- function(x, w) {
-    proj <- yunque::yq_linear(x, w$ff_in_w, w$ff_in_b)
+    proj <- yunque::linear(x, w$ff_in_w, w$ff_in_b)
     half <- anvl::shape(proj)[anvl::ndims(proj)] %/% 2L
-    a <- yunque::yq_slice_lastdim(proj, 1L, half)
-    g <- yunque::yq_slice_lastdim(proj, half + 1L, 2L * half)
-    yunque::yq_linear(a * .yq_sdxl_gelu(g), w$ff_out_w, w$ff_out_b)
+    a <- yunque::slice_lastdim(proj, 1L, half)
+    g <- yunque::slice_lastdim(proj, half + 1L, 2L * half)
+    yunque::linear(a * .yq_sdxl_gelu(g), w$ff_out_w, w$ff_out_b)
 }
 
 # BasicTransformerBlock: residual self-attn, residual cross-attn to
@@ -101,14 +101,14 @@ NULL
     s <- anvl::shape(x)
     b <- s[1L]; c <- s[2L]; h <- s[3L]; wd <- s[4L]
     x_in <- x
-    xn <- yunque::yq_group_norm(x, w$gn_w, w$gn_b, 32L, .YQ_SDXL_EPS)
+    xn <- yunque::group_norm(x, w$gn_w, w$gn_b, 32L, .YQ_SDXL_EPS)
     seq <- anvl::nv_reshape(anvl::nv_transpose(xn, c(1L, 3L, 4L, 2L)),
                             c(b, h * wd, c))
-    seq <- yunque::yq_linear(seq, w$proj_in_w, w$proj_in_b)
+    seq <- yunque::linear(seq, w$proj_in_w, w$proj_in_b)
     for (tb in w$blocks) {
         seq <- .yq_sdxl_transformer_block(seq, context, tb, n_heads, head_dim)
     }
-    seq <- yunque::yq_linear(seq, w$proj_out_w, w$proj_out_b)
+    seq <- yunque::linear(seq, w$proj_out_w, w$proj_out_b)
     out <- anvl::nv_transpose(anvl::nv_reshape(seq, c(b, h, wd, c)),
                               c(1L, 4L, 2L, 3L))
     out + x_in
@@ -118,15 +118,15 @@ NULL
 # [B, out] broadcast over spatial, GroupNorm -> SiLU -> conv3x3, plus skip
 # (conv1x1 shortcut when channels change).
 .yq_sdxl_resnet <- function(x, emb, w) {
-    h <- yunque::yq_group_norm(x, w$norm1_w, w$norm1_b, 32L, .YQ_SDXL_EPS)
-    h <- yq_conv3x3(yunque::yq_silu(h), w$conv1_w, w$conv1_b)
-    t <- yunque::yq_linear(yunque::yq_silu(emb), w$time_emb_w, w$time_emb_b)
+    h <- yunque::group_norm(x, w$norm1_w, w$norm1_b, 32L, .YQ_SDXL_EPS)
+    h <- yq_conv3x3(yunque::silu(h), w$conv1_w, w$conv1_b)
+    t <- yunque::linear(yunque::silu(emb), w$time_emb_w, w$time_emb_b)
     ts <- anvl::shape(t)
     hs <- anvl::shape(h)
     t <- anvl::nv_reshape(t, c(ts[1L], ts[2L], 1L, 1L))
     h <- h + anvl::nv_broadcast_to(t, hs)
-    h <- yunque::yq_group_norm(h, w$norm2_w, w$norm2_b, 32L, .YQ_SDXL_EPS)
-    h <- yq_conv3x3(yunque::yq_silu(h), w$conv2_w, w$conv2_b)
+    h <- yunque::group_norm(h, w$norm2_w, w$norm2_b, 32L, .YQ_SDXL_EPS)
+    h <- yq_conv3x3(yunque::silu(h), w$conv2_w, w$conv2_b)
     if (!is.null(w$shortcut_w)) {
         x <- yq_conv1x1(x, w$shortcut_w, w$shortcut_b)
     }
@@ -141,7 +141,7 @@ NULL
 
 # Upsample: nearest-2x then 3x3 pad-1 conv.
 .yq_sdxl_upsample <- function(x, w) {
-    yq_conv3x3(yunque::yq_upsample_nearest2d(x), w$conv_w, w$conv_b)
+    yq_conv3x3(yunque::upsample_nearest2d(x), w$conv_w, w$conv_b)
 }
 
 # Static per-block configuration derived from the channel plan and the
@@ -281,17 +281,17 @@ yq_sdxl_unet <- function(block_out_channels = c(320L, 640L, 1280L),
 
     function(sample, t_sin, time_ids_sin, text_embeds, context, w) {
         # Time-embedding MLP: linear_1 -> SiLU -> linear_2.
-        temb <- yunque::yq_linear(t_sin, w$time_1_w, w$time_1_b)
-        temb <- yunque::yq_silu(temb)
-        temb <- yunque::yq_linear(temb, w$time_2_w, w$time_2_b)
+        temb <- yunque::linear(t_sin, w$time_1_w, w$time_1_b)
+        temb <- yunque::silu(temb)
+        temb <- yunque::linear(temb, w$time_2_w, w$time_2_b)
 
         # Added-conditioning MLP over concat(pooled text embeds, time-ids
         # sinusoid), added to the timestep embedding.
         add_in <- anvl::nv_concatenate(text_embeds, time_ids_sin,
                                        dimension = 2L)
-        add_emb <- yunque::yq_linear(add_in, w$add_1_w, w$add_1_b)
-        add_emb <- yunque::yq_silu(add_emb)
-        add_emb <- yunque::yq_linear(add_emb, w$add_2_w, w$add_2_b)
+        add_emb <- yunque::linear(add_in, w$add_1_w, w$add_1_b)
+        add_emb <- yunque::silu(add_emb)
+        add_emb <- yunque::linear(add_emb, w$add_2_w, w$add_2_b)
 
         emb <- temb + add_emb
 
@@ -340,9 +340,9 @@ yq_sdxl_unet <- function(block_out_channels = c(320L, 640L, 1280L),
             }
         }
 
-        sample <- yunque::yq_group_norm(sample, w$norm_out_w, w$norm_out_b,
+        sample <- yunque::group_norm(sample, w$norm_out_w, w$norm_out_b,
                                         32L, .YQ_SDXL_EPS)
-        yq_conv3x3(yunque::yq_silu(sample), w$conv_out_w, w$conv_out_b)
+        yq_conv3x3(yunque::silu(sample), w$conv_out_w, w$conv_out_b)
     }
 }
 
@@ -376,16 +376,16 @@ yq_sdxl_unet_load_weights <- function(path,
                                       device = "cpu", strict = TRUE) {
     cfg <- .yq_sdxl_config(block_out_channels, layers_per_block,
                            transformer_layers_per_block, attention_head_dim)
-    st <- yunque::yq_st_open(path)
+    st <- yunque::st_open(path)
     on.exit(close(st$con))
     seen <- new.env(parent = emptyenv())
     raw <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key), dtype = "f32", device = device)
+        anvl::nv_array(yunque::st_read(st, key), dtype = "f32", device = device)
     }
     lin <- function(key) {
         assign(key, TRUE, envir = seen)
-        anvl::nv_array(yunque::yq_st_read(st, key, transpose = TRUE),
+        anvl::nv_array(yunque::st_read(st, key, transpose = TRUE),
                        dtype = "f32", device = device)
     }
     has <- function(key) !is.null(st$header[[key]])
