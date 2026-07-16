@@ -54,13 +54,10 @@ torch::with_no_grad({
 torch::with_no_grad({
   res <- conn(fx$c_states, fx$c_mask)
 })
-# The two-layer video path amplifies platform-specific float32 matmul
-# accumulation differences across libtorch builds. The exact hosted-runner
-# drift is included in assertion diagnostics.
 expect_equal(as.integer(res$video_text_embedding$shape), as.integer(fx$c_video_emb$shape))
 video_diff <- max_abs_diff(res$video_text_embedding, fx$c_video_emb)
 expect_true(
-  video_diff < 1e-3,
+  video_diff < 1e-4,
   info = sprintf("video max abs diff: %.9g", video_diff)
 )
 expect_true(max_abs_diff(res$audio_text_embedding, fx$c_audio_emb) < 1e-4)
@@ -74,7 +71,7 @@ torch::with_no_grad({
 })
 video3_diff <- max_abs_diff(res3$video_text_embedding, fx$c_video_emb3)
 expect_true(
-  video3_diff < 1e-3,
+  video3_diff < 1e-4,
   info = sprintf("video3 max abs diff: %.9g", video3_diff)
 )
 

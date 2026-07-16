@@ -155,12 +155,12 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
 })
 
 # Persistent attention scratch (score matrix + context output), keyed by
-# shape/dtype/device like the dequant buffers: attention temporaries are
-# the dominant per-block garbage at high resolution
+# role/shape/dtype/device. Role is required because score and output shapes can
+# coincide; out= matmul must never alias one of its inputs.
 .ltx23_attn_scratch <- new.env(parent = emptyenv())
 
-.ltx23_get_attn_buffer <- function(shape, dtype, device) {
-    key <- paste(paste(shape, collapse = "x"), dtype$.type(),
+.ltx23_get_attn_buffer <- function(role, shape, dtype, device) {
+    key <- paste(role, paste(shape, collapse = "x"), dtype$.type(),
                  paste(device$type, device$index %||% 0L), sep = "|")
     buf <- .ltx23_attn_scratch[[key]]
     if (is.null(buf)) {
@@ -241,10 +241,12 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     }
 
     rows <- min(n_q, chunk_size)
-    attn_buf <- .ltx23_get_attn_buffer(c(b, heads, rows, n_k), query$dtype,
-                                       query$device)
-    out_buf <- .ltx23_get_attn_buffer(c(b, heads, n_q, d_v), query$dtype,
-                                      query$device)
+    attn_buf <- .ltx23_get_attn_buffer(
+        "scores", c(b, heads, rows, n_k), query$dtype, query$device
+    )
+    out_buf <- .ltx23_get_attn_buffer(
+        "output", c(b, heads, n_q, d_v), query$dtype, query$device
+    )
 
     if (n_q <= chunk_size) {
         return(attend_into(query, attention_mask, attn_buf, out_buf))

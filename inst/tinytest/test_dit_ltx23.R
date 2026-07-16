@@ -48,6 +48,23 @@ fixture_group <- function(prefix) {
   w
 }
 
+# --- Scratch buffers keep score and output roles distinct -------------------------
+release_attn_buffers <- diffuseR:::.ltx23_release_attn_buffers
+get_attn_buffer <- diffuseR:::.ltx23_get_attn_buffer
+release_attn_buffers()
+collision_shape <- c(1L, 2L, 8L, 8L)
+score_buf <- get_attn_buffer(
+  "scores", collision_shape, torch::torch_float32(), torch::torch_device("cpu")
+)
+output_buf <- get_attn_buffer(
+  "output", collision_shape, torch::torch_float32(), torch::torch_device("cpu")
+)
+score_buf$fill_(1)
+output_buf$fill_(2)
+score_buf$add_(1)
+expect_equal(as.numeric(output_buf$mean()), 2)
+release_attn_buffers()
+
 # --- Gated attention with split RoPE ------------------------------------------
 
 attn <- ltx23_attention(
