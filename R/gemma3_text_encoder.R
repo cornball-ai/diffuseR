@@ -169,10 +169,10 @@ gemma3_mlp <- torch::nn_module(
     self$hidden_size <- config$hidden_size
     self$intermediate_size <- config$intermediate_size
 
-    self$gate_proj <- torch::nn_linear(self$hidden_size,
+    self$gate_proj <- linear_noinit(self$hidden_size,
                                        self$intermediate_size, bias = FALSE)
-    self$up_proj <- torch::nn_linear(self$hidden_size, self$intermediate_size, bias = FALSE)
-    self$down_proj <- torch::nn_linear(self$intermediate_size, self$hidden_size, bias = FALSE)
+    self$up_proj <- linear_noinit(self$hidden_size, self$intermediate_size, bias = FALSE)
+    self$down_proj <- linear_noinit(self$intermediate_size, self$hidden_size, bias = FALSE)
 
     # Gemma uses approximate GELU
     self$act_fn <- function(x) torch::nnf_gelu(x, approximate = "tanh")
@@ -218,12 +218,12 @@ gemma3_attention <- torch::nn_module(
     self$attn_logit_softcapping <- config$attn_logit_softcapping %||% NULL
 
     # Projections
-    self$q_proj <- torch::nn_linear(self$hidden_size,
+    self$q_proj <- linear_noinit(self$hidden_size,
                                     self$num_heads * self$head_dim,
                                     bias = FALSE)
-    self$k_proj <- torch::nn_linear(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
-    self$v_proj <- torch::nn_linear(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
-    self$o_proj <- torch::nn_linear(self$num_heads * self$head_dim, self$hidden_size, bias = FALSE)
+    self$k_proj <- linear_noinit(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
+    self$v_proj <- linear_noinit(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
+    self$o_proj <- linear_noinit(self$num_heads * self$head_dim, self$hidden_size, bias = FALSE)
 
     # Q/K normalization (Gemma3 feature)
     self$q_norm <- gemma3_rms_norm(self$head_dim, eps = config$rms_norm_eps %||% 1e-6)
@@ -415,7 +415,7 @@ gemma3_text_model <- torch::nn_module(
     self$num_layers <- config$num_hidden_layers
 
     # Token embeddings (scaled by sqrt(hidden_size))
-    self$embed_tokens <- torch::nn_embedding(config$vocab_size,
+    self$embed_tokens <- embedding_noinit(config$vocab_size,
         config$hidden_size)
     self$embed_scale <- sqrt(config$hidden_size)
 
@@ -599,8 +599,16 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
                         config$num_hidden_layers, config$hidden_size))
     }
 
-    # Create model
-    model <- gemma3_text_model(config)
+    torch_dtype <- switch(dtype,
+                          "float32" = torch::torch_float32(),
+                          "float16" = torch::torch_float16(),
+                          "bfloat16" = torch::torch_bfloat16(),
+                          torch::torch_float32()
+    )
+
+    # Skeleton at the target dtype: weights fill from the checkpoint,
+    # so the 12B fp32 init + cast pass (~72 GB of writes) is skipped
+    model <- .construct_skeleton(gemma3_text_model, config, dtype = torch_dtype)
 
     # Find safetensor files
     safetensor_files <- list.files(model_path, pattern = "\\.safetensors$", full.names = TRUE)
@@ -625,6 +633,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
     total_loaded <- 0L
     total_skipped <- 0L
 
+    all_filled <- character(0)
     for (sf_path in safetensor_files) {
         if (verbose) {
             message("  Loading: ", basename(sf_path))
@@ -634,21 +643,25 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
         result <- load_gemma3_weights(model, weights, verbose = FALSE)
         total_loaded <- total_loaded + result$loaded
         total_skipped <- total_skipped + result$skipped
+        all_filled <- c(all_filled, result$filled)
+        rm(weights)
+        gc(verbose = FALSE)
+    }
+
+    # The model is a skeleton: any parameter the checkpoint didn't fill
+    # is uninitialized memory, so unfilled params are a hard error
+    unfilled <- setdiff(names(model$parameters), all_filled)
+    if (length(unfilled)) {
+        stop("Gemma3 load: ", length(unfilled),
+             " parameters not filled from checkpoint, e.g. ",
+             paste(utils::head(unfilled, 3), collapse = ", "))
     }
 
     if (verbose) {
         message(sprintf("Loaded %d parameters, skipped %d", total_loaded, total_skipped))
     }
 
-    # Move to device with dtype
-    torch_dtype <- switch(dtype,
-                          "float32" = torch::torch_float32(),
-                          "float16" = torch::torch_float16(),
-                          "bfloat16" = torch::torch_bfloat16(),
-                          torch::torch_float32()
-    )
-
-    model$to(device = device, dtype = torch_dtype)
+    model$to(device = device)
 
     if (verbose) {
         message("Gemma3 text encoder loaded on device: ", device)
@@ -682,6 +695,7 @@ load_gemma3_weights <- function(model, weights, verbose = TRUE) {
 
     loaded <- 0L
     skipped <- 0L
+    filled <- character(0)
 
     torch::with_no_grad({
         for (hf_name in names(weights)) {
@@ -694,6 +708,7 @@ load_gemma3_weights <- function(model, weights, verbose = TRUE) {
                 if (all(as.integer(hf_tensor$shape) == as.integer(native_tensor$shape))) {
                     native_tensor$copy_(hf_tensor)
                     loaded <- loaded + 1L
+                    filled <- c(filled, native_name)
                 } else {
                     if (verbose) {
                         message("Shape mismatch: ", native_name,
@@ -713,7 +728,7 @@ load_gemma3_weights <- function(model, weights, verbose = TRUE) {
         message(sprintf("Gemma3 weights: %d loaded, %d skipped", loaded, skipped))
     }
 
-    invisible(list(loaded = loaded, skipped = skipped))
+    invisible(list(loaded = loaded, skipped = skipped, filled = filled))
 }
 
 # -----------------------------------------------------------------------------

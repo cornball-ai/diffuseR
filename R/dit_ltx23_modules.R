@@ -87,8 +87,8 @@ ltx23_get_timestep_embedding <- function(timesteps, embedding_dim,
 ltx23_timestep_embedding <- torch::nn_module(
     "ltx23_timestep_embedding",
     initialize = function(in_channels, time_embed_dim, bias = TRUE) {
-    self$linear_1 <- torch::nn_linear(in_channels, time_embed_dim, bias = bias)
-    self$linear_2 <- torch::nn_linear(time_embed_dim, time_embed_dim,
+    self$linear_1 <- linear_noinit(in_channels, time_embed_dim, bias = bias)
+    self$linear_2 <- linear_noinit(time_embed_dim, time_embed_dim,
                                       bias = bias)
 },
     forward = function(sample) {
@@ -127,7 +127,7 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     initialize = function(embedding_dim, num_mod_params = 6L) {
     self$num_mod_params <- num_mod_params
     self$emb <- ltx23_combined_timestep_embed(embedding_dim)
-    self$linear <- torch::nn_linear(embedding_dim,
+    self$linear <- linear_noinit(embedding_dim,
                                     num_mod_params * embedding_dim,
                                     bias = TRUE)
 },
@@ -327,17 +327,17 @@ ltx23_attention <- torch::nn_module(
                                   elementwise_affine = norm_elementwise_affine)
     self$norm_k <- ltx23_rms_norm(inner_kv_dim, eps = norm_eps,
                                   elementwise_affine = norm_elementwise_affine)
-    self$to_q <- torch::nn_linear(query_dim, inner_dim, bias = bias)
-    self$to_k <- torch::nn_linear(cross_dim, inner_kv_dim, bias = bias)
-    self$to_v <- torch::nn_linear(cross_dim, inner_kv_dim, bias = bias)
+    self$to_q <- linear_noinit(query_dim, inner_dim, bias = bias)
+    self$to_k <- linear_noinit(cross_dim, inner_kv_dim, bias = bias)
+    self$to_v <- linear_noinit(cross_dim, inner_kv_dim, bias = bias)
     self$to_out <- torch::nn_module_list(list(
-            torch::nn_linear(inner_dim, query_dim, bias = out_bias)
+            linear_noinit(inner_dim, query_dim, bias = out_bias)
         ))
 
     self$apply_gated_attention <- apply_gated_attention
     if (apply_gated_attention) {
         # Per-head gate logits, computed on the raw block input (pre-Q)
-        self$to_gate_logits <- torch::nn_linear(query_dim, heads, bias = TRUE)
+        self$to_gate_logits <- linear_noinit(query_dim, heads, bias = TRUE)
     }
 },
                                     forward = function(
@@ -449,7 +449,7 @@ ltx23_feed_forward <- torch::nn_module(
     gelu_proj <- torch::nn_module(
                                   "ltx23_gelu",
                                   initialize = function(dim_in, dim_out) {
-        self$proj <- torch::nn_linear(dim_in, dim_out)
+        self$proj <- linear_noinit(dim_in, dim_out)
     },
                                   forward = function(x) {
         h <- self$proj(x)
@@ -462,7 +462,7 @@ ltx23_feed_forward <- torch::nn_module(
     self$net <- torch::nn_module_list(list(
             gelu_proj(dim, inner_dim),
             torch::nn_identity(), # dropout slot in the reference; inference no-op
-            torch::nn_linear(inner_dim, dim)
+            linear_noinit(inner_dim, dim)
         ))
 },
                                        forward = function(x) {

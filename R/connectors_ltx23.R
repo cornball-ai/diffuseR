@@ -295,9 +295,9 @@ ltx23_text_connectors <- torch::nn_module(
     self$audio_hidden_dim <- as.integer(audio_hidden_dim)
 
     text_encoder_dim <- caption_channels * text_proj_in_factor
-    self$video_text_proj_in <- torch::nn_linear(text_encoder_dim,
+    self$video_text_proj_in <- linear_noinit(text_encoder_dim,
         video_hidden_dim, bias = proj_bias)
-    self$audio_text_proj_in <- torch::nn_linear(text_encoder_dim, audio_hidden_dim, bias = proj_bias)
+    self$audio_text_proj_in <- linear_noinit(text_encoder_dim, audio_hidden_dim, bias = proj_bias)
 
     self$video_connector <- ltx23_connector_transformer_1d(
         num_attention_heads = video_connector_num_attention_heads,
