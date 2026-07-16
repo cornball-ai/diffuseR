@@ -33,7 +33,10 @@ options(diffuseR.st_caps = NULL)
 expect_equal(resolve_precision("nf4"), "nf4")
 expect_equal(resolve_precision("fp8"), "fp8")
 
-# An existing artifact wins, fp8 preferred
+# An existing artifact wins, fp8 preferred. Pin the fp8 capability so
+# the assertion is hermetic: on stock CRAN safetensors the ambient probe
+# is FALSE and resolve_precision correctly refuses the fp8 artifact.
+options(diffuseR.st_caps = list(float8_e4m3fn = TRUE))
 prefix <- file.path(tempdir(), "stcaps-test-")
 nf4_dir <- paste0(prefix, "nf4")
 fp8_dir <- paste0(prefix, "fp8")
@@ -44,6 +47,7 @@ dir.create(fp8_dir, showWarnings = FALSE)
 writeLines("{}", file.path(fp8_dir, "manifest.json"))
 expect_equal(resolve_precision("auto", prefix), "fp8")
 unlink(c(nf4_dir, fp8_dir), recursive = TRUE)
+options(diffuseR.st_caps = NULL)
 
 # No artifact: capability decides
 options(diffuseR.st_caps = list(float8_e4m3fn = FALSE))

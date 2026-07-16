@@ -85,7 +85,10 @@ expect_true(max_abs_diff(rt, fx$img) == 0)
 
 t_emb <- ltx23_get_timestep_embedding(fx$t_emb_in, 256L,
   flip_sin_to_cos = TRUE, downscale_freq_shift = 0)
-expect_true(max_abs_diff(t_emb, fx$t_emb_out) < 1e-5)
+# 1e-4, not 1e-5: sin(t * exp(...)) at t ~ 1000 amplifies a 1-ULP
+# libtorch difference in exp() to ~6e-5 (CRAN torch vs the fixture's
+# libtorch); flag/math bugs are O(1) so the assertion still catches them
+expect_true(max_abs_diff(t_emb, fx$t_emb_out) < 1e-4)
 
 # --- scheduler: static shift 3.0 on linspace(1, 1/N, N) ---------------------------
 

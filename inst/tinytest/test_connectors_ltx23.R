@@ -65,7 +65,10 @@ expect_true(max_abs_diff(
 torch::with_no_grad({
   res3 <- conn(fx$c_states$flatten(start_dim = 3L), fx$c_mask)
 })
-expect_true(max_abs_diff(res3$video_text_embedding, fx$c_video_emb3) < 1e-5)
+# 1e-4 to match the sibling assertions above: float32 matmul
+# accumulation order differs across libtorch builds (CRAN torch lands
+# between 1e-5 and 1e-4 against fixtures generated on a newer libtorch)
+expect_true(max_abs_diff(res3$video_text_embedding, fx$c_video_emb3) < 1e-4)
 
 # Key mapper
 expect_equal(
