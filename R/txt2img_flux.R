@@ -104,8 +104,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (is.null(attn_chunk)) {
         attn_chunk <- profile$attn_chunk
     }
-    prefix <- file.path(tools::R_user_dir("diffuseR", "data"),
-                        "flux1-schnell-")
+    prefix <- file.path(tools::R_user_dir("diffuseR", "data"), "flux1-schnell-")
     if (is.null(precision)) {
         # Reconcile the VRAM recommendation with what is on disk: prefer
         # a built artifact (fp8 first when readable), else nf4. Keeps a
@@ -159,12 +158,9 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading transformer (", pipe$format, ")...")
     }
-    pipe$transformer <- flux_load_transformer(
-        ckpt, device = component_device,
+    pipe$transformer <- flux_load_transformer(ckpt, device = component_device,
         dtype = if (device == "cpu") "float32" else "bfloat16",
-        pin = device == "cuda",
-        verbose = verbose
-    )
+        pin = device == "cuda", verbose = verbose)
 
     vae_config <- jsonlite::fromJSON(.flux1_cached("vae/config.json"))
     pipe$vae_scaling_factor <- vae_config$scaling_factor %||% 0.3611

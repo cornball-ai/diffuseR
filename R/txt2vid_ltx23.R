@@ -277,7 +277,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         if (verbose) {
             message("Loading ", name, " (", length(groups[[name]]), " tensors)...")
         }
-        module$to(dtype = torch_dtype)
+        # Modules arrive as skeletons already at torch_dtype
         res <- ltx23_load_group(ckpt, groups[[name]], module,
                                 map_key = map_key, verbose = verbose)
         if (length(res$unmapped) || length(res$unfilled)) {
@@ -300,7 +300,8 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
             )
         } else {
             pipe$transformer <- load_component(
-                "dit", ltx23_transformer(), ltx23_map_dit_key, transformer_device
+                "dit", .construct_skeleton(ltx23_transformer, dtype = torch_dtype),
+                ltx23_map_dit_key, transformer_device
             )
         }
         if (!is.null(attn_chunk)) {
@@ -309,18 +310,21 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     }
     if ("connectors" %in% components) {
         pipe$connectors <- load_component(
-            "connectors", ltx23_text_connectors(), ltx23_map_connector_key, component_device
+            "connectors", .construct_skeleton(ltx23_text_connectors, dtype = torch_dtype),
+            ltx23_map_connector_key, component_device
         )
     }
     if ("vae" %in% components) {
         pipe$vae <- load_component(
-                                   "vae", ltx23_video_vae(), ltx23_map_vae_key, component_device
+                                   "vae", .construct_skeleton(ltx23_video_vae, dtype = torch_dtype),
+                                   ltx23_map_vae_key, component_device
         )
         pipe$vae$enable_tiling()
     }
     if ("audio_vae" %in% components) {
         pipe$audio_vae <- load_component(
-            "audio_vae", ltx23_audio_vae(), ltx23_map_audio_vae_key, component_device
+            "audio_vae", .construct_skeleton(ltx23_audio_vae, dtype = torch_dtype),
+            ltx23_map_audio_vae_key, component_device
         )
     }
     if ("vocoder" %in% components) {

@@ -21,6 +21,12 @@
   stock CRAN safetensors.
 * `download_sdxl()` fetches the SDXL diffusers weights from the
   `cornball-ai/sdxl-R` dataset (hosting in progress).
+* Checkpoint loaders build module skeletons (uninitialized weights at
+  the target dtype) instead of initializing full-precision modules and
+  casting: the LTX-2.3 NF4 pipeline load drops from ~108 GB host RAM
+  (kernel OOM on a 125 GB machine) to ~21 GB, and Gemma3 from ~72 GB of
+  transient writes to its resident size. `load_gemma3_text_encoder()`
+  now errors on any parameter the checkpoint does not fill.
 
 # diffuseR 0.1.0.6 (development)
 

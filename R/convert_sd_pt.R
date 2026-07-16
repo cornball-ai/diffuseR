@@ -28,8 +28,8 @@
 #'
 #' @export
 convert_sd21_pt_to_diffusers <- function(pt_dir = NULL, output_dir = NULL,
-                                         dtype = c("float16", "float32"),
-                                         verbose = TRUE) {
+    dtype = c("float16", "float32"),
+    verbose = TRUE) {
     dtype <- match.arg(dtype)
     if (!requireNamespace("safetensors", quietly = TRUE)) {
         stop("The safetensors package is required to write the artifact.")
@@ -67,8 +67,8 @@ convert_sd21_pt_to_diffusers <- function(pt_dir = NULL, output_dir = NULL,
         params <- m$parameters
         keys <- sub(comp$strip, "", names(params))
         sd <- stats::setNames(
-            lapply(params, function(p) p$detach()$to(dtype = td)$contiguous()),
-            keys)
+                              lapply(params, function(p) p$detach()$to(dtype = td)$contiguous()),
+                              keys)
         d <- file.path(output_dir, comp$subdir)
         dir.create(d, showWarnings = FALSE)
         safetensors::safe_save_file(sd, file.path(d, comp$file))

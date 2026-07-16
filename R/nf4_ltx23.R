@@ -392,8 +392,7 @@ ltx23_quantize_nf4 <- function(checkpoint_path,
 ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                                        ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
-    model <- ltx23_transformer(...)
-    model$to(dtype = torch::torch_bfloat16())
+    model <- .construct_skeleton(ltx23_transformer, ...)
 
     groups <- ltx23_split_keys(ckpt$keys)
     dit_keys <- groups$dit

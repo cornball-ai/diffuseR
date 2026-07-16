@@ -828,4 +828,3 @@ load_text_encoder2_weights <- function(native_encoder, torchscript_path,
 
     invisible(native_encoder)
 }
-

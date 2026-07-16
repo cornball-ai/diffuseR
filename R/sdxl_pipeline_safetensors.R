@@ -191,4 +191,3 @@ download_sdxl <- function(verbose = TRUE) {
     }
     invisible(diffusers_dir)
 }
-

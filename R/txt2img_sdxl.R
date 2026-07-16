@@ -334,4 +334,3 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
     # Return the generated image and metadata
     return(list(image = img_array, metadata = metadata))
 }
-

@@ -242,8 +242,7 @@ ltx23_open_fp8_checkpoint <- function(dir) {
                    get_tensor = function(key) {
         h <- key_to_handle[[key]]
         if (is.null(h)) stop("Key not found in fp8 shards: ", key)
-        .st_read_or_breadcrumb(function() h$get_tensor(key),
-                               key_to_path[[key]])
+        .st_read_or_breadcrumb(function() h$get_tensor(key), key_to_path[[key]])
     }
     )
 
@@ -276,8 +275,7 @@ ltx23_open_fp8_checkpoint <- function(dir) {
 ltx23_load_transformer_fp8 <- function(ckpt, device = "cuda", pin = TRUE,
                                        verbose = TRUE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
-    model <- ltx23_transformer(...)
-    model$to(dtype = torch::torch_bfloat16())
+    model <- .construct_skeleton(ltx23_transformer, ...)
 
     groups <- ltx23_split_keys(ckpt$keys)
     dit_keys <- groups$dit
