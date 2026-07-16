@@ -200,6 +200,6 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                          cpu = TRUE, devices = .dev_flux(FALSE),
                          offload = FALSE, max_pixels = px(512),
                          text_device = "cpu", attn_chunk = NULL)
-         )
+        )
     )
 }

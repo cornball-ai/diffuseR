@@ -391,19 +391,21 @@ load_text_encoder_safetensors <- function(native_encoder, path,
 # detect_text_encoder_architecture, which reads a TorchScript file).
 # Accepts a directory or a config.json path.
 .detect_text_encoder_config <- function(path) {
-    cfg_path <- if (dir.exists(path)) file.path(path, "config.json") else path
+    if (dir.exists(path)) {
+        cfg_path <- file.path(path, "config.json")
+    } else {
+        cfg_path <- path
+    }
     if (!file.exists(cfg_path)) {
         stop("No config.json for the text encoder at ", path)
     }
     cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = TRUE)
-    list(
-         vocab_size = as.integer(cfg$vocab_size),
+    list(vocab_size = as.integer(cfg$vocab_size),
          context_length = as.integer(cfg$max_position_embeddings),
          embed_dim = as.integer(cfg$hidden_size),
          num_layers = as.integer(cfg$num_hidden_layers),
          num_heads = as.integer(cfg$num_attention_heads),
-         mlp_dim = as.integer(cfg$intermediate_size)
-    )
+         mlp_dim = as.integer(cfg$intermediate_size))
 }
 
 #' Build a native CLIP text encoder from a diffusers safetensors directory
@@ -428,7 +430,7 @@ load_text_encoder_safetensors <- function(native_encoder, path,
 #' @return The native text encoder in eval mode.
 #' @export
 text_encoder_native_from_safetensors <- function(path, apply_final_ln = TRUE,
-                                                 verbose = TRUE, ...) {
+    verbose = TRUE, ...) {
     arch <- .detect_text_encoder_config(path)
     args <- list(vocab_size = arch$vocab_size,
                  context_length = arch$context_length,

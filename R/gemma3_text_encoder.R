@@ -169,8 +169,8 @@ gemma3_mlp <- torch::nn_module(
     self$hidden_size <- config$hidden_size
     self$intermediate_size <- config$intermediate_size
 
-    self$gate_proj <- linear_noinit(self$hidden_size,
-                                       self$intermediate_size, bias = FALSE)
+    self$gate_proj <- linear_noinit(self$hidden_size, self$intermediate_size,
+                                    bias = FALSE)
     self$up_proj <- linear_noinit(self$hidden_size, self$intermediate_size, bias = FALSE)
     self$down_proj <- linear_noinit(self$intermediate_size, self$hidden_size, bias = FALSE)
 
@@ -219,8 +219,7 @@ gemma3_attention <- torch::nn_module(
 
     # Projections
     self$q_proj <- linear_noinit(self$hidden_size,
-                                    self$num_heads * self$head_dim,
-                                    bias = FALSE)
+                                 self$num_heads * self$head_dim, bias = FALSE)
     self$k_proj <- linear_noinit(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
     self$v_proj <- linear_noinit(self$hidden_size, self$num_key_value_heads * self$head_dim, bias = FALSE)
     self$o_proj <- linear_noinit(self$num_heads * self$head_dim, self$hidden_size, bias = FALSE)
@@ -415,8 +414,7 @@ gemma3_text_model <- torch::nn_module(
     self$num_layers <- config$num_hidden_layers
 
     # Token embeddings (scaled by sqrt(hidden_size))
-    self$embed_tokens <- embedding_noinit(config$vocab_size,
-        config$hidden_size)
+    self$embed_tokens <- embedding_noinit(config$vocab_size, config$hidden_size)
     self$embed_scale <- sqrt(config$hidden_size)
 
     # Rotary embeddings - Gemma3 uses different frequencies for global vs local layers
@@ -442,7 +440,8 @@ gemma3_text_model <- torch::nn_module(
     }))
 
     # Final norm
-    self$norm <- gemma3_rms_norm(config$hidden_size, eps = config$rms_norm_eps %||% 1e-6)
+    self$norm <- gemma3_rms_norm(config$hidden_size,
+                                 eps = config$rms_norm_eps %||% 1e-6)
 },
 
                                       forward = function(

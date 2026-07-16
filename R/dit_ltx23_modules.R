@@ -88,8 +88,7 @@ ltx23_timestep_embedding <- torch::nn_module(
     "ltx23_timestep_embedding",
     initialize = function(in_channels, time_embed_dim, bias = TRUE) {
     self$linear_1 <- linear_noinit(in_channels, time_embed_dim, bias = bias)
-    self$linear_2 <- linear_noinit(time_embed_dim, time_embed_dim,
-                                      bias = bias)
+    self$linear_2 <- linear_noinit(time_embed_dim, time_embed_dim, bias = bias)
 },
     forward = function(sample) {
     self$linear_2(torch::nnf_silu(self$linear_1(sample)))
@@ -128,8 +127,7 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     self$num_mod_params <- num_mod_params
     self$emb <- ltx23_combined_timestep_embed(embedding_dim)
     self$linear <- linear_noinit(embedding_dim,
-                                    num_mod_params * embedding_dim,
-                                    bias = TRUE)
+                                 num_mod_params * embedding_dim, bias = TRUE)
 },
     forward = function(timestep, hidden_dtype) {
     embedded_timestep <- self$emb(timestep, hidden_dtype = hidden_dtype)

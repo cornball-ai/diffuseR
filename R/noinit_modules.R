@@ -26,9 +26,9 @@
     .noinit_state$active <- TRUE
     on.exit(
             {
-                torch::torch_set_default_dtype(old_dtype)
-                .noinit_state$active <- FALSE
-            },
+        torch::torch_set_default_dtype(old_dtype)
+        .noinit_state$active <- FALSE
+    },
             add = TRUE
     )
     ctor(...)
@@ -38,11 +38,12 @@
 # .construct_skeleton(); bare construction initializes exactly like
 # torch::nn_linear, so random-weight forwards in tests are unaffected.
 linear_noinit <- torch::nn_module(
-    "linear_noinit",
-    initialize = function(in_features, out_features, bias = TRUE) {
+                                  "linear_noinit",
+                                  initialize = function(in_features, out_features, bias = TRUE) {
     self$in_features <- in_features
     self$out_features <- out_features
-    self$weight <- torch::nn_parameter(torch::torch_empty(out_features, in_features))
+    self$weight <- torch::nn_parameter(torch::torch_empty(out_features,
+            in_features))
     if (bias) {
         self$bias <- torch::nn_parameter(torch::torch_empty(out_features))
     } else {
@@ -52,30 +53,31 @@ linear_noinit <- torch::nn_module(
         self$reset_parameters()
     }
 },
-    reset_parameters = function() {
+                                  reset_parameters = function() {
     torch::nn_init_kaiming_uniform_(self$weight, a = sqrt(5))
     if (!is.null(self$bias)) {
         bound <- 1 / sqrt(self$in_features)
         torch::nn_init_uniform_(self$bias, -bound, bound)
     }
 },
-    forward = function(input) {
+                                  forward = function(input) {
     torch::nnf_linear(input, self$weight, self$bias)
 }
 )
 
 # Drop-in nn_embedding (no padding/norm options) with the same skip.
 embedding_noinit <- torch::nn_module(
-    "embedding_noinit",
-    initialize = function(num_embeddings, embedding_dim) {
+                                     "embedding_noinit",
+                                     initialize = function(num_embeddings, embedding_dim) {
     self$num_embeddings <- num_embeddings
     self$embedding_dim <- embedding_dim
-    self$weight <- torch::nn_parameter(torch::torch_empty(num_embeddings, embedding_dim))
+    self$weight <- torch::nn_parameter(torch::torch_empty(num_embeddings,
+            embedding_dim))
     if (!.noinit_state$active) {
         torch::nn_init_normal_(self$weight)
     }
 },
-    forward = function(input) {
+                                     forward = function(input) {
     torch::nnf_embedding(input, self$weight)
 }
 )

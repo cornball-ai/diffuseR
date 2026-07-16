@@ -55,10 +55,8 @@ NULL
 # (little-endian 0x80 0x3F); 0.0 -> 0x0000. float8_e4m3fn: 1.0 = exp
 # bias 7, mantissa 0 = 0x38; 0.0 = 0x00.
 .st_read_probe_spec <- list(
-                            bfloat16 = list(name = "BF16",
-                                            bytes = as.raw(c(0x00, 0x00, 0x80, 0x3f))),
-                            float8_e4m3fn = list(name = "F8_E4M3",
-                                                 bytes = as.raw(c(0x00, 0x38)))
+                            bfloat16 = list(name = "BF16", bytes = as.raw(c(0x00, 0x00, 0x80, 0x3f))),
+                            float8_e4m3fn = list(name = "F8_E4M3", bytes = as.raw(c(0x00, 0x38)))
 )
 
 #' Probe whether the installed safetensors can READ a dtype
@@ -135,7 +133,11 @@ NULL
     if (is.null(cap)) {
         return(precision)
     }
-    ok <- if (mode == "write") .st_can_write(cap) else .st_can_read(cap)
+    if (mode == "write") {
+        ok <- .st_can_write(cap)
+    } else {
+        ok <- .st_can_read(cap)
+    }
     if (ok) {
         return(precision)
     }
@@ -150,8 +152,7 @@ NULL
 # .st_read_or_breadcrumb so it can be unit-tested without a real 2 GB
 # file.
 .st_overflow_message <- function(file_path, size_bytes, underlying) {
-    sprintf(paste0(
-                   "Could not read %s (%.1f GB). Stock CRAN safetensors ",
+    sprintf(paste0("Could not read %s (%.1f GB). Stock CRAN safetensors ",
                    "overflows a 32-bit offset on files at or above 2^31 ",
                    "bytes (~2.15 GB). Rebuild the artifact with smaller ",
                    "shards (the quantizers now default to ",
@@ -174,7 +175,7 @@ NULL
         } else {
             NA_real_
         }
-        if (!is.na(sz) && sz >= 2^31) {
+        if (!is.na(sz) && sz >= 2 ^ 31) {
             stop(.st_overflow_message(file_path, sz, conditionMessage(e)),
                  call. = FALSE)
         }

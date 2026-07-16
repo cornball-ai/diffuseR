@@ -316,8 +316,8 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     }
     if ("vae" %in% components) {
         pipe$vae <- load_component(
-            "vae", .construct_skeleton(ltx23_video_vae, dtype = torch_dtype),
-            ltx23_map_vae_key, component_device
+                                   "vae", .construct_skeleton(ltx23_video_vae, dtype = torch_dtype),
+                                   ltx23_map_vae_key, component_device
         )
         pipe$vae$enable_tiling()
     }

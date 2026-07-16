@@ -249,7 +249,7 @@ load_decoder_safetensors <- function(native_decoder, path, verbose = TRUE) {
 #' @return The native VAE decoder in eval mode.
 #' @export
 vae_decoder_native_from_safetensors <- function(path, latent_channels = 4L,
-                                                verbose = TRUE, ...) {
+    verbose = TRUE, ...) {
     model <- vae_decoder_native(latent_channels = latent_channels, ...)
     load_decoder_safetensors(model, path, verbose = verbose)
     model$eval()

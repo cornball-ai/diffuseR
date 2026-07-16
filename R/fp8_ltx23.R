@@ -242,8 +242,7 @@ ltx23_open_fp8_checkpoint <- function(dir) {
                    get_tensor = function(key) {
         h <- key_to_handle[[key]]
         if (is.null(h)) stop("Key not found in fp8 shards: ", key)
-        .st_read_or_breadcrumb(function() h$get_tensor(key),
-                               key_to_path[[key]])
+        .st_read_or_breadcrumb(function() h$get_tensor(key), key_to_path[[key]])
     }
     )
 
