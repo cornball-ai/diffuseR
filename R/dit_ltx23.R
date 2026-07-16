@@ -86,8 +86,8 @@ ltx23_transformer <- torch::nn_module(
     self$prompt_modulation <- cross_attn_mod || audio_cross_attn_mod
 
     # 1. Patchified input projections
-    self$proj_in <- torch::nn_linear(in_channels, inner_dim)
-    self$audio_proj_in <- torch::nn_linear(audio_in_channels, audio_inner_dim)
+    self$proj_in <- linear_noinit(in_channels, inner_dim)
+    self$audio_proj_in <- linear_noinit(audio_in_channels, audio_inner_dim)
 
     # 2. Global timestep modulation (9 params each with cross-attn mod)
     video_mod_params <- if (cross_attn_mod) 9L else 6L
@@ -176,10 +176,10 @@ ltx23_transformer <- torch::nn_module(
 
     # 5. Output layers
     self$norm_out <- torch::nn_layer_norm(inner_dim, eps = 1e-6, elementwise_affine = FALSE)
-    self$proj_out <- torch::nn_linear(inner_dim, out_channels)
+    self$proj_out <- linear_noinit(inner_dim, out_channels)
     self$audio_norm_out <- torch::nn_layer_norm(audio_inner_dim, eps = 1e-6,
         elementwise_affine = FALSE)
-    self$audio_proj_out <- torch::nn_linear(audio_inner_dim, audio_out_channels)
+    self$audio_proj_out <- linear_noinit(audio_inner_dim, audio_out_channels)
 },
                                       forward = function(
         hidden_states,

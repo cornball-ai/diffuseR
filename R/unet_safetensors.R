@@ -41,7 +41,11 @@ NULL
         stop("The safetensors package is required to read UNet weights.")
     }
     path <- path.expand(path)
-    dir <- if (dir.exists(path)) path else dirname(path)
+    if (dir.exists(path)) {
+        dir <- path
+    } else {
+        dir <- dirname(path)
+    }
     opened <- .flux_open_sharded_dir(dir, "diffusion_pytorch_model")
     keys <- opened$keys
 
@@ -61,10 +65,8 @@ NULL
             src <- opened$handle$get_tensor(key)
             if (!all(dest$shape == src$shape)) {
                 mismatch <- c(mismatch, sprintf("%s (%s vs %s)", native_name,
-                                                paste(as.integer(src$shape),
-                                                      collapse = "x"),
-                                                paste(as.integer(dest$shape),
-                                                      collapse = "x")))
+                        paste(as.integer(src$shape), collapse = "x"),
+                        paste(as.integer(dest$shape), collapse = "x")))
                 next
             }
             dest$copy_(src)

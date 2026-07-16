@@ -76,7 +76,7 @@ download_sd21 <- function(verbose = TRUE) {
     }
     have <- !is.null(tryCatch(
                               hfhub::hub_download(.sd21_repo, .sd21_files[[1]],
-            repo_type = "dataset", local_files_only = TRUE),
+                repo_type = "dataset", local_files_only = TRUE),
                               error = function(e) NULL
         ))
     if (!have) {
@@ -122,8 +122,8 @@ download_sd21 <- function(verbose = TRUE) {
 #'
 #' @export
 sd_pipeline_from_safetensors <- function(diffusers_dir, model_name = "sd21",
-                                         devices = NULL, unet_dtype = NULL,
-                                         verbose = TRUE) {
+    devices = NULL, unet_dtype = NULL,
+    verbose = TRUE) {
     if (!identical(model_name, "sd21")) {
         stop("sd_pipeline_from_safetensors currently supports \"sd21\"; ",
              "SDXL needs its second text encoder and added-conditioning ",
@@ -159,7 +159,7 @@ sd_pipeline_from_safetensors <- function(diffusers_dir, model_name = "sd21",
         message("Building UNet...")
     }
     unet <- unet_native_from_safetensors(file.path(diffusers_dir, "unet"),
-                                         verbose = FALSE)
+        verbose = FALSE)
     unet$to(device = torch::torch_device(devices$unet), dtype = unet_dtype)
 
     if (verbose) {
@@ -168,7 +168,7 @@ sd_pipeline_from_safetensors <- function(diffusers_dir, model_name = "sd21",
     # decode = post_quant_conv + decoder (the SD VAE needs the 1x1
     # post_quant_conv the FLUX-derived native decoder omits)
     decoder <- .sd_vae_decode_from_safetensors(file.path(diffusers_dir, "vae"),
-                                               latent_channels = 4L)
+        latent_channels = 4L)
     decoder$to(device = torch::torch_device(devices$decoder),
                dtype = torch::torch_float32())
 
