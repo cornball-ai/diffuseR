@@ -10,7 +10,7 @@ txt2img_sdxl(prompt, negative_prompt = NULL, img_dim = 1024, pipeline = NULL,
              guidance_scale = 7.5, seed = NULL, save_file = TRUE,
              filename = NULL, metadata_path = NULL, use_native_decoder = FALSE,
              use_native_text_encoder = FALSE, use_native_unet = FALSE,
-             verbose = TRUE, ...)
+             diffusers_dir = NULL, verbose = TRUE, ...)
 }
 \arguments{
 \item{prompt}{A character string prompt describing the image to generate.}
@@ -58,6 +58,12 @@ Native text encoder has better GPU compatibility (especially Blackwell).}
 
 \item{use_native_unet}{Logical; if TRUE, uses native R torch UNet instead of TorchScript.
 Native UNet has better GPU compatibility (especially Blackwell).}
+
+\item{diffusers_dir}{Optional path to a diffusers safetensors directory
+(\code{unet/}, \code{vae/}, \code{text_encoder/}, \code{text_encoder_2/}).
+When supplied, the pipeline is built end-to-end from safetensors via
+\code{\link{sdxl_pipeline_from_safetensors}} (native, Blackwell-safe,
+no TorchScript) and the other \code{use_native_*} flags are ignored.}
 
 \item{verbose}{Logical. Print progress and memory status messages.}
 

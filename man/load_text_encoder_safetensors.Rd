@@ -17,7 +17,7 @@ The native encoder with loaded weights (invisibly)
 }
 \description{
 Loads a HuggingFace CLIPTextModel \code{model.safetensors} (e.g.
-FLUX.1-schnell's \code{text_encoder}) into
-\code{\link{text_encoder_native}}, reusing the TorchScript key remaps
-minus the export prefixes.
+FLUX.1-schnell's \code{text_encoder} or SDXL's \code{text_encoder})
+into \code{\link{text_encoder_native}}, reusing the TorchScript key
+remaps minus the export prefixes.
 }

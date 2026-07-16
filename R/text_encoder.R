@@ -157,8 +157,12 @@ CLIPTransformerBlock <- torch::nn_module(
 #' @param mlp_dim MLP hidden dimension
 #' @param apply_final_ln Whether to apply final layer norm (default TRUE).
 #'   Set to FALSE to match TorchScript exports that don't include final LN.
+#' @param return_penultimate Return the second-to-last transformer block's
+#'   output (\code{hidden_states[-2]}, pre-final-LN) instead of the last
+#'   layer. This is what SDXL feeds the UNet cross-attention; final LN is
+#'   never applied to the penultimate output (default FALSE).
 #' @param gelu_type GELU variant: "tanh" (matches the TorchScript exports),
-#'   "quick" (HF CLIP ViT-L, used by FLUX), or "exact"
+#'   "quick" (HF CLIP ViT-L, used by SDXL text_encoder and FLUX), or "exact"
 #'
 #' @return An nn_module representing the text encoder
 #' @export
@@ -173,12 +177,14 @@ text_encoder_native <- torch::nn_module(
         num_heads = 12,
         mlp_dim = 3072,
         apply_final_ln = TRUE,
+        return_penultimate = FALSE,
         gelu_type = "tanh"
     ) {
     self$context_length <- context_length
     self$embed_dim <- embed_dim
     self$num_layers <- num_layers
     self$apply_final_ln <- apply_final_ln
+    self$return_penultimate <- return_penultimate
 
     # Embeddings
     self$token_embedding <- torch::nn_embedding(vocab_size, embed_dim)
@@ -211,9 +217,20 @@ text_encoder_native <- torch::nn_module(
     pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1)$expand(c(batch_size, -1, -1))
     hidden_states <- token_embeds + pos_embeds
 
-    # Transformer layers
-    for (i in seq_len(self$num_layers)) {
+    # Transformer layers. Capture the input to the last block, which is
+    # the output of the second-to-last block = hidden_states[-2] (the
+    # penultimate layer SDXL feeds the UNet).
+    n <- self$num_layers
+    penultimate <- NULL
+    for (i in seq_len(n)) {
+        if (i == n) {
+            penultimate <- hidden_states
+        }
         hidden_states <- self$transformer_blocks[[i]](hidden_states)
+    }
+
+    if (self$return_penultimate) {
+        return(penultimate)
     }
 
     # Conditionally apply final layer norm to match TorchScript behavior
@@ -317,21 +334,28 @@ clip_pooled_output <- function(hidden_states, input_ids) {
     )$squeeze(2L)
 }
 
-#' Load HF safetensors weights into the native CLIP text encoder
-#'
-#' Loads a HuggingFace CLIPTextModel \code{model.safetensors} (e.g.
-#' FLUX.1-schnell's \code{text_encoder}) into
-#' \code{\link{text_encoder_native}}, reusing the TorchScript key remaps
-#' minus the export prefixes.
-#'
-#' @param native_encoder Native text encoder module
-#' @param path Path to model.safetensors (or a directory containing it)
-#' @param verbose Print loading progress
-#'
-#' @return The native encoder with loaded weights (invisibly)
-#' @export
-load_text_encoder_safetensors <- function(native_encoder, path,
-    verbose = TRUE) {
+# HF CLIPTextModel state-dict key -> native text-encoder parameter name.
+# Shared by the encoder-1 and encoder-2 safetensors loaders (the diffusers
+# key layout is identical; only encoder 2 adds a top-level text_projection,
+# handled by its own remap wrapper).
+.clip_st_remap_key <- function(key) {
+    key <- sub("^text_model\\.", "", key)
+    key <- sub("^embeddings\\.token_embedding\\.", "token_embedding.", key)
+    key <- sub("^embeddings\\.position_embedding\\.weight$",
+               "position_embedding", key)
+    key <- gsub("^encoder\\.layers\\.", "transformer_blocks.", key)
+    key <- gsub("\\.self_attn\\.", ".attention.", key)
+    key <- gsub("\\.layer_norm1\\.", ".layernorm_1.", key)
+    key <- gsub("\\.layer_norm2\\.", ".layernorm_2.", key)
+    key
+}
+
+# Shared safetensors loader for the native CLIP encoders: open
+# model.safetensors, map each HF key through `remap`, copy into the
+# matching native parameter, and fail loudly on any unmapped key or
+# unfilled native parameter.
+.load_clip_st <- function(native_encoder, path, remap, label = "CLIP",
+                          verbose = TRUE) {
     path <- path.expand(path)
     if (dir.exists(path)) {
         path <- file.path(path, "model.safetensors")
@@ -341,24 +365,12 @@ load_text_encoder_safetensors <- function(native_encoder, path,
     # Non-parameter buffers in some exports
     keys <- keys[!endsWith(keys, "position_ids")]
 
-    remap_key <- function(key) {
-        key <- sub("^text_model\\.", "", key)
-        key <- sub("^embeddings\\.token_embedding\\.", "token_embedding.", key)
-        key <- sub("^embeddings\\.position_embedding\\.weight$",
-                   "position_embedding", key)
-        key <- gsub("^encoder\\.layers\\.", "transformer_blocks.", key)
-        key <- gsub("\\.self_attn\\.", ".attention.", key)
-        key <- gsub("\\.layer_norm1\\.", ".layernorm_1.", key)
-        key <- gsub("\\.layer_norm2\\.", ".layernorm_2.", key)
-        key
-    }
-
     dests <- native_encoder$named_parameters()
     filled <- character(0)
     unmapped <- character(0)
     torch::with_no_grad({
         for (key in keys) {
-            native_name <- remap_key(key)
+            native_name <- remap(key)
             dest <- dests[[native_name]]
             if (is.null(dest)) {
                 unmapped <- c(unmapped, key)
@@ -371,19 +383,39 @@ load_text_encoder_safetensors <- function(native_encoder, path,
 
     unfilled <- setdiff(names(dests), filled)
     if (length(unmapped)) {
-        stop("CLIP safetensors load: ", length(unmapped),
+        stop(label, " safetensors load: ", length(unmapped),
              " unmapped keys, e.g. ",
              paste(utils::head(unmapped, 3), collapse = ", "))
     }
     if (length(unfilled)) {
-        stop("CLIP safetensors load: ", length(unfilled),
+        stop(label, " safetensors load: ", length(unfilled),
              " unfilled params, e.g. ",
              paste(utils::head(unfilled, 3), collapse = ", "))
     }
     if (verbose) {
-        message("Loaded ", length(filled), " CLIP parameters from ", path)
+        message("Loaded ", length(filled), " ", label, " parameters from ",
+                path)
     }
     invisible(native_encoder)
+}
+
+#' Load HF safetensors weights into the native CLIP text encoder
+#'
+#' Loads a HuggingFace CLIPTextModel \code{model.safetensors} (e.g.
+#' FLUX.1-schnell's \code{text_encoder} or SDXL's \code{text_encoder})
+#' into \code{\link{text_encoder_native}}, reusing the TorchScript key
+#' remaps minus the export prefixes.
+#'
+#' @param native_encoder Native text encoder module
+#' @param path Path to model.safetensors (or a directory containing it)
+#' @param verbose Print loading progress
+#'
+#' @return The native encoder with loaded weights (invisibly)
+#' @export
+load_text_encoder_safetensors <- function(native_encoder, path,
+    verbose = TRUE) {
+    .load_clip_st(native_encoder, path, .clip_st_remap_key, "CLIP",
+                  verbose = verbose)
 }
 
 # Detect a CLIP text encoder's architecture from a diffusers
@@ -566,11 +598,13 @@ text_encoder2_native <- torch::nn_module(
                           embed_dim = 1280,
                           num_layers = 32,
                           num_heads = 20,
-                          mlp_dim = 5120
+                          mlp_dim = 5120,
+                          return_penultimate = FALSE
     ) {
     self$context_length <- context_length
     self$embed_dim <- embed_dim
     self$num_layers <- num_layers
+    self$return_penultimate <- return_penultimate
 
     # Embeddings
     self$token_embedding <- torch::nn_embedding(vocab_size, embed_dim)
@@ -607,31 +641,94 @@ text_encoder2_native <- torch::nn_module(
     pos_embeds <- self$position_embedding[1:seq_length,]$unsqueeze(1)$expand(c(batch_size, -1, -1))
     hidden_states <- token_embeds + pos_embeds
 
-    # Transformer layers
-    for (i in seq_len(self$num_layers)) {
+    # Transformer layers. Capture the penultimate layer output
+    # (hidden_states[-2]) for the SDXL cross-attention embeds, while the
+    # pooled output still comes from the full stack.
+    n <- self$num_layers
+    penultimate <- NULL
+    for (i in seq_len(n)) {
+        if (i == n) {
+            penultimate <- hidden_states
+        }
         hidden_states <- self$transformer_blocks[[i]](hidden_states)
     }
 
-    # Note: TorchScript does NOT apply final_layer_norm to hidden_states output
-    # Only apply it for pooled output computation
-    hidden_states_normalized <- self$final_layer_norm(hidden_states)
+    # hidden output: penultimate for SDXL, else the last layer (matches
+    # the TorchScript export, which omits final LN on the hidden output)
+    hidden_out <- if (self$return_penultimate) penultimate else hidden_states
 
-    # Pooled output: take the EOS token embedding (last non-padded token)
-    # For simplicity, use the position of the max token ID (EOS = 49407)
-    # In practice, SDXL tokenizer puts EOS at the position after the last real token
+    # Pooled output: EOS token of the final-LN'd LAST hidden state, then
+    # the text projection. EOS is the highest token id (49407), so argmax
+    # locates it; causal attention makes trailing padding irrelevant.
+    hidden_states_normalized <- self$final_layer_norm(hidden_states)
     eos_indices <- torch::torch_argmax(input_ids, dim = 2L, keepdim = TRUE)
     pooled_output <- hidden_states_normalized$gather(
         dim = 2L,
         index = eos_indices$unsqueeze(-1L)$expand(c(-1L, -1L, self$embed_dim))
     )$squeeze(2L)
-
-    # Apply text projection
     pooled_output <- self$text_projection(pooled_output)
 
-    # Return hidden_states WITHOUT final LN (matches TorchScript), pooled WITH LN + projection
-    list(hidden_states, pooled_output)
+    list(hidden_out, pooled_output)
 }
 )
+
+#' Load HF safetensors weights into the native SDXL text encoder 2
+#'
+#' Loads a HuggingFace CLIPTextModelWithProjection \code{model.safetensors}
+#' (SDXL's OpenCLIP ViT-bigG \code{text_encoder_2}) into
+#' \code{\link{text_encoder2_native}}. Same key layout as encoder 1, plus
+#' the top-level \code{text_projection.weight} that produces the pooled
+#' \code{text_embeds}.
+#'
+#' @param native_encoder Native text encoder 2 module
+#' @param path Path to model.safetensors (or a directory containing it)
+#' @param verbose Print loading progress
+#'
+#' @return The native encoder with loaded weights (invisibly)
+#' @export
+load_text_encoder2_safetensors <- function(native_encoder, path,
+    verbose = TRUE) {
+    remap <- function(key) {
+        if (grepl("^text_projection", key)) {
+            return("text_projection.weight")
+        }
+        .clip_st_remap_key(key)
+    }
+    .load_clip_st(native_encoder, path, remap, "CLIP-bigG", verbose = verbose)
+}
+
+#' Build a native SDXL text encoder 2 from a diffusers safetensors directory
+#'
+#' Reads the CLIPTextConfig from \code{<dir>/config.json}, constructs
+#' \code{\link{text_encoder2_native}} to match, and loads
+#' \code{model.safetensors} - the safetensors counterpart to the
+#' TorchScript \code{text_encoder_2} path (no TorchScript, Blackwell-safe).
+#'
+#' @param path diffusers text_encoder_2 directory (config.json +
+#'   model.safetensors) or the config.json path.
+#' @param return_penultimate Return the penultimate hidden state for the
+#'   SDXL cross-attention embeds (default TRUE); the pooled output is
+#'   always computed from the full stack.
+#' @param verbose Print how many parameters were loaded.
+#' @param ... Overrides for \code{\link{text_encoder2_native}} args.
+#'
+#' @return The native text encoder 2 in eval mode.
+#' @export
+text_encoder2_native_from_safetensors <- function(path,
+    return_penultimate = TRUE,
+    verbose = TRUE, ...) {
+    arch <- .detect_text_encoder_config(path)
+    args <- list(vocab_size = arch$vocab_size,
+                 context_length = arch$context_length,
+                 embed_dim = arch$embed_dim, num_layers = arch$num_layers,
+                 num_heads = arch$num_heads, mlp_dim = arch$mlp_dim,
+                 return_penultimate = return_penultimate)
+    args <- utils::modifyList(args, list(...))
+    model <- do.call(text_encoder2_native, args)
+    load_text_encoder2_safetensors(model, path, verbose = verbose)
+    model$eval()
+    model
+}
 
 #' Load weights from TorchScript text encoder 2 into native encoder
 #'
