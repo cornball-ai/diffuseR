@@ -20,13 +20,20 @@
   sub-2 GB diffusers shards plus an index, so large fp16 weights load on
   stock CRAN safetensors.
 * `download_sdxl()` fetches the SDXL diffusers weights from the
-  `cornball-ai/sdxl-R` dataset (hosting in progress).
+  `cornball-ai/sdxl-R` dataset.
+
+## LTX-2.3 loading and attention
+
 * Checkpoint loaders build module skeletons (uninitialized weights at
   the target dtype) instead of initializing full-precision modules and
   casting: the LTX-2.3 NF4 pipeline load drops from ~108 GB host RAM
   (kernel OOM on a 125 GB machine) to ~21 GB, and Gemma3 from ~72 GB of
   transient writes to its resident size. `load_gemma3_text_encoder()`
   now errors on any parameter the checkpoint does not fill.
+* LTX-2.3 attention now uses R torch fused scaled-dot-product attention
+  when available and no explicit query chunk is requested. The adaptive
+  chunked/scratch-buffer implementation remains the fallback for older
+  torch builds, explicit `attn_chunk`, or `options(diffuseR.ltx23_fused_sdpa = FALSE)`.
 
 # diffuseR 0.1.0.6 (development)
 

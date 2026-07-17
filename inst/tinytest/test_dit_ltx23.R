@@ -64,6 +64,43 @@ output_buf$fill_(2)
 score_buf$add_(1)
 expect_equal(as.numeric(output_buf$mean()), 2)
 release_attn_buffers()
+# --- Fused SDPA matches the chunked manual fallback ---------------------------
+sdpa <- diffuseR:::.ltx23_sdpa
+sdpa_manual <- diffuseR:::.ltx23_sdpa_manual
+fused_sdpa <- diffuseR:::.ltx23_fused_sdpa
+fused_sdpa_fn <- diffuseR:::.ltx23_fused_sdpa_fn
+attn_scratch <- get(".ltx23_attn_scratch", envir = asNamespace("diffuseR"))
+
+torch::torch_manual_seed(23)
+q <- torch::torch_randn(c(1L, 2L, 5L, 8L))
+k <- torch::torch_randn(c(1L, 2L, 7L, 8L))
+v <- torch::torch_randn(c(1L, 2L, 7L, 6L))
+mask <- torch::torch_zeros(c(1L, 1L, 5L, 7L))
+mask[, , , 7] <- -10000
+
+manual_mask <- sdpa_manual(q, k, v, mask, chunk_size = 2L)$clone()
+manual_nomask <- sdpa_manual(q, k, v, chunk_size = 2L)$clone()
+if (!is.null(fused_sdpa_fn())) {
+  release_attn_buffers()
+  fused_mask <- fused_sdpa(q, k, v, mask)
+  fused_nomask <- fused_sdpa(q, k, v)
+  expect_true(max_abs_diff(fused_mask, manual_mask) < 1e-5)
+  expect_true(max_abs_diff(fused_nomask, manual_nomask) < 1e-5)
+
+  old <- options(diffuseR.ltx23_fused_sdpa = TRUE)
+  auto_mask <- sdpa(q, k, v, mask)
+  options(old)
+  expect_true(max_abs_diff(auto_mask, fused_mask) < 1e-6)
+  expect_equal(length(ls(attn_scratch)), 0L)
+}
+
+release_attn_buffers()
+old <- options(diffuseR.ltx23_fused_sdpa = FALSE)
+fallback_mask <- sdpa(q, k, v, mask)$clone()
+options(old)
+expect_true(max_abs_diff(fallback_mask, manual_mask) < 1e-5)
+expect_true(length(ls(attn_scratch)) > 0L)
+release_attn_buffers()
 
 # --- Gated attention with split RoPE ------------------------------------------
 
