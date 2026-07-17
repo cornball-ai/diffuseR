@@ -170,12 +170,12 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     buf
 }
 
-# Scaled dot-product attention on [B, H, S, D] tensors. R torch has no
-# fused SDPA, so the [B, H, Sq, Sk] score matrix materializes; queries
-# are chunked adaptively against a memory budget and all large
-# temporaries live in reusable scratch buffers.
-.ltx23_sdpa <- function(query, key, value, attention_mask = NULL,
-                        chunk_size = NULL) {
+# Manual scaled dot-product attention on [B, H, S, D] tensors. The
+# [B, H, Sq, Sk] score matrix materializes, so queries are chunked
+# adaptively against a memory budget and all large temporaries live in
+# reusable scratch buffers.
+.ltx23_sdpa_manual <- function(query, key, value, attention_mask = NULL,
+    chunk_size = NULL) {
     head_dim <- query$shape[length(query$shape)]
     scale <- 1.0 / sqrt(head_dim)
     key_t <- key$transpose(-2L, -1L)
@@ -268,6 +268,52 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
         start <- start + len
     }
     out_buf
+}
+
+# Resolve the exported fused SDPA binding once. torch 0.17.0 ships this,
+# but capability-based lookup preserves compatibility with older builds.
+.ltx23_fused_sdpa_fn <- local({
+    fn <- NULL
+    resolved <- FALSE
+    function() {
+        if (!resolved) {
+            if ("torch_scaled_dot_product_attention" %in%
+                    getNamespaceExports("torch")) {
+                fn <<- getExportedValue(
+                    "torch", "torch_scaled_dot_product_attention"
+                )
+            }
+            resolved <<- TRUE
+        }
+        fn
+    }
+})
+
+.ltx23_fused_sdpa <- function(query, key, value, attention_mask = NULL) {
+    fn <- .ltx23_fused_sdpa_fn()
+    if (is.null(fn)) {
+        stop("Fused scaled-dot-product attention is unavailable.",
+             call. = FALSE)
+    }
+    if (is.null(attention_mask)) {
+        fn(query, key, value, dropout_p = 0, is_causal = FALSE)
+    } else {
+        fn(query, key, value, attn_mask = attention_mask,
+           dropout_p = 0, is_causal = FALSE)
+    }
+}
+
+# Prefer native fused SDPA when no explicit query chunk was requested. Set
+# options(diffuseR.ltx23_fused_sdpa = FALSE) to force the manual fallback.
+.ltx23_sdpa <- function(query, key, value, attention_mask = NULL,
+                        chunk_size = NULL) {
+    use_fused <- is.null(chunk_size) &&
+        isTRUE(getOption("diffuseR.ltx23_fused_sdpa", TRUE)) &&
+        !is.null(.ltx23_fused_sdpa_fn())
+    if (use_fused) {
+        return(.ltx23_fused_sdpa(query, key, value, attention_mask))
+    }
+    .ltx23_sdpa_manual(query, key, value, attention_mask, chunk_size)
 }
 
 #' Release the attention scratch buffers
