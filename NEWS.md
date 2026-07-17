@@ -1,3 +1,11 @@
+# diffuseR 0.1.0.8 (development)
+
+* The LTX-2.3 JIT block stack dequantizes NF4 weights through a
+  precomputed [256, 2] byte lookup table (one embedding gather in the
+  compute dtype) instead of the int64 shift/stack/gather chain, cutting
+  per-step dequant memory traffic ~6x (isolated benchmark: 5.7x; the
+  dequant was the measured per-step wall at ~4.4 s of a 6.5 s step).
+
 # diffuseR 0.1.0.7 (development)
 
 ## SDXL native pipeline from safetensors
