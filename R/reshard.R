@@ -41,7 +41,7 @@ reshard_safetensors <- function(input, output_dir,
     shard <- list()
     shard_size <- 0
     shard_idx <- 0L
-    key_to_shard <- integer(0)  # 1-based shard index per key (named)
+    key_to_shard <- integer(0) # 1-based shard index per key (named)
     total_size <- 0
 
     flush <- function() {
@@ -65,10 +65,10 @@ reshard_safetensors <- function(input, output_dir,
         for (key in keys) {
             t <- handle$get_tensor(key)
             bytes <- prod(t$shape) *
-                as.integer(switch(as.character(t$dtype),
-                                  Float = 4L, Double = 8L, Half = 2L,
-                                  BFloat16 = 2L, Byte = 1L, Char = 1L,
-                                  Long = 8L, Int = 4L, 4L))
+            as.integer(switch(as.character(t$dtype),
+                              Float = 4L, Double = 8L, Half = 2L,
+                              BFloat16 = 2L, Byte = 1L, Char = 1L,
+                              Long = 8L, Int = 4L, 4L))
             if (shard_size > 0 && shard_size + bytes > shard_bytes) {
                 flush()
             }

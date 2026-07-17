@@ -175,7 +175,7 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
 # adaptively against a memory budget and all large temporaries live in
 # reusable scratch buffers.
 .ltx23_sdpa_manual <- function(query, key, value, attention_mask = NULL,
-    chunk_size = NULL) {
+                               chunk_size = NULL) {
     head_dim <- query$shape[length(query$shape)]
     scale <- 1.0 / sqrt(head_dim)
     key_t <- key$transpose(-2L, -1L)
@@ -241,11 +241,10 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     }
 
     rows <- min(n_q, chunk_size)
-    attn_buf <- .ltx23_get_attn_buffer(
-        "scores", c(b, heads, rows, n_k), query$dtype, query$device
-    )
+    attn_buf <- .ltx23_get_attn_buffer("scores", c(b, heads, rows, n_k),
+                                       query$dtype, query$device)
     out_buf <- .ltx23_get_attn_buffer(
-        "output", c(b, heads, n_q, d_v), query$dtype, query$device
+                                      "output", c(b, heads, n_q, d_v), query$dtype, query$device
     )
 
     if (n_q <= chunk_size) {
@@ -278,10 +277,9 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
     function() {
         if (!resolved) {
             if ("torch_scaled_dot_product_attention" %in%
-                    getNamespaceExports("torch")) {
-                fn <<- getExportedValue(
-                    "torch", "torch_scaled_dot_product_attention"
-                )
+                              getNamespaceExports("torch")) {
+                fn <<- getExportedValue("torch",
+                                        "torch_scaled_dot_product_attention")
             }
             resolved <<- TRUE
         }
@@ -299,7 +297,7 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
         fn(query, key, value, dropout_p = 0, is_causal = FALSE)
     } else {
         fn(query, key, value, attn_mask = attention_mask,
-           dropout_p = 0, is_causal = FALSE)
+            dropout_p = 0, is_causal = FALSE)
     }
 }
 
@@ -308,8 +306,8 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
 .ltx23_sdpa <- function(query, key, value, attention_mask = NULL,
                         chunk_size = NULL) {
     use_fused <- is.null(chunk_size) &&
-        isTRUE(getOption("diffuseR.ltx23_fused_sdpa", TRUE)) &&
-        !is.null(.ltx23_fused_sdpa_fn())
+    isTRUE(getOption("diffuseR.ltx23_fused_sdpa", TRUE)) &&
+    !is.null(.ltx23_fused_sdpa_fn())
     if (use_fused) {
         return(.ltx23_fused_sdpa(query, key, value, attention_mask))
     }
