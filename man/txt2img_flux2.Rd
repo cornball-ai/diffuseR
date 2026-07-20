@@ -29,7 +29,10 @@ generator.}
 
 \item{filename}{Output path (default derived from the prompt).}
 
-\item{verbose}{Logical.}
+\item{verbose}{Logical, or one of "silent", "progress", "steps".
+TRUE = "steps" (full per-phase chatter), FALSE = "silent".
+"progress" prints a one-line generation summary plus a denoise
+progress bar (interactive) or periodic step ticks (captured logs).}
 
 \item{...}{Passed to \code{\link{flux2_load_pipeline}} when
 \code{pipeline} is NULL.}

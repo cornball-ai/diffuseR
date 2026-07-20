@@ -56,7 +56,7 @@
     tick <- function(i, info = NULL) {
         if (stepwise) {
             message(sprintf("  step %d/%d%s", i, n,
-                            if (is.null(info)) "" else paste0(" ", info)))
+                    if (is.null(info)) "" else paste0(" ", info)))
         } else if (use_bar) {
             utils::setTxtProgressBar(pb, i)
         } else if (i %% every == 0L || i == n) {

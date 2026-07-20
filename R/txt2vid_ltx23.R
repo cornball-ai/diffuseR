@@ -119,7 +119,11 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     scale_mult <- transformer$timestep_scale_multiplier
     pb <- .denoise_progress(
                             n_steps,
-                            if (nzchar(stage)) sprintf("%sdenoise: %d steps", stage, n_steps) else NULL,
+        if (nzchar(stage)) {
+            sprintf("%sdenoise: %d steps", stage, n_steps)
+        } else {
+            NULL
+        },
                             verbose, per_step = TRUE
     )
     step_t0 <- Sys.time()
@@ -172,7 +176,7 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
             rm(out)
             gc(verbose = FALSE)
             pb$tick(i, sprintf("%s(sigma %.4f, %.1fs)", stage, sigma,
-                as.numeric(difftime(Sys.time(), step_t0, units = "secs"))))
+                               as.numeric(difftime(Sys.time(), step_t0, units = "secs"))))
             step_t0 <- Sys.time()
         }
     })
@@ -461,9 +465,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     level <- .verbosity(verbose)
     verbose <- level == "steps"
     if (level != "silent") {
-        message(sprintf("LTX-2.3: %d frames @ %dx%d, %d steps%s",
-                        num_frames, width, height, length(sigmas) - 1L,
-                        if (two_stage) " (two-stage)" else ""))
+        message(sprintf("LTX-2.3: %d frames @ %dx%d, %d steps%s", num_frames,
+                        width, height, length(sigmas) - 1L,
+                if (two_stage) " (two-stage)" else ""))
     }
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
