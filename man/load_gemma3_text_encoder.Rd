@@ -20,4 +20,6 @@ Initialized gemma3_text_model with loaded weights.
 }
 \description{
 Loads pre-trained Gemma3 weights from HuggingFace safetensors files.
+An NF4 artifact directory (from \code{\link{gemma3_quantize_nf4}})
+dispatches to \code{\link{load_gemma3_nf4}}.
 }

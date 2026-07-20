@@ -82,42 +82,33 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     if (is.null(out)) {
         out <- torch::torch_empty(shape, dtype = dtype, device = packed$device)
     }
-    out_flat <- out$view(-1L)
+    out_pairs <- out$view(c(-1L, 2L))
+    out_blocks <- out$view(c(-1L, block))
 
     n_bytes <- packed$shape[1]
     bytes_per_chunk <- max(chunk_elements %/% 2L, block)
     scratch <- .ltx23_get_dequant_scratch(min(bytes_per_chunk, n_bytes),
         packed$device)
+    # Byte LUT [256, 2] in the target dtype (shared with the jit block
+    # stack): one 1-based index per PACKED byte and a single gather of
+    # (hi, lo) pairs written straight into out - no nibble unpack, no
+    # per-value int64 index, no float32 staging copy
+    tbl <- .ltx23_jit_table(packed$device, dtype)
+    am <- absmax$to(dtype = dtype)
 
     start <- 1L
     torch::with_no_grad({
         while (start <= n_bytes) {
             len <- min(bytes_per_chunk, n_bytes - start + 1L)
-            chunk <- packed$narrow(1L, start, len)
-
-            # Fully in-place nibble unpack into persistent scratch:
-            # hi = byte %/% 16, lo = byte - 16 * hi
-            hi <- scratch$hi$narrow(1L, 1L, len)
-            lo <- scratch$lo$narrow(1L, 1L, len)
-            hi$copy_(chunk)$div_(16L, rounding_mode = "floor")
-            lo$copy_(hi)$mul_(-16L)$add_(chunk)
-
-            # Interleave into the (1-based) int64 index scratch
-            idx <- scratch$idx$narrow(1L, 1L, len * 2L)
-            idx_pairs <- idx$view(c(-1L, 2L))
-            idx_pairs$narrow(2L, 1L, 1L)$squeeze(2L)$copy_(hi)
-            idx_pairs$narrow(2L, 2L, 1L)$squeeze(2L)$copy_(lo)
-            idx$add_(1L)
-
-            vals <- scratch$vals$narrow(1L, 1L, len * 2L)
-            .ltx23_index_select_into(vals, scratch$table, idx)
+            idx <- scratch$idx$narrow(1L, 1L, len)
+            idx$copy_(packed$narrow(1L, start, len))$add_(1L)
+            .ltx23_index_select_into(out_pairs$narrow(1L, start, len),
+                                     tbl, idx)
 
             block_start <- ((start - 1L) * 2L) %/% block + 1L
             n_blocks <- (len * 2L) %/% block
-            scales <- absmax$narrow(1L, block_start, n_blocks)
-            vals$view(c(-1L, block))$mul_(scales$unsqueeze(2L))
-
-            out_flat$narrow(1L, (start - 1L) * 2L + 1L, len * 2L)$copy_(vals)
+            out_blocks$narrow(1L, block_start, n_blocks)$
+            mul_(am$narrow(1L, block_start, n_blocks)$unsqueeze(2L))
             start <- start + len
         }
     })
@@ -159,18 +150,8 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     if (is.null(scratch) || scratch$n_bytes < n_bytes) {
         scratch <- list(
                         n_bytes = n_bytes,
-                        hi = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
-                device = device),
-                        lo = torch::torch_empty(n_bytes, dtype = torch::torch_uint8(),
-                device = device),
-                        idx = torch::torch_empty(n_bytes * 2L,
+                        idx = torch::torch_empty(n_bytes,
                 dtype = torch::torch_long(),
-                device = device),
-                        vals = torch::torch_empty(n_bytes * 2L,
-                dtype = torch::torch_float32(),
-                device = device),
-                        table = torch::torch_tensor(.ltx23_nf4_table,
-                dtype = torch::torch_float32(),
                 device = device)
         )
         .ltx23_dequant_scratch[[key]] <- scratch

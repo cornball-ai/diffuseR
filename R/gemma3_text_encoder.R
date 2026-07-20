@@ -550,9 +550,33 @@ gemma3_config_ltx2 <- function() {
 # Weight Loading
 # -----------------------------------------------------------------------------
 
+# Model config with HF defaults, shared by the checkpoint and NF4
+# artifact loaders (the raw text_config travels in the NF4 manifest)
+.gemma3_build_config <- function(config_raw) {
+    list(
+         vocab_size = config_raw$vocab_size %||% 262208L,
+         hidden_size = config_raw$hidden_size %||% 3840L,
+         intermediate_size = config_raw$intermediate_size %||% 15360L,
+         num_hidden_layers = config_raw$num_hidden_layers %||% 48L,
+         num_attention_heads = config_raw$num_attention_heads %||% 16L,
+         num_key_value_heads = config_raw$num_key_value_heads %||% 8L,
+         head_dim = config_raw$head_dim %||% 256L,
+         max_position_embeddings = config_raw$max_position_embeddings %||% 131072L,
+         rms_norm_eps = config_raw$rms_norm_eps %||% 1e-6,
+         rope_theta = config_raw$rope_theta %||% 1000000.0, # Gemma3 uses 1M
+         rope_scaling = list(factor = config_raw$rope_scaling$factor %||% 8.0),
+         sliding_window = config_raw$sliding_window %||% 1024L,
+         sliding_window_pattern = config_raw$sliding_window_pattern %||% 6L,
+         attn_logit_softcapping = config_raw$attn_logit_softcapping, # NULL = no softcapping (HF default)
+         query_pre_attn_scalar = config_raw$query_pre_attn_scalar %||% 256L
+    )
+}
+
 #' Load Gemma3 Text Model from safetensors
 #'
 #' Loads pre-trained Gemma3 weights from HuggingFace safetensors files.
+#' An NF4 artifact directory (from \code{\link{gemma3_quantize_nf4}})
+#' dispatches to \code{\link{load_gemma3_nf4}}.
 #'
 #' @param model_path Character. Path to directory containing model files.
 #' @param device Character. Device to load model to.
@@ -562,6 +586,15 @@ gemma3_config_ltx2 <- function() {
 #' @export
 load_gemma3_text_encoder <- function(model_path, device = "cpu",
                                      dtype = "float16", verbose = TRUE) {
+    # An NF4 artifact directory (gemma3_quantize_nf4) loads through the
+    # quantized path; bf16 compute unless the caller says otherwise
+    if (file.exists(file.path(model_path, "manifest.json"))) {
+        if (identical(dtype, "float16")) {
+            dtype <- "bfloat16"
+        }
+        return(load_gemma3_nf4(model_path, device = device, dtype = dtype,
+                               verbose = verbose))
+    }
     # Load config
     config_path <- file.path(model_path, "config.json")
     if (!file.exists(config_path)) {
@@ -575,23 +608,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
         config_raw <- config_raw$text_config
     }
 
-    config <- list(
-                   vocab_size = config_raw$vocab_size %||% 262208L,
-                   hidden_size = config_raw$hidden_size %||% 3840L,
-                   intermediate_size = config_raw$intermediate_size %||% 15360L,
-                   num_hidden_layers = config_raw$num_hidden_layers %||% 48L,
-                   num_attention_heads = config_raw$num_attention_heads %||% 16L,
-                   num_key_value_heads = config_raw$num_key_value_heads %||% 8L,
-                   head_dim = config_raw$head_dim %||% 256L,
-                   max_position_embeddings = config_raw$max_position_embeddings %||% 131072L,
-                   rms_norm_eps = config_raw$rms_norm_eps %||% 1e-6,
-                   rope_theta = config_raw$rope_theta %||% 1000000.0, # Gemma3 uses 1M
-                   rope_scaling = list(factor = config_raw$rope_scaling$factor %||% 8.0),
-                   sliding_window = config_raw$sliding_window %||% 1024L,
-                   sliding_window_pattern = config_raw$sliding_window_pattern %||% 6L,
-                   attn_logit_softcapping = config_raw$attn_logit_softcapping, # NULL = no softcapping (HF default)
-                   query_pre_attn_scalar = config_raw$query_pre_attn_scalar %||% 256L
-    )
+    config <- .gemma3_build_config(config_raw)
 
     if (verbose) {
         message(sprintf("Creating Gemma3 model: %d layers, hidden_size=%d",
