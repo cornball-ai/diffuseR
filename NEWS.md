@@ -1,3 +1,9 @@
+# diffuseR 0.1.0.8 (development)
+
+* The Qwen3 encoder builds its additive attention mask in the query
+  dtype, fixing the "invalid dtype for bias" CUDA error every FLUX.2
+  prompt encode hit through the fused SDPA path (since #33).
+
 # diffuseR 0.1.0.7 (development)
 
 ## SDXL native pipeline from safetensors
