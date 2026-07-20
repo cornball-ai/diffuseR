@@ -343,7 +343,7 @@ ltx23_video_vae <- torch::nn_module(
 
     wants_temporal <- self$use_framewise_decoding && num_frames > tile_lat_f
     wants_spatial <- self$use_tiling &&
-        (width > tile_lat_w || height > tile_lat_h)
+    (width > tile_lat_w || height > tile_lat_h)
     if ((wants_temporal || wants_spatial) && .ltx23_untiled_fits(z)) {
         # Tiling exists to bound VRAM, not for correctness: when the
         # whole sample fits, one full-latent forward skips the tile
@@ -431,8 +431,7 @@ ltx23_video_vae <- torch::nn_module(
     }
     total <- .ltx23_untiled_env$total_bytes
     if (is.null(total)) {
-        gb <- tryCatch(.detect_vram(use_free = FALSE),
-                       error = function(e) NULL)
+        gb <- tryCatch(.detect_vram(use_free = FALSE), error = function(e) NULL)
         if (!isTRUE(gb > 0)) {
             return(FALSE)
         }
@@ -440,8 +439,8 @@ ltx23_video_vae <- torch::nn_module(
         .ltx23_untiled_env$total_bytes <- total
     }
     alloc <- tryCatch(
-        as.numeric(torch::cuda_memory_stats()$allocated_bytes$all$current),
-        error = function(e) NULL
+                      as.numeric(torch::cuda_memory_stats()$allocated_bytes$all$current),
+                      error = function(e) NULL
     )
     if (is.null(alloc)) {
         return(FALSE)
