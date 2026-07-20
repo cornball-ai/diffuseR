@@ -117,6 +117,15 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 
     n_steps <- length(sigmas) - 1L
     scale_mult <- transformer$timestep_scale_multiplier
+    pb <- .denoise_progress(
+                            n_steps,
+        if (nzchar(stage)) {
+            sprintf("%sdenoise: %d steps", stage, n_steps)
+        } else {
+            NULL
+        },
+                            verbose, per_step = TRUE
+    )
     step_t0 <- Sys.time()
     torch::with_no_grad({
         for (i in seq_len(n_steps)) {
@@ -166,14 +175,12 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
             }
             rm(out)
             gc(verbose = FALSE)
-            if (verbose) {
-                message(sprintf("  %sstep %d/%d (sigma %.4f, %.1fs)",
-                                stage, i, n_steps, sigma,
-                                as.numeric(difftime(Sys.time(), step_t0, units = "secs"))))
-                step_t0 <- Sys.time()
-            }
+            pb$tick(i, sprintf("%s(sigma %.4f, %.1fs)", stage, sigma,
+                               as.numeric(difftime(Sys.time(), step_t0, units = "secs"))))
+            step_t0 <- Sys.time()
         }
     })
+    pb$done()
     list(latents = latents, audio_latents = audio_latents)
 }
 
@@ -431,7 +438,11 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   clean, frozen audio latents that the video attends to while
 #'   denoising, and the original samples are muxed into the output
 #'   (audio decoding is skipped).
-#' @param verbose Logical.
+#' @param verbose Logical, or one of "silent", "progress", "steps".
+#'   TRUE = "steps" (full per-phase chatter, per-step sigma/timing
+#'   lines), FALSE = "silent". "progress" prints a one-line generation
+#'   summary plus a denoise progress bar (interactive) or periodic
+#'   step ticks (captured logs).
 #'
 #' @return Invisibly, a list with \code{video} (array
 #'   [frames, height, width, 3] in [0, 1]), \code{audio} (matrix
@@ -451,6 +462,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
                          audio = NULL, verbose = TRUE) {
+    level <- .verbosity(verbose)
+    verbose <- level == "steps"
+    if (level != "silent") {
+        message(sprintf("LTX-2.3: %d frames @ %dx%d, %d steps%s", num_frames,
+                        width, height, length(sigmas) - 1L,
+                if (two_stage) " (two-stage)" else ""))
+    }
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
@@ -681,7 +699,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                video_text_embeds, audio_text_embeds, text_mask,
                                latent_frames, s1_height, s1_width,
                                audio_num_frames, frame_rate,
-                               device, compute_dtype, verbose = verbose,
+                               device, compute_dtype, verbose = level,
                                stage = if (two_stage) "stage 1 " else "",
                                conditioning_mask = conditioning_mask,
                                audio_conditioned = audio_conditioned
@@ -740,7 +758,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                    video_text_embeds, audio_text_embeds, text_mask,
                                    latent_frames, latent_height, latent_width,
                                    audio_num_frames, frame_rate,
-                                   device, compute_dtype, verbose = verbose, stage = "stage 2 "
+                                   device, compute_dtype, verbose = level, stage = "stage 2 "
         )
         latents <- denoised$latents
         audio_latents <- denoised$audio_latents

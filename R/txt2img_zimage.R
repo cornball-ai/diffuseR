@@ -175,11 +175,7 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
                             compute_dtype, chunk_size = NULL, verbose = TRUE) {
     timesteps <- as.numeric(schedule$timesteps$cpu())
     n <- length(timesteps)
-    pb <- if (verbose) {
-        utils::txtProgressBar(min = 0, max = n, style = 3)
-    } else {
-        NULL
-    }
+    pb <- .denoise_progress(n, NULL, verbose)
     f32 <- torch::torch_float32()
 
     torch::with_no_grad({
@@ -198,14 +194,10 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
             latents <- step$prev_sample
             schedule <- step$schedule
             rm(out, noise_pred, step)
-            if (!is.null(pb)) {
-                utils::setTxtProgressBar(pb, i)
-            }
+            pb$tick(i)
         }
     })
-    if (!is.null(pb)) {
-        close(pb)
-    }
+    pb$done()
     latents
 }
 
@@ -230,7 +222,10 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
 #'   embeddings (valid tokens only).
 #' @param save_file Logical. Write a PNG.
 #' @param filename Output path (default derived from the prompt).
-#' @param verbose Logical.
+#' @param verbose Logical, or one of "silent", "progress", "steps".
+#'   TRUE = "steps" (full per-phase chatter), FALSE = "silent".
+#'   "progress" prints a one-line generation summary plus a denoise
+#'   progress bar (interactive) or periodic step ticks (captured logs).
 #' @param ... Passed to \code{\link{zimage_load_pipeline}} when
 #'   \code{pipeline} is NULL.
 #'
@@ -243,6 +238,12 @@ txt2img_zimage <- function(prompt, pipeline = NULL, width = 1024L,
                            max_sequence_length = 512L, seed = NULL,
                            prompt_embeds = NULL, save_file = TRUE,
                            filename = NULL, verbose = TRUE, ...) {
+    level <- .verbosity(verbose)
+    verbose <- level == "steps"
+    if (level != "silent") {
+        message(sprintf("Z-Image Turbo: %dx%d, %d steps", as.integer(width),
+                        as.integer(height), as.integer(num_inference_steps)))
+    }
     if (is.null(pipeline)) {
         pipeline <- zimage_load_pipeline(..., verbose = verbose)
     }
@@ -323,7 +324,7 @@ txt2img_zimage <- function(prompt, pipeline = NULL, width = 1024L,
     latents <- .zimage_denoise(
                                transformer, latents, sched, prompt_embeds,
                                compute_dtype, chunk_size = pipeline$attn_chunk,
-                               verbose = verbose
+                               verbose = level
     )
     if (isTRUE(pipeline$fp8_resident) && phase_offload) {
         .flux_fp8_to_device(pipeline$transformer, "cpu")

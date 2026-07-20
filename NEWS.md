@@ -1,3 +1,12 @@
+# diffuseR 0.1.0.10 (development)
+
+* The generators accept a three-level `verbose`: "silent", "progress",
+  "steps" (logicals still work: TRUE = "steps", FALSE = "silent").
+  "progress" prints a one-line generation summary plus a denoise
+  progress bar interactively, or a tick line every ~n/10 steps in
+  captured logs, so a long run is distinguishable from a hang without
+  per-step noise (#30).
+
 # diffuseR 0.1.0.9 (development)
 
 * The LTX-2.3 JIT block stack dequantizes NF4 weights through a

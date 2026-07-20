@@ -87,7 +87,11 @@ clean, frozen audio latents that the video attends to while
 denoising, and the original samples are muxed into the output
 (audio decoding is skipped).}
 
-\item{verbose}{Logical.}
+\item{verbose}{Logical, or one of "silent", "progress", "steps".
+TRUE = "steps" (full per-phase chatter, per-step sigma/timing
+lines), FALSE = "silent". "progress" prints a one-line generation
+summary plus a denoise progress bar (interactive) or periodic
+step ticks (captured logs).}
 
 \item{text_encoder,tokenizer}{Gemma3 model and tokenizer (or paths;
 see \code{\link{load_gemma3_text_encoder}} and
