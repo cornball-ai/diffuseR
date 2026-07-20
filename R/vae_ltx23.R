@@ -341,10 +341,20 @@ ltx23_video_vae <- torch::nn_module(
     tile_lat_w <- self$tile_sample_min_width %/% 32L
     tile_lat_f <- self$tile_sample_min_num_frames %/% 8L
 
-    if (self$use_framewise_decoding && num_frames > tile_lat_f) {
+    wants_temporal <- self$use_framewise_decoding && num_frames > tile_lat_f
+    wants_spatial <- self$use_tiling &&
+    (width > tile_lat_w || height > tile_lat_h)
+    if ((wants_temporal || wants_spatial) && .ltx23_untiled_fits(z)) {
+        # Tiling exists to bound VRAM, not for correctness: when the
+        # whole sample fits, one full-latent forward skips the tile
+        # overlap recompute and seam blending (2.7 s vs 4.4 s at
+        # 768x512x49)
+        return(.ltx23_decode_tile(self, z, causal))
+    }
+    if (wants_temporal) {
         return(.ltx23_temporal_tiled_decode(self, z, causal = causal))
     }
-    if (self$use_tiling && (width > tile_lat_w || height > tile_lat_h)) {
+    if (wants_spatial) {
         return(.ltx23_tiled_decode(self, z, causal = causal))
     }
     .ltx23_decode_tile(self, z, causal)
@@ -398,6 +408,48 @@ ltx23_video_vae <- torch::nn_module(
     b
 }
 
+# Tiling exists to bound decoder activation VRAM. When the whole
+# sample's untiled decode fits in what is left of the card, one
+# full-latent forward beats the tiles. Activation cost is linear in
+# output pixel-frames: ~1 GB + ~350 B per pixel-frame measured on the
+# 2.3 decoder across 2.5M-19.3M pixel-frames; 360 B/pxf plus 15%
+# headroom below rounds up. options(diffuseR.vae_untiled = TRUE/FALSE)
+# forces a path; the "auto" default applies the fit test on CUDA and
+# keeps tiled behavior elsewhere.
+.ltx23_untiled_env <- new.env(parent = emptyenv())
+
+.ltx23_untiled_fits <- function(z) {
+    pref <- getOption("diffuseR.vae_untiled", "auto")
+    if (isTRUE(pref)) {
+        return(TRUE)
+    }
+    if (!identical(pref, "auto")) {
+        return(FALSE)
+    }
+    if (z$device$type != "cuda") {
+        return(FALSE)
+    }
+    total <- .ltx23_untiled_env$total_bytes
+    if (is.null(total)) {
+        gb <- tryCatch(.detect_vram(use_free = FALSE), error = function(e) NULL)
+        if (!isTRUE(gb > 0)) {
+            return(FALSE)
+        }
+        total <- gb * 1e9
+        .ltx23_untiled_env$total_bytes <- total
+    }
+    alloc <- tryCatch(
+                      as.numeric(torch::cuda_memory_stats()$allocated_bytes$all$current),
+                      error = function(e) NULL
+    )
+    if (is.null(alloc)) {
+        return(FALSE)
+    }
+    pxf <- ((z$shape[3] - 1) * 8 + 1) * z$shape[4] * 32 * z$shape[5] * 32
+    est <- 1e9 + 360 * pxf
+    est < 0.85 * (total - alloc)
+}
+
 # Spatially tiled decode: overlapping latent tiles, decoded separately,
 # crossfaded at the seams (diffusers AutoencoderKLLTX2Video.tiled_decode)
 .ltx23_tiled_decode <- function(vae, z, causal = NULL) {
@@ -425,12 +477,11 @@ ltx23_video_vae <- torch::nn_module(
                                        z$narrow(4L, i + 1L, h_len)$narrow(5L, j + 1L, w_len),
                                        causal
             )
+            # Dead tile handles are left to the allocator callback:
+            # with the gc gates live (ltx23_tune_gc) that no longer
+            # storms, and an explicit per-tile gc() here measured
+            # 1.9 s per decode
             row[[length(row) + 1L]] <- tile
-            if (!isTRUE(getOption("diffuseR.jit_vae", FALSE))) {
-                # Eager tiles leave GBs of dead handles; without this
-                # the allocator callback storms instead
-                gc(verbose = FALSE)
-            }
         }
         rows[[length(rows) + 1L]] <- row
     }
@@ -487,9 +538,6 @@ ltx23_video_vae <- torch::nn_module(
             decoded <- decoded$narrow(3L, 1L, decoded$shape[3] - 1L)
         }
         row[[length(row) + 1L]] <- decoded
-        if (!isTRUE(getOption("diffuseR.jit_vae", FALSE))) {
-            gc(verbose = FALSE)
-        }
     }
 
     result_row <- list()

@@ -211,3 +211,29 @@ torch::with_no_grad({
   b <- vae_t$decode(z_small)
 })
 expect_true(as.numeric((a - b)$abs()$max()) == 0)
+
+# --- Untiled-when-fits dispatch ----------------------------------------------------
+
+# Force-untiled: with tiling enabled and tiles smaller than the input,
+# the option must route to the single full-latent forward (identical
+# to the untiled reference, no seam blending)
+vae_t$enable_tiling(spatial = TRUE, temporal = TRUE)
+vae_t$tile_sample_min_height <- 64L
+vae_t$tile_sample_min_width <- 64L
+vae_t$tile_sample_stride_height <- 32L
+vae_t$tile_sample_stride_width <- 32L
+vae_t$tile_sample_min_num_frames <- 16L
+vae_t$tile_sample_stride_num_frames <- 8L
+options(diffuseR.vae_untiled = TRUE)
+torch::with_no_grad(forced <- vae_t$decode(z_big))
+expect_true(max_abs_diff(forced, ref_full) < 1e-6)
+
+# Force-tiled: FALSE must reproduce the tiled path exactly
+options(diffuseR.vae_untiled = FALSE)
+torch::with_no_grad(forced_tiled <- vae_t$decode(z_big))
+expect_true(max_abs_diff(forced_tiled, tiled_t) < 1e-6)
+
+# "auto" on CPU keeps the tiled path (no VRAM to test against)
+options(diffuseR.vae_untiled = NULL)
+torch::with_no_grad(auto_cpu <- vae_t$decode(z_big))
+expect_true(max_abs_diff(auto_cpu, tiled_t) < 1e-6)

@@ -1,3 +1,13 @@
+# diffuseR 0.1.0.12 (development)
+
+* LTX video decode runs untiled when the estimated activation cost
+  (~1 GB + ~360 B per output pixel-frame) fits the card - tiling
+  bounds VRAM, and at decode time the transformer is phase-offloaded,
+  so 768x512x49 decodes in one full-latent forward. The per-tile
+  explicit `gc()` is gone (storm-free with the allocator gates live).
+  In-render decode phase 12.3 s -> 1.7-1.8 s; warm render 54 -> ~44 s.
+  `options(diffuseR.vae_untiled = TRUE/FALSE)` forces either path.
+
 # diffuseR 0.1.0.11 (development)
 
 * `ltx23_tune_gc()` now takes effect: it used to set the allocator gate
