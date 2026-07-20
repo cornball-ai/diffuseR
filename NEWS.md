@@ -1,3 +1,20 @@
+# diffuseR 0.1.0.11 (development)
+
+* `ltx23_tune_gc()` now takes effect: it used to set the allocator gate
+  options one call after `torch::cuda_is_available()` had started torch
+  (which reads them exactly once at init), so every option it set was
+  inert. Options now land before the first torch call, the three CUDA
+  gates are pushed into the live allocator, and `.onLoad` defaults
+  `torch.threshold_call_gc` (which has no live setter). Measured: ~4-5%
+  off LTX render walls (63.7/62.2/61.9 s vs 67.9/64.2/65.6 s at
+  768x512x49 NF4).
+* `diffuseR.pin_staging` now defaults to TRUE for LTX phase offload:
+  page-locked host copies make onload a DMA transfer and offload a
+  pointer swap, saving ~7 s per render for +9 s of one-time
+  page-locking at pipeline load (break-even on the second render).
+  Opt out with `options(diffuseR.pin_staging = FALSE)` under host
+  memory pressure.
+
 # diffuseR 0.1.0.10 (development)
 
 * The generators accept a three-level `verbose`: "silent", "progress",

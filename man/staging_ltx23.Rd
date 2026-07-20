@@ -14,15 +14,16 @@ re-points the tensors at the still-valid pinned copies — weights
 are immutable during inference, so offload moves no bytes at all.
 }
 \details{
-Costs: the pinned copies are non-swappable host RAM for the life
-of the pipeline (about the model's CPU footprint), and page-locking
-~20GB adds ~30s to pipeline load. Measured per render the win is
-small (~2.7s: warm pinned onload 0.54s vs pageable 0.99s, offload
-0.06s vs 2.36s) because the real phase-transition cost was
-allocator pool regrowth, fixed separately by the loader's pool
-pre-warm and by not emptying the CUDA cache between phases. Off by
-default; enable for long multi-render sessions with
-\code{options(diffuseR.pin_staging = TRUE)} before
-\code{ltx23_load_pipeline} (breaks even after ~11 renders).
+Costs: the model's host copies become non-swappable for the life
+of the pipeline (no extra RAM - set_data repoints the same
+tensors), and page-locking adds ~9s to pipeline load. Measured
+post byte-LUT (768x512x49, NF4, RTX 5060 Ti): ~7s saved per render
+(warm renders 64-66s pageable vs 57-59s pinned; denoise and decode
+identical, the delta is pure transfer), so pinning breaks even on
+the second render and costs a single-render session ~2s net. On by
+default; page-locking failure falls back silently per component,
+and \code{options(diffuseR.pin_staging = FALSE)} before
+\code{ltx23_load_pipeline} opts out (e.g. under host memory
+pressure, where unswappable pages turn thrashing into OOM).
 
 }
