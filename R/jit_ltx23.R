@@ -37,24 +37,17 @@ NULL
 
 .ltx23_jit_source <- function() {
     "
-def nf4_lin(x: Tensor, packed: Tensor, absmax: Tensor, bias: Tensor, table: Tensor) -> Tensor:
+def nf4_lin(x: Tensor, packed: Tensor, absmax: Tensor, bias: Tensor, table2: Tensor) -> Tensor:
+    # table2 is the [256, 2] byte LUT (hi nibble, lo nibble) in the
+    # compute dtype: one embedding gather replaces the shift/and/stack
+    # int64-index chain, whose intermediates cost ~70 bytes of traffic
+    # per half-byte weight and made dequant the per-step wall. absmax
+    # is cast down before the scale so the product never promotes to
+    # float32 (which would materialize a full-precision weight copy).
     rows = bias.size(0)
-    n = packed.size(0)
-    step = 4194304
-    outs: List[Tensor] = []
-    i = 0
-    while i < n:
-        j = min(i + step, n)
-        chunk = packed.narrow(0, i, j - i)
-        hi = torch.bitwise_right_shift(chunk, 4).long()
-        lo = torch.bitwise_and(chunk, 15).long()
-        idx = torch.stack([hi, lo], -1).flatten()
-        vals = torch.index_select(table, 0, idx)
-        sc = absmax.narrow(0, i * 2 // 64, (j - i) * 2 // 64)
-        outs.append((vals.reshape(-1, 64) * sc.unsqueeze(1)).flatten().type_as(x))
-        i = j
-    w = torch.cat(outs, 0).reshape([rows, n * 2 // rows])
-    return torch.linear(x, w, bias)
+    vals = torch.embedding(table2, packed.int())
+    w = vals.reshape([-1, 64]) * absmax.type_as(table2).unsqueeze(1)
+    return torch.linear(x, w.reshape([rows, -1]).type_as(x), bias)
 
 def rmsn(x: Tensor) -> Tensor:
     v = x.float().pow(2).mean(-1, keepdim=True)
@@ -97,14 +90,14 @@ def modtok(vada: Tensor, j: int, idx: Optional[Tensor]) -> Tensor:
         return v
     return v.index_select(1, idx)
 
-def attn_nf4(x: Tensor, ctx: Tensor, ws: List[Tensor], base: int, table: Tensor, heads: int,
+def attn_nf4(x: Tensor, ctx: Tensor, ws: List[Tensor], base: int, table2: Tensor, heads: int,
              q_cos: Optional[Tensor], q_sin: Optional[Tensor],
              k_cos: Optional[Tensor], k_sin: Optional[Tensor],
              mask: Optional[Tensor]) -> Tensor:
     gl = torch.linear(x, ws[base], ws[base + 1])
-    q = rmsn_w(nf4_lin(x, ws[base + 2], ws[base + 3], ws[base + 4], table), ws[base + 14])
-    k = rmsn_w(nf4_lin(ctx, ws[base + 5], ws[base + 6], ws[base + 7], table), ws[base + 15])
-    v = nf4_lin(ctx, ws[base + 8], ws[base + 9], ws[base + 10], table)
+    q = rmsn_w(nf4_lin(x, ws[base + 2], ws[base + 3], ws[base + 4], table2), ws[base + 14])
+    k = rmsn_w(nf4_lin(ctx, ws[base + 5], ws[base + 6], ws[base + 7], table2), ws[base + 15])
+    v = nf4_lin(ctx, ws[base + 8], ws[base + 9], ws[base + 10], table2)
     if q_cos is not None and q_sin is not None:
         q = rope(q, q_cos, q_sin)
     if k_cos is not None and k_sin is not None:
@@ -116,11 +109,11 @@ def attn_nf4(x: Tensor, ctx: Tensor, ws: List[Tensor], base: int, table: Tensor,
     o = o.transpose(1, 2).flatten(2).type_as(x)
     gates = torch.sigmoid(gl) * 2.0
     o = (o.unflatten(-1, [heads, -1]) * gates.unsqueeze(-1)).flatten(2)
-    return nf4_lin(o, ws[base + 11], ws[base + 12], ws[base + 13], table)
+    return nf4_lin(o, ws[base + 11], ws[base + 12], ws[base + 13], table2)
 
-def ff_nf4(x: Tensor, ws: List[Tensor], base: int, table: Tensor) -> Tensor:
-    h = torch.gelu(nf4_lin(x, ws[base], ws[base + 1], ws[base + 2], table), approximate=\"tanh\")
-    return nf4_lin(h, ws[base + 3], ws[base + 4], ws[base + 5], table)
+def ff_nf4(x: Tensor, ws: List[Tensor], base: int, table2: Tensor) -> Tensor:
+    h = torch.gelu(nf4_lin(x, ws[base], ws[base + 1], ws[base + 2], table2), approximate=\"tanh\")
+    return nf4_lin(h, ws[base + 3], ws[base + 4], ws[base + 5], table2)
 
 def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
               temb: Tensor, temb_a: Tensor,
@@ -130,17 +123,17 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
               cav_cos: Tensor, cav_sin: Tensor, caa_cos: Tensor, caa_sin: Tensor,
               enc_mask: Optional[Tensor], aenc_mask: Optional[Tensor],
               cond_idx: Optional[Tensor],
-              ws: List[Tensor], base: int, table: Tensor,
+              ws: List[Tensor], base: int, table2: Tensor,
               heads: int, aheads: int) -> Tuple[Tensor, Tensor]:
     vada = mods(ws[base + 108], temb, 9)
     aada = mods(ws[base + 109], temb_a, 9)
 
     nh = rmsn(h) * (modtok(vada, 1, cond_idx) + 1.0) + modtok(vada, 0, cond_idx)
-    ax = attn_nf4(nh, nh, ws, base, table, heads, v_cos, v_sin, v_cos, v_sin, None)
+    ax = attn_nf4(nh, nh, ws, base, table2, heads, v_cos, v_sin, v_cos, v_sin, None)
     h = h + ax * modtok(vada, 2, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 1) + 1.0) + aada.select(2, 0)
-    aax = attn_nf4(nah, nah, ws, base + 16, table, aheads, a_cos, a_sin, a_cos, a_sin, None)
+    aax = attn_nf4(nah, nah, ws, base + 16, table2, aheads, a_cos, a_sin, a_cos, a_sin, None)
     ah = ah + aax * aada.select(2, 2)
 
     pada = mods(ws[base + 110], tp, 2)
@@ -148,12 +141,12 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 
     nh = rmsn(h) * (modtok(vada, 7, cond_idx) + 1.0) + modtok(vada, 6, cond_idx)
     encm = enc * (pada.select(2, 1) + 1.0) + pada.select(2, 0)
-    ax = attn_nf4(nh, encm, ws, base + 32, table, heads, None, None, None, None, enc_mask)
+    ax = attn_nf4(nh, encm, ws, base + 32, table2, heads, None, None, None, None, enc_mask)
     h = h + ax * modtok(vada, 8, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 7) + 1.0) + aada.select(2, 6)
     aencm = aenc * (apada.select(2, 1) + 1.0) + apada.select(2, 0)
-    aax = attn_nf4(nah, aencm, ws, base + 48, table, aheads, None, None, None, None, aenc_mask)
+    aax = attn_nf4(nah, aencm, ws, base + 48, table2, aheads, None, None, None, None, aenc_mask)
     ah = ah + aax * aada.select(2, 8)
 
     nh = rmsn(h)
@@ -165,19 +158,19 @@ def block_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 
     mnh = nh * (vca.select(2, 0) + 1.0) + vca.select(2, 1)
     mna = nah * (aca.select(2, 0) + 1.0) + aca.select(2, 1)
-    a2v = attn_nf4(mnh, mna, ws, base + 64, table, aheads, cav_cos, cav_sin, caa_cos, caa_sin, None)
+    a2v = attn_nf4(mnh, mna, ws, base + 64, table2, aheads, cav_cos, cav_sin, caa_cos, caa_sin, None)
     h = h + vcg.select(2, 0) * a2v
 
     mnh = nh * (vca.select(2, 2) + 1.0) + vca.select(2, 3)
     mna = nah * (aca.select(2, 2) + 1.0) + aca.select(2, 3)
-    v2a = attn_nf4(mna, mnh, ws, base + 80, table, aheads, caa_cos, caa_sin, cav_cos, cav_sin, None)
+    v2a = attn_nf4(mna, mnh, ws, base + 80, table2, aheads, caa_cos, caa_sin, cav_cos, cav_sin, None)
     ah = ah + acg.select(2, 0) * v2a
 
     nh = rmsn(h) * (modtok(vada, 4, cond_idx) + 1.0) + modtok(vada, 3, cond_idx)
-    h = h + ff_nf4(nh, ws, base + 96, table) * modtok(vada, 5, cond_idx)
+    h = h + ff_nf4(nh, ws, base + 96, table2) * modtok(vada, 5, cond_idx)
 
     nah = rmsn(ah) * (aada.select(2, 4) + 1.0) + aada.select(2, 3)
-    ah = ah + ff_nf4(nah, ws, base + 102, table) * aada.select(2, 5)
+    ah = ah + ff_nf4(nah, ws, base + 102, table2) * aada.select(2, 5)
 
     return (h, ah)
 
@@ -189,14 +182,14 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
               cav_cos: Tensor, cav_sin: Tensor, caa_cos: Tensor, caa_sin: Tensor,
               enc_mask: Optional[Tensor], aenc_mask: Optional[Tensor],
               cond_idx: Optional[Tensor],
-              ws: List[Tensor], table: Tensor,
+              ws: List[Tensor], table2: Tensor,
               n_blocks: int, heads: int, aheads: int) -> Tuple[Tensor, Tensor]:
     i = 0
     while i < n_blocks:
         h, ah = block_nf4(h, ah, enc, aenc, temb, temb_a, tcss, tcass, tcg, tcag,
                           tp, tpa, v_cos, v_sin, a_cos, a_sin,
                           cav_cos, cav_sin, caa_cos, caa_sin,
-                          enc_mask, aenc_mask, cond_idx, ws, i * 114, table, heads, aheads)
+                          enc_mask, aenc_mask, cond_idx, ws, i * 114, table2, heads, aheads)
         i += 1
     return (h, ah)
 "
@@ -269,14 +262,19 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
     isTRUE(block$audio_cross_attn_adaln)
 }
 
-# NF4 level table on the right device (cached per device)
-.ltx23_jit_table <- function(device) {
-    key <- paste(device$type, device$index %||% 0L, sep = "|")
+# Byte-level NF4 dequant LUT [256, 2] (hi nibble, lo nibble), cached
+# per device+dtype. Built in the compute dtype so the in-graph scale
+# multiply never promotes: float32 (CPU, tests) reproduces the old
+# fp32 dequant exactly; bf16 (GPU) accepts ~0.4% weight rounding (far
+# below NF4 quantization noise) for half the dequant traffic.
+.ltx23_jit_table <- function(device, dtype) {
+    key <- paste(device$type, device$index %||% 0L, dtype$.type(), sep = "|")
     tbl <- .ltx23_jit_env[[key]]
     if (is.null(tbl)) {
-        tbl <- torch::torch_tensor(.ltx23_nf4_table,
-                                   dtype = torch::torch_float32(),
-                                   device = device)
+        byte <- 0:255
+        pairs <- cbind(.ltx23_nf4_table[byte %/% 16L + 1L],
+                       .ltx23_nf4_table[byte %% 16L + 1L])
+        tbl <- torch::torch_tensor(pairs, dtype = dtype, device = device)
         .ltx23_jit_env[[key]] <- tbl
     }
     tbl
@@ -308,7 +306,7 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
     # unname: an nn_module_list yields named children, and a named R
     # list marshals to TorchScript as Dict[str, Tensor], not List[Tensor]
     ws <- unname(do.call(c, lapply(blocks, .ltx23_jit_pack_block)))
-    table <- .ltx23_jit_table(hidden_states$device)
+    table <- .ltx23_jit_table(hidden_states$device, hidden_states$dtype)
     heads <- blocks[[1]]$attn1$heads
     aheads <- blocks[[1]]$audio_attn1$heads
 

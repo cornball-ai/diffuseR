@@ -239,3 +239,14 @@ torch::with_no_grad({
 })
 expect_true(max_abs_diff(out_ci[[1]], ref_ci[[1]]) < 1e-4)
 expect_true(max_abs_diff(out_ci[[2]], ref_ci[[2]]) < 1e-4)
+
+# The byte LUT decodes every byte to its (hi nibble, lo nibble)
+# codebook pair in order
+lut <- diffuseR:::.ltx23_jit_table(torch::torch_device("cpu"),
+  torch::torch_float32())
+expect_equal(as.integer(lut$shape), c(256L, 2L))
+nf4_levels <- diffuseR:::.ltx23_nf4_table
+for (b in c(0L, 1L, 15L, 16L, 137L, 240L, 255L)) {
+  expect_equal(as.numeric(lut[b + 1L, ]),
+    c(nf4_levels[b %/% 16L + 1L], nf4_levels[b %% 16L + 1L]))
+}
