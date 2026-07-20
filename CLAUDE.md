@@ -448,16 +448,23 @@ stride=2** (T=4 fails the unflatten; T=5 → 3 → 2 works).
 # R: x$unflatten(3, c(-1, stride))      # dim 3 is 1-indexed
 ```
 
-**R torch lacks nnf_scaled_dot_product_attention:**
-Manual scaled dot-product attention is required (and materializes the full
-[B, H, S, S] attention matrix — chunk queries at high resolution):
+**Fused SDPA exists in R torch (>= 0.17.0) — use it:**
+`torch_scaled_dot_product_attention(query, key, value, attn_mask, ...)` is
+exported, dispatches on CPU and CUDA, and never materializes the
+[B, H, Sq, Sk] score matrix. Probe the namespace (not the device) for
+availability; a float additive mask must match the query dtype (a float32
+mask against bf16 queries raises "invalid dtype for bias", see #34):
 ```r
-scale <- 1.0 / sqrt(head_dim)
-attn_weights <- torch::torch_matmul(query, key$transpose(-2L, -1L)) * scale
-if (!is.null(attention_mask)) attn_weights <- attn_weights + attention_mask
-attn_weights <- torch::nnf_softmax(attn_weights, dim = -1L)
-hidden_states <- torch::torch_matmul(attn_weights, value)
+has_sdpa <- "torch_scaled_dot_product_attention" %in%
+  getNamespaceExports("torch")
 ```
+diffuseR routes eager attention through `.ltx23_sdpa` (fused when
+available; the chunked manual implementation is the fallback for older
+torch or an explicit `attn_chunk`), and the NF4 jit block stack calls
+`torch.scaled_dot_product_attention` inside TorchScript. Only write the
+manual matmul+softmax form when reproducing it as a fallback — and then
+chunk queries at high resolution, since it materializes the full score
+matrix.
 
 **Attention mask broadcasting:**
 2D attention masks [B, S] must be expanded to [B, 1, 1, S] to broadcast with
