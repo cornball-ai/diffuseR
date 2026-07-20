@@ -106,8 +106,17 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
 #' actual footprint is safe here because the LTX hot loops compute into
 #' persistent scratch buffers (near-zero per-step garbage). Also raises
 #' the host-allocation GC threshold and defaults
-#' \code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. Must run before
-#' the first CUDA op; user-set options win.
+#' \code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. User-set
+#' options win.
+#'
+#' \code{start_torch()} reads the gate options exactly once, so setting
+#' them after torch has started is inert on its own. The three CUDA
+#' gates are therefore also pushed into the live allocator here (the
+#' \code{.flux_gc_gates} pattern), which makes this function effective
+#' whenever it runs. The host-side \code{torch.threshold_call_gc} has
+#' no live setter; the package defaults it in \code{.onLoad} so torch
+#' reads it at init in any session that loads diffuseR before running
+#' torch ops.
 #'
 #' @param footprint_gb Numeric. Expected resident GPU footprint in GB
 #'   (NF4 transformer: ~12).
@@ -120,15 +129,10 @@ ltx23_tune_gc <- function(footprint_gb = 12, total_gb = NULL) {
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True")
     }
-    if (!torch::cuda_is_available()) {
-        return(invisible(NULL))
-    }
-    if (is.null(total_gb)) {
-        total_gb <- .detect_vram(use_free = FALSE)
-        if (!isTRUE(total_gb > 0)) {
-            return(invisible(NULL))
-        }
-    }
+    # Options are set before the first torch:: call in this function:
+    # torch::cuda_is_available() below starts torch, and start_torch
+    # reads these once. (The old order set them one call after init
+    # read them - inert by construction.)
     if (is.null(getOption("torch.threshold_call_gc"))) {
         options(torch.threshold_call_gc = 16000)
     }
@@ -144,8 +148,27 @@ ltx23_tune_gc <- function(footprint_gb = 12, total_gb = NULL) {
     }
     rate <- NULL
     if (is.null(getOption("torch.cuda_allocator_reserved_rate"))) {
-        rate <- min(0.92, max(0.20, footprint_gb / total_gb))
-        options(torch.cuda_allocator_reserved_rate = rate)
+        if (is.null(total_gb)) {
+            total_gb <- .detect_vram(use_free = FALSE)
+        }
+        if (isTRUE(total_gb > 0)) {
+            rate <- min(0.92, max(0.20, footprint_gb / total_gb))
+            options(torch.cuda_allocator_reserved_rate = rate)
+        }
+    }
+    if (!torch::cuda_is_available()) {
+        return(invisible(rate))
+    }
+    # Torch is usually long started by the time a loader calls this:
+    # push the CUDA gates into the live allocator directly.
+    push <- get0("cpp_set_cuda_allocator_allocator_thresholds",
+                 envir = asNamespace("torch"))
+    if (is.function(push)) {
+        try(push(
+                 getOption("torch.cuda_allocator_reserved_rate", 0.2),
+                 getOption("torch.cuda_allocator_allocated_rate", 0.8),
+                 getOption("torch.cuda_allocator_allocated_reserved_rate", 0.8)
+            ), silent = TRUE)
     }
     invisible(rate)
 }
