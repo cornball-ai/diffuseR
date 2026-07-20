@@ -164,17 +164,22 @@ qwen3_encoder <- torch::nn_module(
     b <- input_ids$shape[1]
     s <- input_ids$shape[2]
     device <- x$device
-    f32 <- torch::torch_float32()
+    dt <- x$dtype
 
     rope <- .qwen3_rope_tables(s, self$head_dim, self$rope_theta, device)
 
-    # Additive causal (+ padding) mask [B, 1, S, S] in float32
-    neg <- -3.4e38
-    causal <- torch::torch_full(c(s, s), neg, dtype = f32,
+    # Additive causal (+ padding) mask [B, 1, S, S] in the compute dtype:
+    # the fused SDPA kernel requires the bias dtype to match the query.
+    # -10000 (the dit_ltx23 convention) stays finite in every float
+    # dtype, including where -3.4e38 would overflow bfloat16 to -Inf.
+    # The $neg()$add(1) chain (not `1 - x`) keeps torch Scalars, since
+    # the Ops dispatch materializes R scalars as Float and promotes.
+    neg <- -10000
+    causal <- torch::torch_full(c(s, s), neg, dtype = dt,
                                 device = device)$triu(diagonal = 1L)
     mask <- causal$unsqueeze(1L)$unsqueeze(1L)$expand(c(b, 1L, s, s))
     if (!is.null(attention_mask)) {
-        pad <- (1 - attention_mask$to(dtype = f32, device = device))$mul(neg)
+        pad <- attention_mask$to(dtype = dt, device = device)$neg()$add(1)$mul(neg)
         mask <- mask + pad$unsqueeze(2L)$unsqueeze(2L)
     }
 

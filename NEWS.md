@@ -5,6 +5,9 @@
   compute dtype) instead of the int64 shift/stack/gather chain, cutting
   per-step dequant memory traffic ~6x (isolated benchmark: 5.7x; the
   dequant was the measured per-step wall at ~4.4 s of a 6.5 s step).
+* The Qwen3 encoder builds its additive attention mask in the query
+  dtype, fixing the "invalid dtype for bias" CUDA error every FLUX.2
+  prompt encode hit through the fused SDPA path (since #33).
 
 # diffuseR 0.1.0.7 (development)
 
