@@ -23,6 +23,17 @@ weights that fires on nearly every allocation. Raising the rate to the
 actual footprint is safe here because the LTX hot loops compute into
 persistent scratch buffers (near-zero per-step garbage). Also raises
 the host-allocation GC threshold and defaults
-\code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. Must run before
-the first CUDA op; user-set options win.
+\code{PYTORCH_CUDA_ALLOC_CONF} to expandable segments. User-set
+options win.
+}
+\details{
+\code{start_torch()} reads the gate options exactly once, so setting
+them after torch has started is inert on its own. The three CUDA
+gates are therefore also pushed into the live allocator here (the
+\code{.flux_gc_gates} pattern), which makes this function effective
+whenever it runs. The host-side \code{torch.threshold_call_gc} has
+no live setter; the package defaults it in \code{.onLoad} so torch
+reads it at init in any session that loads diffuseR before running
+torch ops.
+
 }
