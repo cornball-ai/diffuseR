@@ -349,7 +349,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     }
 
     if (phase_offload && device == "cuda" &&
-        isTRUE(getOption("diffuseR.pin_staging", FALSE))) {
+        isTRUE(getOption("diffuseR.pin_staging", TRUE))) {
         # Page-lock every phase-offloaded component once so the
         # per-render CPU<->GPU moves run at full PCIe rate (offload
         # becomes a pointer swap; see staging_ltx23.R). Falls back
