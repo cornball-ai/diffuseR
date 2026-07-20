@@ -1,6 +1,6 @@
 Package: diffuseR
 Title: Functional Interface to Diffusion Models in R
-Version: 0.1.0.11
+Version: 0.1.0.12
 Authors@R: c(
     person("Troy", "Hernandez", email = "troy@cornball.ai", role = c("aut", "cre"),
            comment = c(ORCID = "0009-0005-4248-604X")),
