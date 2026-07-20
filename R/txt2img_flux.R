@@ -219,11 +219,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
                           compute_dtype, chunk_size = NULL, verbose = TRUE) {
     timesteps <- as.numeric(schedule$timesteps$cpu())
     n <- length(timesteps)
-    pb <- if (verbose) {
-        utils::txtProgressBar(min = 0, max = n, style = 3)
-    } else {
-        NULL
-    }
+    pb <- .denoise_progress(n, NULL, verbose)
     f32 <- torch::torch_float32()
 
     torch::with_no_grad({
@@ -249,14 +245,10 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
             latents <- step$prev_sample
             schedule <- step$schedule
             rm(noise_pred, step)
-            if (!is.null(pb)) {
-                utils::setTxtProgressBar(pb, i)
-            }
+            pb$tick(i)
         }
     })
-    if (!is.null(pb)) {
-        close(pb)
-    }
+    pb$done()
     latents
 }
 
@@ -280,7 +272,10 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
 #'   embeddings (skip the text encoders).
 #' @param save_file Logical. Write a PNG.
 #' @param filename Output path (default derived from the prompt).
-#' @param verbose Logical.
+#' @param verbose Logical, or one of "silent", "progress", "steps".
+#'   TRUE = "steps" (full per-phase chatter), FALSE = "silent".
+#'   "progress" prints a one-line generation summary plus a denoise
+#'   progress bar (interactive) or periodic step ticks (captured logs).
 #' @param ... Passed to \code{\link{flux_load_pipeline}} when
 #'   \code{pipeline} is NULL.
 #'
@@ -294,6 +289,12 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
                          prompt_embeds = NULL, pooled_prompt_embeds = NULL,
                          save_file = TRUE, filename = NULL, verbose = TRUE,
                          ...) {
+    level <- .verbosity(verbose)
+    verbose <- level == "steps"
+    if (level != "silent") {
+        message(sprintf("FLUX.1 schnell: %dx%d, %d steps", as.integer(width),
+                        as.integer(height), as.integer(num_inference_steps)))
+    }
     if (is.null(pipeline)) {
         pipeline <- flux_load_pipeline(..., verbose = verbose)
     }
@@ -387,7 +388,7 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     latents <- .flux_denoise(
                              transformer, latents, sched, prompt_embeds,
                              pooled_prompt_embeds, rope, compute_dtype,
-                             chunk_size = pipeline$attn_chunk, verbose = verbose
+                             chunk_size = pipeline$attn_chunk, verbose = level
     )
     offload(pipeline$transformer)
     ltx23_release_dequant_buffers()
