@@ -852,10 +852,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
 
     if (!is.null(filename) && decode_video) {
         phase_t0 <- Sys.time()
-        save_video_ltx23(result$video, filename,
+        # [[ ]] not $: with decode_audio = FALSE there is no result$audio
+        # and partial matching silently hands write_wav the raw
+        # audio_latents tensor
+        save_video_ltx23(result[["video"]], filename,
                          fps = frame_rate,
-                         audio = result$audio,
-                         sample_rate = result$sample_rate,
+                         audio = result[["audio"]],
+                         sample_rate = result[["sample_rate"]],
                          verbose = verbose
         )
         result$filename <- filename
