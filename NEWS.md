@@ -1,3 +1,20 @@
+# diffuseR 0.1.0.13 (development)
+
+* `gemma3_quantize_nf4()` + `load_gemma3_nf4()` put the Gemma3 12B text
+  encoder on the GPU: the 336 projection weights quantize to a ~8 GB
+  NF4 artifact (one-time 52 s; vision tower dropped), which loads in
+  ~12 s and encodes in ~7 s on CUDA vs ~30 s load + ~24 s encode for
+  the fp32 CPU path, at 8 GB host RAM instead of 45. Pinned phase swap
+  costs 0.3 s on / 0 s off after a one-time 3.3 s page-lock.
+  `load_gemma3_text_encoder()` dispatches to the artifact
+  automatically. Embedding drift (cosine 0.989 vs fp32) renders
+  scene-equivalent same-seed videos.
+* The eager NF4 dequant now shares the byte-LUT with the jit block
+  stack (one index per packed byte, gather straight into the output),
+  speeding every eager NF4 forward (Gemma3, FLUX.1, LTX fallbacks).
+* Fixed `txt2vid_ltx2(decode_audio = FALSE, filename = )`: partial
+  matching handed the raw audio latents to the WAV writer.
+
 # diffuseR 0.1.0.12 (development)
 
 * LTX video decode runs untiled when the estimated activation cost
