@@ -1,3 +1,16 @@
+# diffuseR 0.1.0.14 (development)
+
+* Latent-space chaining seams for chunked video continuation:
+  `txt2vid_ltx2()` gains `condition_latents=` (an already-encoded
+  prefix, bypassing the VAE), `resident=` (keep named components on
+  the compute device across back-to-back calls; onload is now
+  idempotent), and `trim_frames=` (deliver head-free pixels while the
+  returned latents keep the full sequence). Results carry
+  `latent_shape`, and the new `ltx23_tail_latents()` slices a
+  result's trailing latent frames into `condition_latents` form — so
+  a chunk chain can stay in latent space end to end: encode once,
+  denoise every chunk with the transformer resident, decode once.
+
 # diffuseR 0.1.0.13 (development)
 
 * `gemma3_quantize_nf4()` + `load_gemma3_nf4()` put the Gemma3 12B text
