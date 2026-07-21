@@ -169,15 +169,13 @@ load_gemma3_nf4 <- function(artifact_dir, device = "cuda",
         message(sprintf("Creating Gemma3 NF4 model: %d layers, hidden_size=%d",
                         config$num_hidden_layers, config$hidden_size))
     }
-    model <- .construct_skeleton(gemma3_text_model, config,
-                                 dtype = torch_dtype)
+    model <- .construct_skeleton(gemma3_text_model, config, dtype = torch_dtype)
 
     cast_keys <- grep("_absmax$", ckpt$keys, value = TRUE)
     cast_keys <- sub("_absmax$", "", cast_keys)
     torch::with_no_grad({
         for (key in cast_keys) {
-            segs <- strsplit(sub("\\.weight$", "", key), ".",
-                             fixed = TRUE)[[1]]
+            segs <- strsplit(sub("\\.weight$", "", key), ".", fixed = TRUE)[[1]]
             # layers.<l>.<group>.<proj>
             layer <- model$layers[[as.integer(segs[2]) + 1L]]
             parent <- layer[[segs[3]]]
@@ -192,7 +190,7 @@ load_gemma3_nf4 <- function(artifact_dir, device = "cuda",
         dests <- model$parameters
         filled <- character(0)
         for (key in setdiff(ckpt$keys, c(cast_keys,
-                                         paste0(cast_keys, "_absmax")))) {
+                    paste0(cast_keys, "_absmax")))) {
             dest <- dests[[key]]
             if (is.null(dest)) {
                 next

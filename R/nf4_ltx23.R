@@ -102,8 +102,7 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
             len <- min(bytes_per_chunk, n_bytes - start + 1L)
             idx <- scratch$idx$narrow(1L, 1L, len)
             idx$copy_(packed$narrow(1L, start, len))$add_(1L)
-            .ltx23_index_select_into(out_pairs$narrow(1L, start, len),
-                                     tbl, idx)
+            .ltx23_index_select_into(out_pairs$narrow(1L, start, len), tbl, idx)
 
             block_start <- ((start - 1L) * 2L) %/% block + 1L
             n_blocks <- (len * 2L) %/% block
@@ -150,8 +149,7 @@ ltx23_nf4_dequantize <- function(packed, absmax, shape,
     if (is.null(scratch) || scratch$n_bytes < n_bytes) {
         scratch <- list(
                         n_bytes = n_bytes,
-                        idx = torch::torch_empty(n_bytes,
-                dtype = torch::torch_long(),
+                        idx = torch::torch_empty(n_bytes, dtype = torch::torch_long(),
                 device = device)
         )
         .ltx23_dequant_scratch[[key]] <- scratch
