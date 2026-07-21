@@ -482,8 +482,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
                          condition_latents = NULL, resident = character(),
-                         trim_frames = 0L,
-                         audio = NULL, verbose = TRUE) {
+                         trim_frames = 0L, audio = NULL, verbose = TRUE) {
     level <- .verbosity(verbose)
     verbose <- level == "steps"
     if (level != "silent") {
@@ -664,14 +663,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     if (!is.null(condition_latents)) {
         # Already-encoded prefix (e.g. ltx23_tail_latents of a previous
         # chunk): no VAE touch at all
-        cond_latents <- condition_latents$to(device = device,
-                                             dtype = f32)
+        cond_latents <- condition_latents$to(device = device, dtype = f32)
         if (cond_latents$ndim != 5L || cond_latents$shape[2] != 128L ||
             cond_latents$shape[4] != s1_height ||
             cond_latents$shape[5] != s1_width) {
             stop(sprintf(
-                "condition_latents must be [1, 128, k, %d, %d] for %dx%d generation",
-                s1_height, s1_width, width, height))
+                         "condition_latents must be [1, 128, k, %d, %d] for %dx%d generation",
+                         s1_height, s1_width, width, height))
         }
     } else if (conditioned) {
         vae <- onload("vae")
@@ -829,8 +827,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     result <- list(
                    latents = latents,
                    audio_latents = audio_latents,
-                   latent_shape = c(latent_frames, latent_height,
-                                    latent_width),
+                   latent_shape = c(latent_frames, latent_height, latent_width),
                    sample_rate = 48000L
     )
     if (audio_conditioned) {
@@ -877,8 +874,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (trim_frames > 0L) {
             # Deliver head-free pixels (the conditioning overlap of a
             # continuation); result$latents keeps the full sequence
-            result$video <- result$video[-seq_len(trim_frames), , , ,
-                                         drop = FALSE]
+            result$video <- result$video[-seq_len(trim_frames),,,,
+                drop = FALSE]
         }
     }
 
