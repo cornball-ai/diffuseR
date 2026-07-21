@@ -14,6 +14,11 @@
   speeding every eager NF4 forward (Gemma3, FLUX.1, LTX fallbacks).
 * Fixed `txt2vid_ltx2(decode_audio = FALSE, filename = )`: partial
   matching handed the raw audio latents to the WAV writer.
+* `gemma3_encode_batch()` encodes a prompt vector in sub-batches with
+  optional per-prompt disk caching (resumable; returns cache paths):
+  encode a whole episode list once, then swap the encoder off and
+  render from the cached embeddings. Works around a torch_save bug
+  where storage-offset views serialize from the base storage.
 
 # diffuseR 0.1.0.12 (development)
 

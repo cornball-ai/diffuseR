@@ -883,3 +883,106 @@ if (!exists("%||%", mode = "function")) {
         x
     }
 }
+
+#' Batch-encode prompts with Gemma3, cached to disk
+#'
+#' Encodes a vector of prompts in sub-batches (bounding activation
+#' VRAM) and optionally caches each prompt's result under
+#' \code{cache_dir}, keyed by the prompt text and sequence length.
+#' Already-cached prompts are skipped, so an interrupted batch resumes
+#' where it stopped. Embeddings land on the CPU either way; the
+#' renderer moves them per phase.
+#'
+#' Budget note: each prompt's result is the full hidden-state stack the
+#' LTX connectors consume - roughly 0.4 GB at 1024 tokens - so caching
+#' N prompts needs ~0.4N GB of disk.
+#'
+#' @param prompts Character vector.
+#' @param model,tokenizer As in \code{\link{encode_with_gemma3}}.
+#' @param batch_size Integer. Prompts per forward pass (default 4;
+#'   raise on cards with headroom, lower if the encode OOMs).
+#' @param cache_dir Optional directory. When given, each prompt is
+#'   written to \code{gemma3-<md5>.pt} and the return value is the
+#'   character vector of those paths (load one with
+#'   \code{torch::torch_load}); when NULL, the return value is a list
+#'   of \code{list(prompt_embeds, prompt_attention_mask)} in prompt
+#'   order.
+#' @param max_sequence_length,device,verbose As in
+#'   \code{\link{encode_with_gemma3}}.
+#'
+#' @return Character vector of cache paths (with \code{cache_dir}) or
+#'   a list of per-prompt embedding results (without).
+#'
+#' @export
+gemma3_encode_batch <- function(prompts, model = NULL, tokenizer = NULL,
+                                batch_size = 4L, cache_dir = NULL,
+                                max_sequence_length = 1024L, device = "cuda",
+                                verbose = TRUE) {
+    prompts <- as.character(prompts)
+    n <- length(prompts)
+    if (!n) {
+        stop("No prompts given")
+    }
+
+    cache_paths <- NULL
+    if (!is.null(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+        cache_paths <- vapply(prompts, function(p) {
+            tf <- tempfile()
+            writeLines(c(p, as.character(max_sequence_length)), tf)
+            key <- unname(tools::md5sum(tf))
+            unlink(tf)
+            file.path(cache_dir, paste0("gemma3-", key, ".pt"))
+        }, character(1), USE.NAMES = FALSE)
+        todo <- which(!file.exists(cache_paths))
+        if (verbose && length(todo) < n) {
+            message(sprintf("%d/%d prompts already cached", n - length(todo),
+                            n))
+        }
+    } else {
+        todo <- seq_len(n)
+    }
+
+    if (is.null(cache_dir)) {
+        results <- vector("list", n)
+    } else {
+        results <- NULL
+    }
+    done <- 0L
+    for (chunk in split(todo, ceiling(seq_along(todo) / batch_size))) {
+        enc <- encode_with_gemma3(prompts[chunk], model = model,
+                                  tokenizer = tokenizer,
+                                  max_sequence_length = max_sequence_length,
+                                  device = device, verbose = FALSE)
+        embeds <- enc$prompt_embeds$cpu()
+        mask <- enc$prompt_attention_mask$cpu()
+        for (j in seq_along(chunk)) {
+            # clone(), not contiguous(): a narrow of a contiguous
+            # tensor is already contiguous, so contiguous() keeps the
+            # storage-offset view - and torch_save serializes offset
+            # views from the base storage (every row would save as
+            # row 1). clone() forces fresh storage.
+            one <- list(
+                        prompt_embeds = embeds$narrow(1L, j, 1L)$clone(),
+                        prompt_attention_mask = mask$narrow(1L, j, 1L)$clone()
+            )
+            if (is.null(cache_dir)) {
+                results[[chunk[j]]] <- one
+            } else {
+                torch::torch_save(one, cache_paths[chunk[j]])
+            }
+        }
+        rm(enc, embeds, mask)
+        gc(verbose = FALSE)
+        done <- done + length(chunk)
+        if (verbose) {
+            message(sprintf("  encoded %d/%d prompts", done, length(todo)))
+        }
+    }
+
+    if (is.null(cache_dir)) {
+        results
+    } else {
+        cache_paths
+    }
+}
