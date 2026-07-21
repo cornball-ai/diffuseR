@@ -54,7 +54,7 @@ ltx23_fp8_linear <- torch::nn_module(
                                      set_fp8_weight = function(weight, scale, pin = FALSE) {
     weight <- weight$to(device = "cpu")
     if (pin && torch::cuda_is_available()) {
-        weight <- weight$pin_memory(device = torch::torch_device("cuda"))
+        weight <- .ltx23_pin_host(weight)
     }
     self$weight_fp8 <- weight
     self$weight_scale <- scale$to(device = "cpu",

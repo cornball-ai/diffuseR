@@ -33,20 +33,42 @@ NULL
 #'   if pinning is unavailable (no CUDA, or page-locking failed).
 #'
 #' @keywords internal
+# Allocate pinned host memory without Tensor$pin_memory(): this torch
+# build's binding requires the deprecated device argument (omitting it
+# errors with "Expected a torch_device"; passing it prints two libtorch
+# deprecation warnings per tensor - thousands of lines per pipeline
+# load). torch_empty_strided is the one creation op that exposes
+# pin_memory, so pin by allocating and copying; fall back to the noisy
+# path on builds where that fails.
+.ltx23_pin_host <- function(p) {
+    tryCatch({
+        sz <- as.integer(p$shape)
+        st <- if (length(sz)) {
+            as.integer(rev(cumprod(c(1, rev(sz)[-length(sz)]))))
+        } else {
+            integer(0)
+        }
+        buf <- torch::torch_empty_strided(sz, st, dtype = p$dtype,
+                                          pin_memory = TRUE)
+        torch::with_no_grad(buf$copy_(p))
+        buf
+    }, error = function(e) {
+        suppressWarnings(p$pin_memory(
+            device = torch::torch_device("cuda")))
+    })
+}
+
 .ltx23_pin_component <- function(module) {
     if (!torch::cuda_is_available()) {
         return(NULL)
     }
-    cuda_dev <- torch::torch_device("cuda")
     tryCatch({
         tensors <- c(module$parameters, module$buffers)
-        suppressWarnings(lapply(tensors, function(p) {
-            # The device argument is deprecated upstream but this
-            # torch build requires it
-            pinned <- p$pin_memory(device = cuda_dev)
+        lapply(tensors, function(p) {
+            pinned <- .ltx23_pin_host(p)
             p$set_data(pinned)
             list(live = p, pinned = pinned)
-        }))
+        })
     }, error = function(e) NULL)
 }
 
