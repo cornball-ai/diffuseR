@@ -550,9 +550,33 @@ gemma3_config_ltx2 <- function() {
 # Weight Loading
 # -----------------------------------------------------------------------------
 
+# Model config with HF defaults, shared by the checkpoint and NF4
+# artifact loaders (the raw text_config travels in the NF4 manifest)
+.gemma3_build_config <- function(config_raw) {
+    list(
+         vocab_size = config_raw$vocab_size %||% 262208L,
+         hidden_size = config_raw$hidden_size %||% 3840L,
+         intermediate_size = config_raw$intermediate_size %||% 15360L,
+         num_hidden_layers = config_raw$num_hidden_layers %||% 48L,
+         num_attention_heads = config_raw$num_attention_heads %||% 16L,
+         num_key_value_heads = config_raw$num_key_value_heads %||% 8L,
+         head_dim = config_raw$head_dim %||% 256L,
+         max_position_embeddings = config_raw$max_position_embeddings %||% 131072L,
+         rms_norm_eps = config_raw$rms_norm_eps %||% 1e-6,
+         rope_theta = config_raw$rope_theta %||% 1000000.0, # Gemma3 uses 1M
+         rope_scaling = list(factor = config_raw$rope_scaling$factor %||% 8.0),
+         sliding_window = config_raw$sliding_window %||% 1024L,
+         sliding_window_pattern = config_raw$sliding_window_pattern %||% 6L,
+         attn_logit_softcapping = config_raw$attn_logit_softcapping, # NULL = no softcapping (HF default)
+         query_pre_attn_scalar = config_raw$query_pre_attn_scalar %||% 256L
+    )
+}
+
 #' Load Gemma3 Text Model from safetensors
 #'
 #' Loads pre-trained Gemma3 weights from HuggingFace safetensors files.
+#' An NF4 artifact directory (from \code{\link{gemma3_quantize_nf4}})
+#' dispatches to \code{\link{load_gemma3_nf4}}.
 #'
 #' @param model_path Character. Path to directory containing model files.
 #' @param device Character. Device to load model to.
@@ -562,6 +586,15 @@ gemma3_config_ltx2 <- function() {
 #' @export
 load_gemma3_text_encoder <- function(model_path, device = "cpu",
                                      dtype = "float16", verbose = TRUE) {
+    # An NF4 artifact directory (gemma3_quantize_nf4) loads through the
+    # quantized path; bf16 compute unless the caller says otherwise
+    if (file.exists(file.path(model_path, "manifest.json"))) {
+        if (identical(dtype, "float16")) {
+            dtype <- "bfloat16"
+        }
+        return(load_gemma3_nf4(model_path, device = device, dtype = dtype,
+                               verbose = verbose))
+    }
     # Load config
     config_path <- file.path(model_path, "config.json")
     if (!file.exists(config_path)) {
@@ -575,23 +608,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
         config_raw <- config_raw$text_config
     }
 
-    config <- list(
-                   vocab_size = config_raw$vocab_size %||% 262208L,
-                   hidden_size = config_raw$hidden_size %||% 3840L,
-                   intermediate_size = config_raw$intermediate_size %||% 15360L,
-                   num_hidden_layers = config_raw$num_hidden_layers %||% 48L,
-                   num_attention_heads = config_raw$num_attention_heads %||% 16L,
-                   num_key_value_heads = config_raw$num_key_value_heads %||% 8L,
-                   head_dim = config_raw$head_dim %||% 256L,
-                   max_position_embeddings = config_raw$max_position_embeddings %||% 131072L,
-                   rms_norm_eps = config_raw$rms_norm_eps %||% 1e-6,
-                   rope_theta = config_raw$rope_theta %||% 1000000.0, # Gemma3 uses 1M
-                   rope_scaling = list(factor = config_raw$rope_scaling$factor %||% 8.0),
-                   sliding_window = config_raw$sliding_window %||% 1024L,
-                   sliding_window_pattern = config_raw$sliding_window_pattern %||% 6L,
-                   attn_logit_softcapping = config_raw$attn_logit_softcapping, # NULL = no softcapping (HF default)
-                   query_pre_attn_scalar = config_raw$query_pre_attn_scalar %||% 256L
-    )
+    config <- .gemma3_build_config(config_raw)
 
     if (verbose) {
         message(sprintf("Creating Gemma3 model: %d layers, hidden_size=%d",
@@ -864,5 +881,108 @@ if (!exists("%||%", mode = "function")) {
         y
     } else {
         x
+    }
+}
+
+#' Batch-encode prompts with Gemma3, cached to disk
+#'
+#' Encodes a vector of prompts in sub-batches (bounding activation
+#' VRAM) and optionally caches each prompt's result under
+#' \code{cache_dir}, keyed by the prompt text and sequence length.
+#' Already-cached prompts are skipped, so an interrupted batch resumes
+#' where it stopped. Embeddings land on the CPU either way; the
+#' renderer moves them per phase.
+#'
+#' Budget note: each prompt's result is the full hidden-state stack the
+#' LTX connectors consume - roughly 0.4 GB at 1024 tokens - so caching
+#' N prompts needs ~0.4N GB of disk.
+#'
+#' @param prompts Character vector.
+#' @param model,tokenizer As in \code{\link{encode_with_gemma3}}.
+#' @param batch_size Integer. Prompts per forward pass (default 4;
+#'   raise on cards with headroom, lower if the encode OOMs).
+#' @param cache_dir Optional directory. When given, each prompt is
+#'   written to \code{gemma3-<md5>.pt} and the return value is the
+#'   character vector of those paths (load one with
+#'   \code{torch::torch_load}); when NULL, the return value is a list
+#'   of \code{list(prompt_embeds, prompt_attention_mask)} in prompt
+#'   order.
+#' @param max_sequence_length,device,verbose As in
+#'   \code{\link{encode_with_gemma3}}.
+#'
+#' @return Character vector of cache paths (with \code{cache_dir}) or
+#'   a list of per-prompt embedding results (without).
+#'
+#' @export
+gemma3_encode_batch <- function(prompts, model = NULL, tokenizer = NULL,
+                                batch_size = 4L, cache_dir = NULL,
+                                max_sequence_length = 1024L, device = "cuda",
+                                verbose = TRUE) {
+    prompts <- as.character(prompts)
+    n <- length(prompts)
+    if (!n) {
+        stop("No prompts given")
+    }
+
+    cache_paths <- NULL
+    if (!is.null(cache_dir)) {
+        dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+        cache_paths <- vapply(prompts, function(p) {
+            tf <- tempfile()
+            writeLines(c(p, as.character(max_sequence_length)), tf)
+            key <- unname(tools::md5sum(tf))
+            unlink(tf)
+            file.path(cache_dir, paste0("gemma3-", key, ".pt"))
+        }, character(1), USE.NAMES = FALSE)
+        todo <- which(!file.exists(cache_paths))
+        if (verbose && length(todo) < n) {
+            message(sprintf("%d/%d prompts already cached", n - length(todo),
+                            n))
+        }
+    } else {
+        todo <- seq_len(n)
+    }
+
+    if (is.null(cache_dir)) {
+        results <- vector("list", n)
+    } else {
+        results <- NULL
+    }
+    done <- 0L
+    for (chunk in split(todo, ceiling(seq_along(todo) / batch_size))) {
+        enc <- encode_with_gemma3(prompts[chunk], model = model,
+                                  tokenizer = tokenizer,
+                                  max_sequence_length = max_sequence_length,
+                                  device = device, verbose = FALSE)
+        embeds <- enc$prompt_embeds$cpu()
+        mask <- enc$prompt_attention_mask$cpu()
+        for (j in seq_along(chunk)) {
+            # clone(), not contiguous(): a narrow of a contiguous
+            # tensor is already contiguous, so contiguous() keeps the
+            # storage-offset view - and torch_save serializes offset
+            # views from the base storage (every row would save as
+            # row 1). clone() forces fresh storage.
+            one <- list(
+                        prompt_embeds = embeds$narrow(1L, j, 1L)$clone(),
+                        prompt_attention_mask = mask$narrow(1L, j, 1L)$clone()
+            )
+            if (is.null(cache_dir)) {
+                results[[chunk[j]]] <- one
+            } else {
+                torch::torch_save(one, cache_paths[chunk[j]])
+            }
+        }
+        rm(enc, embeds, mask)
+        gc(verbose = FALSE)
+        done <- done + length(chunk)
+        if (verbose) {
+            message(sprintf("  encoded %d/%d prompts", done, length(todo)))
+        }
+    }
+
+    if (is.null(cache_dir)) {
+        results
+    } else {
+        cache_paths
     }
 }
