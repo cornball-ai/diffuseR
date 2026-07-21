@@ -432,6 +432,23 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   \code{condition_video} (8k + 1, default 9 = 2 latent frames).
 #' @param cond_noise_scale Numeric in [0, 1]. Optional partial noising
 #'   of the conditioned tokens (0 = keep them exactly).
+#' @param condition_latents Optional continuation source already in
+#'   latent space: normalized video latents [1, 128, k, height/32,
+#'   width/32] (e.g. \code{\link{ltx23_tail_latents}} on a previous
+#'   result), used directly as the frozen prefix with no VAE encode.
+#'   Mutually exclusive with \code{image} and \code{condition_video}.
+#' @param resident Character vector of pipeline component names
+#'   ("transformer", "vae", "audio_vae", "connectors", "vocoder") to
+#'   keep on the compute device after their phase instead of
+#'   offloading, for callers running several generations back to back
+#'   (chained chunks). Components already on the device are not
+#'   re-copied on later calls.
+#' @param trim_frames Integer. Drop this many leading pixel frames
+#'   from the decoded video (and the saved file), e.g. the
+#'   conditioning-head overlap of a continuation. The returned
+#'   \code{latents} keep the full sequence (tail slicing for chaining
+#'   needs it). Audio is muxed exactly as supplied, so drop any head
+#'   padding from the conditioning audio when trimming.
 #' @param audio Optional conditioning audio for audio-driven generation
 #'   (lip sync): a file path (decoded via \code{av}) or a matrix
 #'   [2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
@@ -446,7 +463,10 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'
 #' @return Invisibly, a list with \code{video} (array
 #'   [frames, height, width, 3] in [0, 1]), \code{audio} (matrix
-#'   [2, samples] in [-1, 1]), \code{sample_rate}, and the raw latents.
+#'   [2, samples] in [-1, 1]), \code{sample_rate}, the raw
+#'   \code{latents} and \code{audio_latents}, and \code{latent_shape}
+#'   (c(frames, height, width) of the latent geometry, for
+#'   \code{\link{ltx23_tail_latents}}).
 #'
 #' @export
 txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
@@ -461,6 +481,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tone_map_compression = 0, phase_offload = TRUE,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
+                         condition_latents = NULL, resident = character(),
+                         trim_frames = 0L,
                          audio = NULL, verbose = TRUE) {
     level <- .verbosity(verbose)
     verbose <- level == "steps"
@@ -473,10 +495,22 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
     }
-    if (!is.null(image) && !is.null(condition_video)) {
-        stop("Provide either image (i2v) or condition_video (continuation), not both.")
+    n_sources <- sum(!is.null(image), !is.null(condition_video),
+                     !is.null(condition_latents))
+    if (n_sources > 1L) {
+        stop("Provide only one of image (i2v), condition_video, or condition_latents.")
     }
-    conditioned <- !is.null(image) || !is.null(condition_video)
+    conditioned <- n_sources > 0L
+    known_components <- c("transformer", "vae", "audio_vae", "connectors",
+                          "vocoder")
+    if (length(resident) && !all(resident %in% known_components)) {
+        stop("resident must name pipeline components: ",
+             paste(known_components, collapse = ", "))
+    }
+    trim_frames <- as.integer(trim_frames)
+    if (trim_frames < 0L || trim_frames >= num_frames) {
+        stop("trim_frames must be in [0, num_frames)")
+    }
     if (conditioned && two_stage) {
         stop("Prefix conditioning with two_stage = TRUE is not supported yet.")
     }
@@ -531,6 +565,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     # the pageable path.
     phase_offload <- phase_offload && device != "cpu"
     staging <- pipeline$staging %||% list()
+    target_type <- torch::torch_device(device)$type
     onload <- function(what) {
         if (is.character(what)) {
             module <- pipeline[[what]]
@@ -538,6 +573,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             module <- what
         }
         if (phase_offload) {
+            # Idempotent: a resident component is already in place on
+            # the second and later calls of a chained run
+            cur <- tryCatch(module$parameters[[1]]$device$type,
+                            error = function(e) NULL)
+            if (identical(cur, target_type)) {
+                return(module)
+            }
             if (is.character(what)) {
                 st <- staging[[what]]
             } else {
@@ -557,7 +599,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         } else {
             module <- what
         }
-        if (phase_offload) {
+        if (phase_offload && !(is.character(what) && what %in% resident)) {
             # Decode traces capture weight tensors; drop them so the
             # module's GPU memory actually frees
             .ltx23_release_vae_traces()
@@ -619,7 +661,19 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     # Prefix conditioning: encode the start image (i2v) or the tail of
     # a previous clip (continuation) into normalized latents
     cond_latents <- NULL
-    if (conditioned) {
+    if (!is.null(condition_latents)) {
+        # Already-encoded prefix (e.g. ltx23_tail_latents of a previous
+        # chunk): no VAE touch at all
+        cond_latents <- condition_latents$to(device = device,
+                                             dtype = f32)
+        if (cond_latents$ndim != 5L || cond_latents$shape[2] != 128L ||
+            cond_latents$shape[4] != s1_height ||
+            cond_latents$shape[5] != s1_width) {
+            stop(sprintf(
+                "condition_latents must be [1, 128, k, %d, %d] for %dx%d generation",
+                s1_height, s1_width, width, height))
+        }
+    } else if (conditioned) {
         vae <- onload("vae")
         cond_frames <- if (!is.null(image)) {
             ltx23_preprocess_frames(image, height, width)
@@ -765,13 +819,18 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
 
     # The transformer and its dequant buffers are not needed past
-    # denoising; free the VRAM before the decoders claim it
+    # denoising; free the VRAM before the decoders claim it. A
+    # resident transformer keeps its buffers for the next chunk.
     offload("transformer")
-    ltx23_release_dequant_buffers()
+    if (!("transformer" %in% resident)) {
+        ltx23_release_dequant_buffers()
+    }
 
     result <- list(
                    latents = latents,
                    audio_latents = audio_latents,
+                   latent_shape = c(latent_frames, latent_height,
+                                    latent_width),
                    sample_rate = 48000L
     )
     if (audio_conditioned) {
@@ -814,6 +873,12 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message(sprintf("  video to R array: %.1fs",
                             as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
+        }
+        if (trim_frames > 0L) {
+            # Deliver head-free pixels (the conditioning overlap of a
+            # continuation); result$latents keeps the full sequence
+            result$video <- result$video[-seq_len(trim_frames), , , ,
+                                         drop = FALSE]
         }
     }
 

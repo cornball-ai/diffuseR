@@ -187,8 +187,106 @@ expect_error(
   txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
     image = start_img, condition_video = tail_arr,
     device = "cpu", dtype = "float32"),
-  pattern = "not both"
+  pattern = "only one"
 )
+
+# --- Latent-space chaining seams -----------------------------------------------------
+
+# latent_shape rides in the result: 17 frames @ 64x64 -> [3, 2, 2]
+expect_equal(res_cont$latent_shape, c(3L, 2L, 2L))
+
+# condition_latents reproduces the condition_video path exactly when
+# fed the same encoded tail (the pixel path is just one producer)
+enc <- ltx23_encode_video_frames(
+  vae, ltx23_preprocess_frames(tail_arr, 64L, 64L))
+res_lat <- txt2vid_ltx2(
+  prompt = "tiny continuation",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 17L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  condition_latents = enc,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_true(max(abs(res_lat$video - res_cont$video)) < 1e-6)
+
+# Tail slicing: last 2 latent frames, matching a manual unpack + narrow
+tail_lat <- ltx23_tail_latents(res_cont, k = 2L)
+expect_equal(as.integer(tail_lat$shape), c(1L, 128L, 2L, 2L, 2L))
+manual <- diffuseR:::ltx23_unpack_video_latents(res_cont$latents, 3L, 2L, 2L)$
+  narrow(3L, 2L, 2L)
+expect_equal(as.numeric((tail_lat - manual)$abs()$max()), 0)
+
+# Feeding the sliced tail back runs end to end (chunk N -> chunk N+1)
+res_next <- txt2vid_ltx2(
+  prompt = "tiny chunk 3",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 17L, frame_rate = 24,
+  seed = 8L, device = "cpu", dtype = "float32",
+  condition_latents = tail_lat,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_next$video), c(17L, 64L, 64L, 3L))
+expect_true(all(is.finite(res_next$video)))
+
+# trim_frames delivers head-free pixels; latents keep the full sequence
+res_trim <- txt2vid_ltx2(
+  prompt = "tiny continuation",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 17L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  condition_video = tail_arr, trim_frames = 9L,
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_trim$video), c(8L, 64L, 64L, 3L))
+expect_equal(max(abs(res_trim$video -
+                     res_cont$video[-(1:9), , , , drop = FALSE])), 0)
+expect_equal(res_trim$latent_shape, c(3L, 2L, 2L))
+expect_equal(as.integer(ltx23_tail_latents(res_trim)$shape[3]), 2L)
+
+# resident= is accepted (inert on CPU, where phase_offload is off)
+res_res <- txt2vid_ltx2(
+  prompt = "tiny resident",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  resident = "transformer",
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_true(all(is.finite(res_res$video)))
+
+# Guardrails
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+    condition_latents = enc, image = start_img,
+    device = "cpu", dtype = "float32"),
+  pattern = "only one"
+)
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+    condition_latents = torch::torch_randn(1L, 128L, 2L, 3L, 3L),
+    device = "cpu", dtype = "float32"),
+  pattern = "condition_latents"
+)
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds, num_frames = 9L,
+    trim_frames = 9L, device = "cpu", dtype = "float32"),
+  pattern = "trim_frames"
+)
+expect_error(
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+    resident = "flux_capacitor", device = "cpu", dtype = "float32"),
+  pattern = "resident"
+)
+expect_error(ltx23_tail_latents(res_cont$latents), pattern = "latent_shape")
+expect_error(ltx23_tail_latents(res_cont, k = 5L), pattern = "k must be")
 
 
 # --- Audio-conditioned generation (lip-sync plumbing) --------------------------------

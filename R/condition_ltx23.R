@@ -119,6 +119,53 @@ ltx23_encode_video_frames <- function(vae, frames) {
                             vae$latents_std$to(dtype = torch::torch_float32()))
 }
 
+#' Slice the trailing latent frames of a generation for chaining
+#'
+#' Cuts the last \code{k} latent frames out of a result's video
+#' latents, in the [1, 128, k, H', W'] layout that
+#' \code{txt2vid_ltx2(condition_latents = )} consumes, so one chunk
+#' can seed the next without leaving latent space: no decode, no
+#' re-encode, no video round-trip.
+#'
+#' Semantics caveat: a latent frame sliced from inside a sequence
+#' represents 8 pixel frames, while a fresh VAE encode of a k-frame
+#' tail represents 1 + 8(k - 1) pixel frames with its first latent in
+#' first-frame form. The frozen prefix the next generation sees is
+#' therefore not identical to the pixel-path prefix; compare both on
+#' real content before relying on latent-only joins.
+#'
+#' @param result A \code{\link{txt2vid_ltx2}} result list (uses its
+#'   \code{latents} and \code{latent_shape}), or the packed latents
+#'   tensor [1, S, 128] itself (then \code{latent_shape} is
+#'   required).
+#' @param k Integer. Trailing latent frames to keep (default 2 = the
+#'   standard 9-pixel-frame conditioning prefix).
+#' @param latent_shape Integer vector c(frames, height, width) of the
+#'   latent geometry; only needed when \code{result} is a raw tensor.
+#'
+#' @return Normalized latents [1, 128, k, H', W'] (float32), ready
+#'   for \code{txt2vid_ltx2(condition_latents = )}.
+#'
+#' @export
+ltx23_tail_latents <- function(result, k = 2L, latent_shape = NULL) {
+    if (is.list(result)) {
+        latents <- result$latents
+        latent_shape <- latent_shape %||% result$latent_shape
+    } else {
+        latents <- result
+    }
+    if (is.null(latent_shape)) {
+        stop("latent_shape is required when result is a raw latents tensor")
+    }
+    lf <- latent_shape[1]
+    if (k < 1L || k > lf) {
+        stop("k must be between 1 and the latent frame count")
+    }
+    video <- ltx23_unpack_video_latents(latents, lf, latent_shape[2],
+                                        latent_shape[3])
+    video$narrow(3L, lf - k + 1L, k)
+}
+
 #' Build conditioned initial latents and the conditioning mask
 #'
 #' i2v (\code{cond_latents} has one latent frame): the encoded frame is
