@@ -301,6 +301,10 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
             pipe$transformer <- ltx23_load_transformer_nf4(
                 ckpt, device = component_device, verbose = verbose
             )
+        } else if (fp8 && identical(ckpt$format, "int8")) {
+            pipe$transformer <- ltx23_load_transformer_int8(
+                ckpt, device = component_device, pin = pin, verbose = verbose
+            )
         } else if (fp8) {
             pipe$transformer <- ltx23_load_transformer_fp8(
                 ckpt, device = component_device, pin = pin, verbose = verbose
