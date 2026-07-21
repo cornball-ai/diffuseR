@@ -142,6 +142,17 @@ ltx23_quantize_int8 <- function(checkpoint_path,
         key <- keys[[i]]
         tensor <- ckpt$handle$get_tensor(key)
 
+        # Flush BEFORE adding when this tensor would push the shard
+        # over target: flushing after (the fp8/nf4 quantizers' pattern)
+        # can emit a shard up to one tensor over shard_bytes, past the
+        # 2^31 ceiling stock CRAN safetensors can read back
+        this_bytes <- prod(tensor$shape) *
+        if (startsWith(key, "model.diffusion_model.") &&
+                ltx23_is_fp8_cast_key(ltx23_map_dit_key(key))) 1 else 2
+        if (length(shard) && shard_size + this_bytes > shard_bytes) {
+            flush_shard()
+        }
+
         mapped <- ltx23_map_dit_key(key)
         if (startsWith(key, "model.diffusion_model.") &&
             ltx23_is_fp8_cast_key(mapped)) {
