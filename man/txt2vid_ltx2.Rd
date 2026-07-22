@@ -12,7 +12,9 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
              decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
              adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
              image = NULL, condition_video = NULL, conditioning_frames = 9L,
-             cond_noise_scale = 0, audio = NULL, verbose = TRUE)
+             cond_noise_scale = 0, condition_latents = NULL,
+             resident = character(), trim_frames = 0L, audio = NULL,
+             verbose = TRUE)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}
@@ -80,6 +82,26 @@ frames overlap the source (trim or crossfade when concatenating).}
 \item{cond_noise_scale}{Numeric in [0, 1]. Optional partial noising
 of the conditioned tokens (0 = keep them exactly).}
 
+\item{condition_latents}{Optional continuation source already in
+latent space: normalized video latents [1, 128, k, height/32,
+width/32] (e.g. \code{\link{ltx23_tail_latents}} on a previous
+result), used directly as the frozen prefix with no VAE encode.
+Mutually exclusive with \code{image} and \code{condition_video}.}
+
+\item{resident}{Character vector of pipeline component names
+("transformer", "vae", "audio_vae", "connectors", "vocoder") to
+keep on the compute device after their phase instead of
+offloading, for callers running several generations back to back
+(chained chunks). Components already on the device are not
+re-copied on later calls.}
+
+\item{trim_frames}{Integer. Drop this many leading pixel frames
+from the decoded video (and the saved file), e.g. the
+conditioning-head overlap of a continuation. The returned
+\code{latents} keep the full sequence (tail slicing for chaining
+needs it). Audio is muxed exactly as supplied, so drop any head
+padding from the conditioning audio when trimming.}
+
 \item{audio}{Optional conditioning audio for audio-driven generation
 (lip sync): a file path (decoded via \code{av}) or a matrix
 [2, samples] in [-1, 1] at 16 kHz. The audio is encoded into
@@ -106,7 +128,10 @@ latents (disable for latent-space work).}
 \value{
 Invisibly, a list with \code{video} (array
   [frames, height, width, 3] in [0, 1]), \code{audio} (matrix
-  [2, samples] in [-1, 1]), \code{sample_rate}, and the raw latents.
+  [2, samples] in [-1, 1]), \code{sample_rate}, the raw
+  \code{latents} and \code{audio_latents}, and \code{latent_shape}
+  (c(frames, height, width) of the latent geometry, for
+  \code{\link{ltx23_tail_latents}}).
 }
 \description{
 Distilled text-to-video generation: encodes the prompt with Gemma3 +
