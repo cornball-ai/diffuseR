@@ -7,10 +7,9 @@ ltx23_video_encoder3d(in_channels = 3L, out_channels = 128L,
                       block_out_channels = c(256L, 512L, 1024L, 1024L),
                       spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
                       layers_per_block = c(4L, 6L, 4L, 2L, 2L),
-                      downsample_type = c("spatial", "temporal", "spatiotemporal", "spatiotemporal"),
-                      patch_size = 4L, patch_size_t = 1L,
-                      resnet_norm_eps = 1e-06, is_causal = TRUE,
-                      spatial_padding_mode = "zeros")
+                      downsample_type = NULL, patch_size = 4L,
+                      patch_size_t = 1L, resnet_norm_eps = 1e-06,
+                      is_causal = TRUE, spatial_padding_mode = "zeros")
 }
 \arguments{
 \item{block_out_channels}{Integer vector. Per-block output channels.}
