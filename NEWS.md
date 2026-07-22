@@ -1,5 +1,18 @@
 # diffuseR 0.2.0
 
+## Serving
+
+* `serve()`: a zero-dependency HTTP server (base R sockets, one
+  persistent process, model loaded once) answering OpenAI-style
+  requests - `/v1/images/generations` for flux2/zimage/flux1,
+  `/v1/videos/generations` for ltx, `GET /health`. Never downloads
+  weights; an example systemd unit ships as
+  `system.file("diffuser.service", package = "diffuseR")`. Port 7812
+  in the cornball serve range.
+* Every model download is consent-gated: interactive prompt with the
+  size stated, and non-interactive sessions require
+  `options(diffuseR.consent = TRUE)`. Generation functions never
+  download implicitly.
 ## Native safetensors pipelines
 
 * SD 2.1, SDXL, FLUX.1-schnell, FLUX.2 Klein, Z-Image-Turbo, and

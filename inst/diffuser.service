@@ -1,0 +1,43 @@
+# Example systemd unit for diffuseR::serve().
+#
+# Serves one diffuseR model over HTTP as a persistent service (model
+# loaded once, auto-restart on failure, starts on boot). Copy from
+#   system.file("diffuser.service", package = "diffuseR")
+# edit the CHANGEME placeholders, then install:
+#
+#   sudo cp diffuser.service /etc/systemd/system/diffuser.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now diffuser.service
+#   journalctl -u diffuser.service -f
+#
+# The server never downloads weights: run the model's download_*()
+# function once as the service user before first start.
+#
+# Port 7812 sits in the cornball serve range (7809-7829): whisper 7809,
+# chatterbox 7810, qwen3 TTS 7811.
+#
+# Video serving (model = "ltx") answers /v1/videos/generations and takes
+# minutes per request - point clients at it with matching timeouts.
+
+[Unit]
+Description=diffuseR generation server (R package, base-socket HTTP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The user that owns the R library and model artifacts:
+User=CHANGEME
+Group=CHANGEME
+WorkingDirectory=/home/CHANGEME
+# littler (/usr/bin/r) does not read ~/.Renviron/.Rprofile, so set what
+# the server needs explicitly:
+Environment=HOME=/home/CHANGEME
+ExecStart=/usr/bin/r -e "diffuseR::serve(model = 'flux2', port = 7812L)"
+Restart=on-failure
+RestartSec=5
+# Pipeline load + warmup take a while; don't let a watchdog kill startup.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
