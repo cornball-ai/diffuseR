@@ -573,9 +573,21 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         if (phase_offload) {
             # Idempotent: a resident component is already in place on
-            # the second and later calls of a chained run
-            cur <- tryCatch(module$parameters[[1]]$device$type,
-                            error = function(e) NULL)
+            # the second and later calls of a chained run. Probe the
+            # staging pair's live tensor when staging exists - custom
+            # module classes (the NF4 transformer) may not expose
+            # $parameters, and a failed probe must not degrade into a
+            # re-onload: re-transferring resident weights over
+            # themselves fragments the allocator pool until the next
+            # large allocation OOMs.
+            st_probe <- if (is.character(what)) staging[[what]] else NULL
+            cur <- tryCatch({
+                if (!is.null(st_probe)) {
+                    st_probe[[1]]$live$device$type
+                } else {
+                    module$parameters[[1]]$device$type
+                }
+            }, error = function(e) NULL)
             if (identical(cur, target_type)) {
                 return(module)
             }
