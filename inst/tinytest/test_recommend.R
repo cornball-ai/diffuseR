@@ -156,3 +156,23 @@ e <- tryCatch(brc(function() stop("plain boom"), small),
 expect_true(grepl("plain boom", e))
 expect_false(grepl("2\\^31", e))
 unlink(small)
+
+# --- pin decision -----------------------------------------------------------------
+
+r <- recommend("ltx", vram_gb = 16, st_caps = cran, host_ram_gb = 125)
+expect_true(all(c("pin", "pinned_set_gb", "host_ram_gb") %in% names(r)))
+expect_true(r$pin)                   # 125 GB >> 2 x ~28 GB pinned set
+expect_true(r$pinned_set_gb > 0)
+
+expect_false(recommend("ltx", vram_gb = 16, st_caps = cran,
+                       host_ram_gb = 32)$pin)   # 32 < 2 x pinned set
+
+expect_false(recommend("ltx", vram_gb = 0, st_caps = cran,
+                       host_ram_gb = 125)$pin)  # cpu tier: nothing stages
+
+expect_true(recommend("sdxl", vram_gb = 16, st_caps = cran,
+                      host_ram_gb = NA)$pin)    # undetectable: fail-soft on
+
+hr <- diffuseR:::.detect_host_ram()
+expect_true(is.na(hr) || (is.numeric(hr) && hr > 0))
+expect_equal(diffuseR:::.pinned_set_gb("ltx", "bf16"), 0)  # unknown tier -> 0

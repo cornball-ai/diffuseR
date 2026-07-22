@@ -17,7 +17,7 @@ Native R package for Stable Diffusion image generation.
 ```r
 library(diffuseR)
 torch::with_no_grad({
-  # Auto-detect optimal device configuration (requires gpuctl)
+  # Auto-detect optimal device configuration (self-contained, via nvidia-smi)
   txt2img_sdxl("A sunset over mountains", filename = "output.png")
 })
 ```
@@ -31,11 +31,12 @@ txt2img_sdxl("A sunset over mountains", devices = devices)
 
 ## GPU Poor Support
 
-diffuseR integrates with gpuctl for automatic "GPU poor" support:
+diffuseR ships self-contained automatic "GPU poor" support (VRAM and
+architecture detection via nvidia-smi; no gpuctl dependency):
 
 ```r
 # Auto-detect VRAM and select optimal strategy
-devices <- auto_devices("sdxl")  # Uses gpuctl if available
+devices <- auto_devices("sdxl")  # nvidia-smi detection, base R only
 
 # Strategies (SDXL thresholds):
 # - full_gpu: All on CUDA (10GB+ VRAM)
@@ -45,7 +46,7 @@ devices <- auto_devices("sdxl", strategy = "unet_gpu")
 ```
 
 The `txt2img_*` and `img2img` functions default to `devices = "auto"`, which:
-1. Uses gpuctl to detect VRAM and GPU architecture
+1. Detects VRAM and GPU architecture via nvidia-smi (self-contained)
 2. Selects optimal strategy (full_gpu, unet_gpu, or cpu_only)
 3. Forces unet_gpu on Blackwell GPUs (TorchScript workaround)
 
@@ -56,7 +57,7 @@ Profile-based memory optimization for constrained GPUs.
 ### API
 
 ```r
-txt2img_sdxl("A cat", profile = "auto")  # Default: auto-detect via gpuctl
+txt2img_sdxl("A cat", profile = "auto")  # Default: auto-detect via nvidia-smi
 txt2img_sdxl("A cat", profile = "gpu_poor")  # Force low-memory mode
 txt2img_sdxl("A cat", profile = "full_gpu", vram_debug = TRUE)  # Debug VRAM usage
 ```
@@ -104,7 +105,7 @@ txt2img_sdxl("A cat", profile = "full_gpu", vram_debug = TRUE)  # Debug VRAM usa
 ```r
 resolve_profile <- function(profile = "auto", model = "sdxl") {
   if (profile == "auto") {
-    vram <- gpuctl::gpu_detect()$vram_gb
+    vram <- .detect_vram()
     profile <- if (vram >= 16) "full_gpu"
                else if (vram >= 10) "balanced"
                else if (vram >= 6) "gpu_poor"
@@ -309,9 +310,9 @@ See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork unt
 - [x] **UNet SD21**: 4 blocks, 686 parameters
 - [x] **UNet SDXL**: 3 blocks, variable transformer depths (0, 2, 10), 1680 parameters
 
-### gpuctl Integration
-- [x] **Auto-device configuration**: `auto_devices()` integrates with gpuctl
-  - Queries available VRAM via `gpuctl::gpu_detect()`
+### Device auto-configuration
+- [x] **Auto-device configuration**: `auto_devices()` and `recommend()` are self-contained
+  - Query available VRAM and architecture via nvidia-smi directly
   - Auto-selects optimal devices based on model requirements
   - Handles Blackwell workaround automatically
 
