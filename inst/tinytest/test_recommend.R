@@ -19,12 +19,13 @@ expect_true(all(c("precision", "devices", "offload", "max_pixels",
   names(r)))
 expect_true(is.integer(r$max_pixels) || is.numeric(r$max_pixels))
 
-# --- nf4 is the floor / default ---------------------------------------------------
+# --- floors: nf4 for the quantized families, fp16 for SD -------------------------
 
-# No GPU: nf4 on CPU, no fork nag, smallest area.
+# No GPU: everything runs on CPU at its floor precision, no fork nag.
+# SD ships no quantized weights, so its floor is fp16.
 for (m in c("sd21", "sdxl", "flux1", "flux2", "zimage")) {
   z <- recommend(m, vram_gb = 0, st_caps = cran)
-  expect_equal(z$precision, "nf4")
+  expect_equal(z$precision, if (m %in% c("sd21", "sdxl")) "fp16" else "nf4")
   expect_false(z$fork_suggested)
   expect_true(all(unlist(z$devices) == "cpu"))
 }
@@ -65,7 +66,7 @@ expect_equal(nob$precision, "nf4")
 # --- SD ladder: fp16 for cards that fit, nf4 default, cpu -------------------------
 
 expect_equal(recommend("sdxl", 16, cran)$precision, "fp16")
-expect_equal(recommend("sdxl", 8, cran)$precision, "nf4")
+expect_equal(recommend("sdxl", 8, cran)$precision, "fp16")
 expect_equal(recommend("sdxl", 16, cran)$devices$unet, "cuda")
 expect_true("text_encoder2" %in% names(recommend("sdxl", 16, cran)$devices))
 expect_false("text_encoder2" %in% names(recommend("sd21", 16, cran)$devices))

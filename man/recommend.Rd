@@ -35,9 +35,11 @@ model. The policy:
 }
 \details{
 \itemize{
-\item nf4 is the default tier. Its weights are packed uint8 plus
-float32 blocks in sub-2 GB shards, which every safetensors reads,
-so it always loads.
+\item nf4 is the default tier for the quantized families (flux1,
+flux2, zimage, ltx). Its weights are packed uint8 plus float32
+blocks in sub-2 GB shards, which every safetensors reads, so it
+always loads. The SD models ship no quantized weights; their
+floor is fp16 with placement varying by VRAM.
 \item When the card has room for a higher-quality tier (fp8 or
 bf16) AND the installed safetensors can \emph{read} that dtype
 (\code{\link{.st_can_read}}), that tier is recommended instead.

@@ -52,6 +52,22 @@ targets::install_github("cornball-ai/diffuseR")
 - **Device Support**: CPU and CUDA GPUs (including Blackwell RTX 50xx)
 - **R-native Interface**: Functional programming approach that feels natural in R
 
+## Hardware requirements
+
+Approximate, per model, from the floor configuration (lowest precision,
+CPU-only) to the best-quality tier. `recommend("model")` picks the right
+configuration for your machine automatically; the `vignette("performance-levers")`
+explains the levers.
+
+| model | minimum (floor quality) | best quality |
+|---|---|---|
+| SD 2.1 | 4 GB RAM, no GPU | 6 GB VRAM + 4 GB RAM (fp16) |
+| SDXL | 10 GB RAM, no GPU | 12 GB VRAM + 8 GB RAM (fp16) |
+| FLUX.2 Klein | 12 GB RAM, no GPU | 16 GB VRAM + 20 GB RAM (bf16) |
+| Z-Image-Turbo | 14 GB RAM, no GPU | 18 GB VRAM + 24 GB RAM (bf16) |
+| FLUX.1-schnell | 28 GB RAM, no GPU | 24 GB VRAM + 45 GB RAM (bf16) |
+| LTX-2.3 video | 40 GB RAM, no GPU | 16 GB VRAM + 45 GB RAM (fp8, streamed) |
+
 ## Quick Start
 
 ### Basic Usage
