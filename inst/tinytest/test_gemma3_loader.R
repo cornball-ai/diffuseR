@@ -73,3 +73,10 @@ expect_error(
 )
 
 unlink(dir, recursive = TRUE)
+
+# --- pinned staging surface ----------------------------------------------------------
+
+# Both loaders take pin (default: the pin_staging option). Actual
+# page-locking needs CUDA; validated on GPU outside R CMD check.
+expect_true("pin" %in% names(formals(load_gemma3_text_encoder)))
+expect_true("pin" %in% names(formals(load_gemma3_nf4)))

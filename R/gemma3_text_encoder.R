@@ -581,11 +581,18 @@ gemma3_config_ltx2 <- function() {
 #' @param model_path Character. Path to directory containing model files.
 #' @param device Character. Device to load model to.
 #' @param dtype Character. Data type ("float32", "float16", "bfloat16").
+#' @param pin Logical. When loading to the CPU, page-lock the weights
+#'   so \code{\link{encode_with_gemma3}} can swap the model to the GPU
+#'   at DMA speed per encode (~0.3 s on, free off) instead of holding
+#'   VRAM or reloading. Default follows
+#'   \code{options(diffuseR.pin_staging)}.
 #' @param verbose Logical. Print loading progress.
 #' @return Initialized gemma3_text_model with loaded weights.
 #' @export
 load_gemma3_text_encoder <- function(model_path, device = "cpu",
-                                     dtype = "float16", verbose = TRUE) {
+                                     dtype = "float16",
+                                     pin = getOption("diffuseR.pin_staging", TRUE),
+                                     verbose = TRUE) {
     # An NF4 artifact directory (gemma3_quantize_nf4) loads through the
     # quantized path; bf16 compute unless the caller says otherwise
     if (file.exists(file.path(model_path, "manifest.json"))) {
@@ -593,7 +600,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
             dtype <- "bfloat16"
         }
         return(load_gemma3_nf4(model_path, device = device, dtype = dtype,
-                               verbose = verbose))
+                               pin = pin, verbose = verbose))
     }
     # Load config
     config_path <- file.path(model_path, "config.json")
@@ -678,6 +685,16 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
     }
 
     model$to(device = device)
+
+    if (pin && device == "cpu") {
+        st <- .ltx23_pin_component(model)
+        if (!is.null(st)) {
+            attr(model, "staging") <- st
+            if (verbose) {
+                message("Gemma3 weights pinned for staged transfer")
+            }
+        }
+    }
 
     if (verbose) {
         message("Gemma3 text encoder loaded on device: ", device)
@@ -836,6 +853,17 @@ encode_with_gemma3 <- function(prompts, model = NULL, tokenizer = NULL,
 
     if (is.null(model) || is.null(tokenizer)) {
         stop("Both model and tokenizer are required")
+    }
+
+    # A pinned CPU-resident model (see the loaders' pin argument) swaps
+    # to the compute device for the encode and back for free afterwards
+    staging <- attr(model, "staging")
+    if (!is.null(staging) && device != "cpu") {
+        cur <- tryCatch(staging[[1]]$live$device$type, error = function(e) NULL)
+        if (!identical(cur, device)) {
+            .ltx23_staged_onload(staging, device)
+            on.exit(.ltx23_staged_offload(staging), add = TRUE)
+        }
     }
 
     # Ensure prompts is a list

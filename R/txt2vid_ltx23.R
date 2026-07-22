@@ -391,6 +391,14 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #' @param prompt_embeds Optional precomputed list with
 #'   \code{prompt_embeds} (raw stacked Gemma3 states) and
 #'   \code{prompt_attention_mask}; bypasses the text encoder.
+#' @param connector_embeds Optional precomputed text-connector outputs:
+#'   a list with \code{video_text_embedding},
+#'   \code{audio_text_embedding}, and \code{attention_mask} (the result
+#'   of \code{pipeline$connectors} on the Gemma3 states). The prompt is
+#'   constant across a chained track, so compute this once and pass it
+#'   to every chunk: it skips the per-call connectors phase, whose
+#'   GPU-side handling of the raw hidden-state stack does not fit next
+#'   to a resident transformer.
 #' @param width,height Integers. Output resolution (multiples of 32).
 #' @param num_frames Integer. 8k + 1 frames (e.g. 121).
 #' @param frame_rate Numeric. Frames per second.
@@ -471,8 +479,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #' @export
 txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tokenizer = NULL, prompt_embeds = NULL,
-                         width = 768L, height = 512L, num_frames = 121L,
-                         frame_rate = 24, sigmas = ltx23_distilled_sigmas(),
+                         connector_embeds = NULL, width = 768L,
+                         height = 512L, num_frames = 121L, frame_rate = 24,
+                         sigmas = ltx23_distilled_sigmas(),
                          guidance_scale = 1, seed = NULL, device = "cuda",
                          dtype = "bfloat16", filename = NULL,
                          max_sequence_length = 1024L, decode_video = TRUE,
@@ -541,7 +550,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     f32 <- torch::torch_float32()
 
     # --- Phase 1: text encoding -------------------------------------------------
-    if (is.null(prompt_embeds)) {
+    if (is.null(prompt_embeds) && is.null(connector_embeds)) {
         if (is.null(text_encoder) || is.null(tokenizer)) {
             stop("Supply text_encoder + tokenizer, or precomputed prompt_embeds.")
         }
@@ -573,9 +582,25 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         if (phase_offload) {
             # Idempotent: a resident component is already in place on
-            # the second and later calls of a chained run
-            cur <- tryCatch(module$parameters[[1]]$device$type,
-                            error = function(e) NULL)
+            # the second and later calls of a chained run. Probe the
+            # staging pair's live tensor when staging exists - custom
+            # module classes (the NF4 transformer) may not expose
+            # $parameters, and a failed probe must not degrade into a
+            # re-onload: re-transferring resident weights over
+            # themselves fragments the allocator pool until the next
+            # large allocation OOMs.
+            if (is.character(what)) {
+                st_probe <- staging[[what]]
+            } else {
+                st_probe <- NULL
+            }
+            cur <- tryCatch({
+                if (!is.null(st_probe)) {
+                    st_probe[[1]]$live$device$type
+                } else {
+                    module$parameters[[1]]$device$type
+                }
+            }, error = function(e) NULL)
             if (identical(cur, target_type)) {
                 return(module)
             }
@@ -622,19 +647,33 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         invisible(module)
     }
 
-    onload("connectors")
-    connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
-    torch::with_no_grad({
-        conn <- pipeline$connectors(
-                                    prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
-                                    prompt_embeds$prompt_attention_mask$to(device = connectors_device)
-        )
-        video_text_embeds <- conn$video_text_embedding$to(device = device)
-        audio_text_embeds <- conn$audio_text_embedding$to(device = device)
-        text_mask <- conn$attention_mask$to(device = device)
-    })
-    rm(conn)
-    offload("connectors")
+    if (!is.null(connector_embeds)) {
+        # Precomputed connector outputs (constant per prompt): skip the
+        # per-call connectors phase entirely. Chained generation with a
+        # resident transformer needs this - the raw Gemma3 hidden-state
+        # stack moving to the GPU next to 11 GB of parked weights is
+        # what OOMed every resident chunk (geometry-independent 14.97
+        # GiB signature).
+        video_text_embeds <- connector_embeds$video_text_embedding$
+        to(device = device, dtype = compute_dtype)
+        audio_text_embeds <- connector_embeds$audio_text_embedding$
+        to(device = device, dtype = compute_dtype)
+        text_mask <- connector_embeds$attention_mask$to(device = device)
+    } else {
+        onload("connectors")
+        connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
+        torch::with_no_grad({
+            conn <- pipeline$connectors(
+                                        prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
+                                        prompt_embeds$prompt_attention_mask$to(device = connectors_device)
+            )
+            video_text_embeds <- conn$video_text_embedding$to(device = device)
+            audio_text_embeds <- conn$audio_text_embedding$to(device = device)
+            text_mask <- conn$attention_mask$to(device = device)
+        })
+        rm(conn)
+        offload("connectors")
+    }
     gc(verbose = FALSE)
 
     # --- Phase 2: latent preparation ---------------------------------------------

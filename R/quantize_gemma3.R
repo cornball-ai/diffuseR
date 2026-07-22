@@ -143,6 +143,11 @@ gemma3_quantize_nf4 <- function(model_path, output_dir = NULL,
 #'   \code{\link{gemma3_quantize_nf4}}.
 #' @param device "cuda" or "cpu".
 #' @param dtype Compute dtype ("bfloat16" default).
+#' @param pin Logical. When loading to the CPU, page-lock the weights
+#'   so \code{\link{encode_with_gemma3}} can swap the model to the GPU
+#'   at DMA speed per encode and back for free (see
+#'   \code{\link{staging_ltx23}}). Default follows
+#'   \code{options(diffuseR.pin_staging)}.
 #' @param verbose Logical.
 #'
 #' @return A \code{gemma3_text_model} ready for
@@ -150,7 +155,9 @@ gemma3_quantize_nf4 <- function(model_path, output_dir = NULL,
 #'
 #' @export
 load_gemma3_nf4 <- function(artifact_dir, device = "cuda",
-                            dtype = "bfloat16", verbose = TRUE) {
+                            dtype = "bfloat16",
+                            pin = getOption("diffuseR.pin_staging", TRUE),
+                            verbose = TRUE) {
     ckpt <- ltx23_open_fp8_checkpoint(artifact_dir)
     manifest <- jsonlite::fromJSON(file.path(artifact_dir, "manifest.json"))
     if (!identical(manifest$model, "gemma3")) {
@@ -208,6 +215,15 @@ load_gemma3_nf4 <- function(artifact_dir, device = "cuda",
 
     model$to(device = device)
     model$eval()
+    if (pin && device == "cpu") {
+        st <- .ltx23_pin_component(model)
+        if (!is.null(st)) {
+            attr(model, "staging") <- st
+            if (verbose) {
+                message("Gemma3 weights pinned for staged transfer")
+            }
+        }
+    }
     if (verbose) {
         message("Gemma3 NF4 encoder ready on ", device)
     }

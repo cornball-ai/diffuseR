@@ -1,9 +1,9 @@
 % tinyrox says don't edit this manually, but it can't stop you!
-\name{.ltx23_pin_component}
-\alias{.ltx23_pin_component}
+\name{.ltx23_pin_host}
+\alias{.ltx23_pin_host}
 \title{Pin a component's tensors for fast phase transfer}
 \usage{
-.ltx23_pin_component(module)
+.ltx23_pin_host(p)
 }
 \arguments{
 \item{module}{An nn_module on the CPU.}

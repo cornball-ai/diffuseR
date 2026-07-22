@@ -4,8 +4,8 @@
 \title{Generate video (and audio) with LTX-2.3}
 \usage{
 txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
-             prompt_embeds = NULL, width = 768L, height = 512L,
-             num_frames = 121L, frame_rate = 24,
+             prompt_embeds = NULL, connector_embeds = NULL, width = 768L,
+             height = 512L, num_frames = 121L, frame_rate = 24,
              sigmas = ltx23_distilled_sigmas(), guidance_scale = 1,
              seed = NULL, device = "cuda", dtype = "bfloat16", filename = NULL,
              max_sequence_length = 1024L, decode_video = TRUE,
@@ -25,6 +25,15 @@ txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
 \item{prompt_embeds}{Optional precomputed list with
 \code{prompt_embeds} (raw stacked Gemma3 states) and
 \code{prompt_attention_mask}; bypasses the text encoder.}
+
+\item{connector_embeds}{Optional precomputed text-connector outputs:
+a list with \code{video_text_embedding},
+\code{audio_text_embedding}, and \code{attention_mask} (the result
+of \code{pipeline$connectors} on the Gemma3 states). The prompt is
+constant across a chained track, so compute this once and pass it
+to every chunk: it skips the per-call connectors phase, whose
+GPU-side handling of the raw hidden-state stack does not fit next
+to a resident transformer.}
 
 \item{num_frames}{Integer. 8k + 1 frames (e.g. 121).}
 
