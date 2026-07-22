@@ -1,3 +1,13 @@
+# diffuseR 0.1.0.16 (development)
+
+* `recommend()` is now host-RAM-aware: it returns `pin` (page-lock the
+  phase-swapped host weight copies), `pinned_set_gb`, and
+  `host_ram_gb`. Pinned pages are unswappable, so the policy pins only
+  when available RAM covers the model's pinned set twice over — small-
+  RAM machines get `pin = FALSE` instead of OOM-kill risk, the cpu
+  tier never pins, and undetectable RAM leaves pinning on (it already
+  fails soft per component).
+
 # diffuseR 0.1.0.15 (development)
 
 * Pinned staging now allocates page-locked host memory via

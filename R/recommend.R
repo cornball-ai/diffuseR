@@ -23,18 +23,33 @@
 #' pipeline uses \code{\link{ltx23_memory_profile}} for frame-aware
 #' placement.
 #'
+#' The pinning decision: phase-swapped weights are page-locked host
+#' copies (see \code{\link{staging_ltx23}}) that transfer at DMA rate -
+#' but pinned pages are unswappable, so on small-RAM machines they turn
+#' memory pressure into OOM kills. \code{pin} is TRUE when available
+#' host RAM covers the model's pinned set twice over, FALSE below that,
+#' FALSE on the cpu tier (nothing stages), and TRUE when RAM cannot be
+#' detected (page-locking already fails soft per component). Loaders
+#' honor it through their \code{pin} arguments and
+#' \code{options(diffuseR.pin_staging)}.
+#'
 #' @param model "sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".
 #' @param vram_gb Numeric or NULL. Free VRAM in GB; auto-detected via
 #'   nvidia-smi when NULL.
 #' @param st_caps NULL or a named logical list with \code{bfloat16}
 #'   and/or \code{float8_e4m3fn} - the safetensors READ capabilities.
 #'   NULL probes the installed safetensors.
+#' @param host_ram_gb Numeric or NULL. Available host RAM in GB;
+#'   auto-detected (Linux \code{MemAvailable}) when NULL, NA where
+#'   undetectable.
 #'
 #' @return A list with \code{model}, \code{precision}, \code{devices}
 #'   (named component -> device map), \code{offload} (phase-offloading
 #'   logical), \code{max_pixels}, \code{text_device}, \code{attn_chunk},
-#'   \code{vram_gb}, \code{fork_suggested} (logical), and \code{note}
-#'   (the fork suggestion string, or NULL).
+#'   \code{vram_gb}, \code{pin} (page-lock the phase-swapped host
+#'   copies), \code{pinned_set_gb} (estimated pinned bytes),
+#'   \code{host_ram_gb}, \code{fork_suggested} (logical), and
+#'   \code{note} (the fork suggestion string, or NULL).
 #'
 #' @export
 #'
@@ -52,7 +67,7 @@
 #' }
 recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                                 "ltx"),
-                      vram_gb = NULL, st_caps = NULL) {
+                      vram_gb = NULL, st_caps = NULL, host_ram_gb = NULL) {
     model <- match.arg(model)
     if (is.null(vram_gb)) {
         vram_gb <- .detect_vram(use_free = TRUE)
@@ -87,6 +102,19 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     }
 
     fork <- !is.null(want) && !identical(want$precision, chosen$precision)
+
+    if (is.null(host_ram_gb)) {
+        host_ram_gb <- .detect_host_ram()
+    }
+    pinned_set <- .pinned_set_gb(model, chosen$precision)
+    pin <- if (isTRUE(chosen$cpu)) {
+        FALSE # cpu tier: nothing phase-stages, nothing to page-lock
+    } else if (is.na(host_ram_gb)) {
+        TRUE # undetectable: page-locking fails soft per component
+    } else {
+        host_ram_gb >= 2 * pinned_set
+    }
+
     list(
          model = model,
          precision = chosen$precision,
@@ -96,9 +124,53 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
          text_device = chosen$text_device %||% "cpu",
          attn_chunk = chosen$attn_chunk,
          vram_gb = vram_gb,
+         pin = pin,
+         pinned_set_gb = pinned_set,
+         host_ram_gb = host_ram_gb,
          fork_suggested = fork,
          note = if (fork) .st_fork_note(want$precision) else NULL
     )
+}
+
+# Available host RAM in GB (Linux MemAvailable); NA where undetectable
+# (macOS, Windows). NA feeds a keep-pinning decision: page-locking
+# already falls back silently per component, and platforms without
+# /proc rarely pair with CUDA.
+.detect_host_ram <- function() {
+    if (!file.exists("/proc/meminfo")) {
+        return(NA_real_)
+    }
+    tryCatch({
+        line <- grep("^MemAvailable:", readLines("/proc/meminfo", n = 20L),
+                     value = TRUE)
+        if (!length(line)) {
+            return(NA_real_)
+        }
+        kb <- as.numeric(strsplit(trimws(sub("^MemAvailable:", "", line)),
+                                  "[[:space:]]+")[[1]][1])
+        kb / 1024 ^ 2
+    }, error = function(e) NA_real_)
+}
+
+# Host GB that pinned staging would page-lock for a model at a given
+# precision: the quantized checkpoint plus the text encoder's host
+# copy. Coarse artifact-scale estimates - the pin decision needs the
+# order of magnitude, not the byte.
+.pinned_set_gb <- function(model, precision) {
+    sets <- list(
+                 sd21 = c(fp16 = 3, nf4 = 2),
+                 sdxl = c(fp16 = 8, nf4 = 4),
+                 flux1 = c(bf16 = 43, fp8 = 31, nf4 = 26), # DiT + T5 fp32 host copy
+                 flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
+                 zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
+                 ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
+    )
+    v <- unname(sets[[model]][precision])
+    if (length(v) != 1L || is.na(v)) {
+        0
+    } else {
+        v
+    }
 }
 
 # flux-family component placement: the big DiT and the VAE compute on
