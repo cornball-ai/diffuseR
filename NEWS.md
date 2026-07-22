@@ -6,6 +6,20 @@
   deprecation warnings per tensor (thousands of lines per pipeline
   load). Validated at 25.1 GB/s H2D (the card's DMA ceiling) with a
   clean stderr.
+* `txt2vid_ltx2()` gains `connector_embeds=`: precomputed
+  text-connector outputs (the prompt is constant across a chained
+  track) skip the per-call connectors phase. Benchmarked at 960x960
+  this cuts the denoise-phase peak by ~2.5 GiB — the per-call phase
+  moved the raw Gemma3 hidden-state stack to the GPU, which is what
+  OOMed every resident-transformer chain attempt.
+* The `resident=` onload check now probes the staging pair's live
+  tensor instead of `module$parameters` (which the NF4 transformer
+  doesn't expose), so a resident component is never silently
+  re-onloaded over itself.
+* The Gemma3 loaders gain `pin=` (default: the `diffuseR.pin_staging`
+  option): a CPU-resident encoder is page-locked once and
+  `encode_with_gemma3()` swaps it to the GPU per encode (~0.3 s on,
+  free off) instead of holding VRAM or reloading (~15 s).
 
 # diffuseR 0.1.0.14 (development)
 

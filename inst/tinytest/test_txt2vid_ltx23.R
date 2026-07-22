@@ -288,6 +288,36 @@ expect_error(
 expect_error(ltx23_tail_latents(res_cont$latents), pattern = "latent_shape")
 expect_error(ltx23_tail_latents(res_cont, k = 5L), pattern = "k must be")
 
+# --- connector_embeds bypass ---------------------------------------------------------
+
+# Precomputed connector outputs reproduce the internal connectors path
+# exactly, and satisfy the text requirement without prompt_embeds
+conn_out <- torch::with_no_grad(connectors(
+  stub_embeds$prompt_embeds, stub_embeds$prompt_attention_mask))
+cemb <- list(video_text_embedding = conn_out$video_text_embedding,
+             audio_text_embedding = conn_out$audio_text_embedding,
+             attention_mask = conn_out$attention_mask)
+res_ce <- txt2vid_ltx2(
+  prompt = "tiny bypass",
+  pipeline = pipe,
+  connector_embeds = cemb,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+res_full <- txt2vid_ltx2(
+  prompt = "tiny bypass",
+  pipeline = pipe,
+  prompt_embeds = stub_embeds,
+  width = 64L, height = 64L, num_frames = 9L, frame_rate = 24,
+  seed = 7L, device = "cpu", dtype = "float32",
+  decode_audio = FALSE,
+  verbose = FALSE
+)
+expect_equal(dim(res_ce$video), c(9L, 64L, 64L, 3L))
+expect_true(max(abs(res_ce$video - res_full$video)) < 1e-6)
+
 
 # --- Audio-conditioned generation (lip-sync plumbing) --------------------------------
 
