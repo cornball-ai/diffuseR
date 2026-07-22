@@ -29,9 +29,12 @@
 #' memory pressure into OOM kills. \code{pin} is TRUE when available
 #' host RAM covers the model's pinned set twice over, FALSE below that,
 #' FALSE on the cpu tier (nothing stages), and TRUE when RAM cannot be
-#' detected (page-locking already fails soft per component). Loaders
-#' honor it through their \code{pin} arguments and
-#' \code{options(diffuseR.pin_staging)}.
+#' detected (page-locking already fails soft per component). Today the
+#' LTX pipeline and Gemma3 encoder loaders take \code{pin} arguments
+#' and stage pinned weights (see \code{\link{staging_ltx23}}); the
+#' image-model loaders do not stage weights yet, so for them \code{pin}
+#' is forward-looking policy with no consumer.
+#' \code{options(diffuseR.pin_staging)} is the global switch.
 #'
 #' @param model "sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".
 #' @param vram_gb Numeric or NULL. Free VRAM in GB; auto-detected via
