@@ -1,3 +1,12 @@
+# diffuseR 0.1.0.15 (development)
+
+* Pinned staging now allocates page-locked host memory via
+  `torch_empty_strided(pin_memory = TRUE)` instead of the deprecated
+  `Tensor$pin_memory(device)` overload, silencing the two libtorch
+  deprecation warnings per tensor (thousands of lines per pipeline
+  load). Validated at 25.1 GB/s H2D (the card's DMA ceiling) with a
+  clean stderr.
+
 # diffuseR 0.1.0.14 (development)
 
 * Latent-space chaining seams for chunked video continuation:
