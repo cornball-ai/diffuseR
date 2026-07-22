@@ -859,8 +859,7 @@ encode_with_gemma3 <- function(prompts, model = NULL, tokenizer = NULL,
     # to the compute device for the encode and back for free afterwards
     staging <- attr(model, "staging")
     if (!is.null(staging) && device != "cpu") {
-        cur <- tryCatch(staging[[1]]$live$device$type,
-                        error = function(e) NULL)
+        cur <- tryCatch(staging[[1]]$live$device$type, error = function(e) NULL)
         if (!identical(cur, device)) {
             .ltx23_staged_onload(staging, device)
             on.exit(.ltx23_staged_offload(staging), add = TRUE)

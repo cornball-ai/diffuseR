@@ -49,12 +49,11 @@ NULL
             integer(0)
         }
         buf <- torch::torch_empty_strided(sz, st, dtype = p$dtype,
-                                          pin_memory = TRUE)
+            pin_memory = TRUE)
         torch::with_no_grad(buf$copy_(p))
         buf
     }, error = function(e) {
-        suppressWarnings(p$pin_memory(
-            device = torch::torch_device("cuda")))
+        suppressWarnings(p$pin_memory(device = torch::torch_device("cuda")))
     })
 }
 

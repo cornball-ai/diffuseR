@@ -4,7 +4,7 @@
 \title{Load a Gemma3 text encoder from an NF4 artifact}
 \usage{
 load_gemma3_nf4(artifact_dir, device = "cuda", dtype = "bfloat16",
-                verbose = TRUE)
+                pin = getOption("diffuseR.pin_staging", TRUE), verbose = TRUE)
 }
 \arguments{
 \item{artifact_dir}{Directory produced by
@@ -13,6 +13,12 @@ load_gemma3_nf4(artifact_dir, device = "cuda", dtype = "bfloat16",
 \item{device}{"cuda" or "cpu".}
 
 \item{dtype}{Compute dtype ("bfloat16" default).}
+
+\item{pin}{Logical. When loading to the CPU, page-lock the weights
+so \code{\link{encode_with_gemma3}} can swap the model to the GPU
+at DMA speed per encode and back for free (see
+\code{\link{staging_ltx23}}). Default follows
+\code{options(diffuseR.pin_staging)}.}
 
 \item{verbose}{Logical.}
 }

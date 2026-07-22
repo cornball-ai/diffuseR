@@ -479,9 +479,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #' @export
 txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tokenizer = NULL, prompt_embeds = NULL,
-                         connector_embeds = NULL,
-                         width = 768L, height = 512L, num_frames = 121L,
-                         frame_rate = 24, sigmas = ltx23_distilled_sigmas(),
+                         connector_embeds = NULL, width = 768L,
+                         height = 512L, num_frames = 121L, frame_rate = 24,
+                         sigmas = ltx23_distilled_sigmas(),
                          guidance_scale = 1, seed = NULL, device = "cuda",
                          dtype = "bfloat16", filename = NULL,
                          max_sequence_length = 1024L, decode_video = TRUE,
@@ -589,7 +589,11 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             # re-onload: re-transferring resident weights over
             # themselves fragments the allocator pool until the next
             # large allocation OOMs.
-            st_probe <- if (is.character(what)) staging[[what]] else NULL
+            if (is.character(what)) {
+                st_probe <- staging[[what]]
+            } else {
+                st_probe <- NULL
+            }
             cur <- tryCatch({
                 if (!is.null(st_probe)) {
                     st_probe[[1]]$live$device$type
