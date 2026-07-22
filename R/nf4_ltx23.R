@@ -251,7 +251,8 @@ ltx23_nf4_linear <- torch::nn_module(
 #' \code{format = "nf4"}.
 #'
 #' @param checkpoint_path Source .safetensors (bf16 single file).
-#' @param output_dir Output directory for shards + manifest.
+#' @param output_dir Output directory for shards + manifest; NULL (the
+#'   default) resolves under tools::R_user_dir("diffuseR", "data").
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
 #'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that
 #'   stock CRAN safetensors can read. Pass a larger value (e.g. 4e9) only
@@ -262,10 +263,13 @@ ltx23_nf4_linear <- torch::nn_module(
 #' @return Invisibly, the manifest list.
 #'
 #' @export
-ltx23_quantize_nf4 <- function(checkpoint_path,
-                               output_dir = file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.3-nf4"),
+ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
                                shard_bytes = 1.9e9, force = FALSE,
                                verbose = TRUE) {
+    if (is.null(output_dir)) {
+        output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
+                                "ltx2.3-nf4")
+    }
     manifest_path <- file.path(output_dir, "manifest.json")
     if (!force && file.exists(manifest_path)) {
         manifest <- jsonlite::fromJSON(manifest_path)

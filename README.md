@@ -11,9 +11,7 @@
 
 ## Example output
 
-![](man/figures/20250602_231518_retro_tin_toy_robot.png)
-![](man/figures/20250528_200344_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
-![](man/figures/20250601_111817_Beach_at_night__glowing_waves__stars_in_the_sky__h.png)
+![](man/figures/sdxl_vs_flux2_radio_studio.jpg)
 
 ## Installation
 
