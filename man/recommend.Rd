@@ -4,7 +4,7 @@
 \title{Recommend a precision and device configuration for a model}
 \usage{
 recommend(model = c("sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"),
-          vram_gb = NULL, st_caps = NULL)
+          vram_gb = NULL, st_caps = NULL, host_ram_gb = NULL)
 }
 \arguments{
 \item{model}{"sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".}
@@ -15,13 +15,19 @@ nvidia-smi when NULL.}
 \item{st_caps}{NULL or a named logical list with \code{bfloat16}
 and/or \code{float8_e4m3fn} - the safetensors READ capabilities.
 NULL probes the installed safetensors.}
+
+\item{host_ram_gb}{Numeric or NULL. Available host RAM in GB;
+auto-detected (Linux \code{MemAvailable}) when NULL, NA where
+undetectable.}
 }
 \value{
 A list with \code{model}, \code{precision}, \code{devices}
   (named component -> device map), \code{offload} (phase-offloading
   logical), \code{max_pixels}, \code{text_device}, \code{attn_chunk},
-  \code{vram_gb}, \code{fork_suggested} (logical), and \code{note}
-  (the fork suggestion string, or NULL).
+  \code{vram_gb}, \code{pin} (page-lock the phase-swapped host
+  copies), \code{pinned_set_gb} (estimated pinned bytes),
+  \code{host_ram_gb}, \code{fork_suggested} (logical), and
+  \code{note} (the fork suggestion string, or NULL).
 }
 \description{
 One VRAM-and-capability-aware recommendation for every diffuseR
@@ -47,6 +53,16 @@ validated on an RTX 5060 Ti (16 GB) and are deliberately conservative
 elsewhere. Video sizing for \code{"ltx"} is coarse here; the LTX
 pipeline uses \code{\link{ltx23_memory_profile}} for frame-aware
 placement.
+
+The pinning decision: phase-swapped weights are page-locked host
+copies (see \code{\link{staging_ltx23}}) that transfer at DMA rate -
+but pinned pages are unswappable, so on small-RAM machines they turn
+memory pressure into OOM kills. \code{pin} is TRUE when available
+host RAM covers the model's pinned set twice over, FALSE below that,
+FALSE on the cpu tier (nothing stages), and TRUE when RAM cannot be
+detected (page-locking already fails soft per component). Loaders
+honor it through their \code{pin} arguments and
+\code{options(diffuseR.pin_staging)}.
 
 }
 \examples{

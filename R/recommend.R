@@ -148,7 +148,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
         }
         kb <- as.numeric(strsplit(trimws(sub("^MemAvailable:", "", line)),
                                   "[[:space:]]+")[[1]][1])
-        kb / 1024^2
+        kb / 1024 ^ 2
     }, error = function(e) NA_real_)
 }
 
@@ -158,12 +158,12 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
 # order of magnitude, not the byte.
 .pinned_set_gb <- function(model, precision) {
     sets <- list(
-        sd21 = c(fp16 = 3, nf4 = 2),
-        sdxl = c(fp16 = 8, nf4 = 4),
-        flux1 = c(bf16 = 43, fp8 = 31, nf4 = 26), # DiT + T5 fp32 host copy
-        flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
-        zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
-        ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
+                 sd21 = c(fp16 = 3, nf4 = 2),
+                 sdxl = c(fp16 = 8, nf4 = 4),
+                 flux1 = c(bf16 = 43, fp8 = 31, nf4 = 26), # DiT + T5 fp32 host copy
+                 flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
+                 zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
+                 ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
     )
     v <- unname(sets[[model]][precision])
     if (length(v) != 1L || is.na(v)) {
