@@ -243,7 +243,7 @@ so negative prompts do not apply. When the image needs legible text
 
 ### Downloading Models
 
-Models are automatically downloaded from HuggingFace on first use. For gated models (like FLUX.1-schnell), you need to:
+Model downloads are explicit and consent-gated: call the model's `download_*()` function once (interactive sessions are prompted with the size; non-interactive sessions require `options(diffuseR.consent = TRUE)`). For gated models (like FLUX.1-schnell), you need to:
 
 1. Create a HuggingFace account at https://huggingface.co
 2. Accept the model's license agreement (visit the model page and click "Agree")

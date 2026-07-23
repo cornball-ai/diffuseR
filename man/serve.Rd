@@ -4,7 +4,8 @@
 \title{Serve diffuseR over HTTP}
 \usage{
 serve(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
-      device = "cuda", timeout = 300L, max_body = 1024L^2, warmup = TRUE)
+      device = "cuda", token = NULL, max_pixels = 1024L^2, max_frames = 161L,
+      max_prompts = 32L, timeout = 300L, max_body = 1024L^2, warmup = TRUE)
 }
 \arguments{
 \item{port}{Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).}
@@ -13,6 +14,17 @@ serve(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
 (video). SD 2.1/SDXL are not served yet.}
 
 \item{device}{Character. "cuda" or "cpu".}
+
+\item{token}{Character or NULL. Shared secret; when set, requests
+must send \code{Authorization: Bearer <token>}.}
+
+\item{max_pixels}{Integer. Maximum width x height accepted (images
+and video frames). Default 1024^2.}
+
+\item{max_frames}{Integer. Maximum video frame count. Default 161.}
+
+\item{max_prompts}{Integer. Bound on the per-prompt connector-embed
+cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.}
 
 \item{timeout}{Integer. Per-connection I/O timeout in seconds.}
 
@@ -52,5 +64,15 @@ The server is single-threaded and runs until interrupted. Run it
 under a process supervisor (systemd, tmux); an example unit ships
 with the package: \code{system.file("diffuser.service",
 package = "diffuseR")}.
+
+Security: base R's \code{serverSocket} binds all interfaces, so the
+server is reachable by anything that can reach the machine. Keep it
+behind a firewall or reverse proxy, and/or set \code{token}: when
+set, every request must carry \code{Authorization: Bearer <token>}
+or it is refused with 401. Generation size is capped by
+\code{max_pixels}/\code{max_frames}; oversized requests get 400. A
+CUDA out-of-memory during a request answers 500 and then exits the
+process (status 70) so a supervisor restarts it with clean GPU
+state rather than serving on with stranded components.
 
 }

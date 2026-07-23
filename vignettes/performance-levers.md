@@ -14,8 +14,11 @@ models on no GPU at all. It does that with three independent levers:
 weight precision, per-component device placement, and memory residency.
 This vignette is the map. The machine-readable version of the same
 policy is `recommend()`, which inspects your VRAM, host RAM, and
-installed `safetensors` capabilities and returns a configuration; the
-`txt2img_*`/`txt2vid_*` defaults consume it.
+installed `safetensors` capabilities and returns a configuration. The
+SD device strategies and the LTX memory profile consume it today; the
+flux-family loaders select artifacts by what is built on disk, and
+full consumption of the recommendation (including `pin`) is arriving
+model by model.
 
 ## Lever 1: weight precision
 
@@ -64,9 +67,11 @@ swap (see below).
 From most to least VRAM:
 
 1. **Fully GPU-resident** — everything fits, nothing moves (large
-   cards; the fp8 residents of FLUX.2/Z-Image on 16 GB).
+   cards only).
 2. **Resident quantized DiT, phase-swapped everything else** — the
-   LTX nf4 default on 16 GB.
+   16 GB sweet spot: LTX nf4 and the fp8 FLUX.2/Z-Image
+   configurations keep the DiT on the card while text encoders swap
+   per phase.
 3. **Pinned phase swap** — component weights live in page-locked
    ("pinned") host RAM and move to the GPU for their phase at DMA
    rate. Measured on a PCIe 5.0 x8 card: 25 GB/s host-to-device

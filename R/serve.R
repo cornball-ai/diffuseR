@@ -8,9 +8,10 @@
 # (cornball serve ports: whisper 7809, chatterbox 7810, qwen3 7811,
 # diffuseR 7812).
 
-# Session memo for per-prompt text embeddings (the expensive part of a
-# video request; a track's chunks share one prompt)
-.dserve_embed_cache <- new.env(parent = emptyenv())
+# (Per-prompt caches live in server state, created per serve() call:
+# a bounded LRU of connector outputs (~9 MB each), never the raw
+# Gemma stacks (~0.4 GB each) - a persistent server must not grow
+# with prompt count.)
 
 #' Serve diffuseR over HTTP
 #'
@@ -39,10 +40,27 @@
 #' with the package: \code{system.file("diffuser.service",
 #' package = "diffuseR")}.
 #'
+#' Security: base R's \code{serverSocket} binds all interfaces, so the
+#' server is reachable by anything that can reach the machine. Keep it
+#' behind a firewall or reverse proxy, and/or set \code{token}: when
+#' set, every request must carry \code{Authorization: Bearer <token>}
+#' or it is refused with 401. Generation size is capped by
+#' \code{max_pixels}/\code{max_frames}; oversized requests get 400. A
+#' CUDA out-of-memory during a request answers 500 and then exits the
+#' process (status 70) so a supervisor restarts it with clean GPU
+#' state rather than serving on with stranded components.
+#'
 #' @param port Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).
 #' @param model One of "flux2", "zimage", "flux1" (images) or "ltx"
 #'   (video). SD 2.1/SDXL are not served yet.
 #' @param device Character. "cuda" or "cpu".
+#' @param token Character or NULL. Shared secret; when set, requests
+#'   must send \code{Authorization: Bearer <token>}.
+#' @param max_pixels Integer. Maximum width x height accepted (images
+#'   and video frames). Default 1024^2.
+#' @param max_frames Integer. Maximum video frame count. Default 161.
+#' @param max_prompts Integer. Bound on the per-prompt connector-embed
+#'   cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.
 #' @param timeout Integer. Per-connection I/O timeout in seconds.
 #' @param max_body Integer. Maximum request body bytes. Default 1 MB
 #'   (bodies are JSON).
@@ -54,13 +72,18 @@
 #' @export
 serve <- function(port = 7812L,
                   model = c("flux2", "zimage", "flux1", "ltx"),
-                  device = "cuda", timeout = 300L,
+                  device = "cuda", token = NULL,
+                  max_pixels = 1024L^2, max_frames = 161L,
+                  max_prompts = 32L, timeout = 300L,
                   max_body = 1024L^2, warmup = TRUE) {
     model <- match.arg(model)
 
     message("Loading ", model, " on ", device, " (no downloads; run the ",
             "download_*() function first if artifacts are missing)...")
-    state <- .dserve_load(model, device)
+    state <- .dserve_load(model, device, max_prompts = max_prompts)
+    state$token <- token
+    state$max_pixels <- as.integer(max_pixels)
+    state$max_frames <- as.integer(max_frames)
     message("Model loaded.")
 
     if (isTRUE(warmup) && model != "ltx") {
@@ -92,13 +115,20 @@ serve <- function(port = 7812L,
         if (is.null(con)) {
             next
         }
+        resp <- NULL
         tryCatch({
             req <- .dserve_read_request(con, max_body)
             if (!is.null(req)) {
                 resp <- tryCatch(
                                  .dserve_route(req, state),
                                  error = function(e) {
-                                     .dserve_err(500L, conditionMessage(e))
+                                     r <- .dserve_err(500L, conditionMessage(e))
+                                     if (grepl("CUDA out of memory",
+                                               conditionMessage(e),
+                                               fixed = TRUE)) {
+                                         attr(r, "fatal") <- TRUE
+                                     }
+                                     r
                                  }
                 )
                 .dserve_send(con, resp$status, resp$content_type, resp$body)
@@ -109,21 +139,34 @@ serve <- function(port = 7812L,
                 try(close(con), silent = TRUE)
                 gc(verbose = FALSE) # bound dead handles; keep the warm pool
             })
+        if (exists("resp", inherits = FALSE) && isTRUE(attr(resp, "fatal"))) {
+            message("CUDA out of memory: exiting for a clean supervisor restart")
+            quit(save = "no", status = 70L)
+        }
     }
 }
 
 # Load the served model once; return generate closures + metadata
-.dserve_load <- function(model, device) {
+.dserve_load <- function(model, device, max_prompts = 32L) {
     if (model == "ltx") {
-        pipe <- ltx23_load_pipeline(
-            file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.3-nf4"),
-            device = device, verbose = FALSE
-        )
-        te_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
-                            "gemma3-nf4")
+        data_dir <- tools::R_user_dir("diffuseR", "data")
+        # Serve whichever LTX artifact is built (nf4 preferred; fp8 is
+        # what download_ltx2() produces by default)
+        ckpt_dir <- Filter(dir.exists,
+                           file.path(data_dir, c("ltx2.3-nf4", "ltx2.3-fp8")))
+        if (!length(ckpt_dir)) {
+            stop("No LTX-2.3 artifact under ", data_dir,
+                 "; run download_ltx2() (fp8) or ltx23_quantize_nf4() first.",
+                 call. = FALSE)
+        }
+        pipe <- ltx23_load_pipeline(ckpt_dir[[1]], device = device,
+                                    verbose = FALSE)
+        te_dir <- file.path(data_dir, "gemma3-nf4")
         if (!dir.exists(te_dir)) {
             stop("Gemma3 NF4 artifact not found at ", te_dir,
-                 "; run gemma3_quantize_nf4() first.", call. = FALSE)
+                 "; run gemma3_quantize_nf4() first (serving loads the ",
+                 "quantized encoder, not the raw fp32 weights).",
+                 call. = FALSE)
         }
         if (!requireNamespace("hfhub", quietly = TRUE)) {
             stop("Serving ltx requires the hfhub package (tokenizer files).",
@@ -134,19 +177,41 @@ serve <- function(port = 7812L,
         te <- load_gemma3_text_encoder(te_dir, device = "cpu",
                                        verbose = FALSE)
         tok <- gemma3_tokenizer(tok_dir)
+        enc_dev <- if (identical(device, "cuda") &&
+            torch::cuda_is_available()) {
+            "cuda"
+        } else {
+            "cpu"
+        }
+        # Bounded LRU of CONNECTOR outputs (~9 MB each): the raw Gemma
+        # stack (~0.4 GB) is encoded, projected, and dropped per prompt
+        cache <- new.env(parent = emptyenv())
+        order <- character(0)
         embeds <- function(prompt) {
             key <- paste0("p:", prompt)
-            e <- .dserve_embed_cache[[key]]
-            if (is.null(e)) {
-                e <- encode_with_gemma3(prompt, model = te, tokenizer = tok,
-                    max_sequence_length = 1024L,
-                    device = if (torch::cuda_is_available()) "cuda" else "cpu",
-                    verbose = FALSE)
-                e$prompt_embeds <- e$prompt_embeds$to(device = "cpu")
-                e$prompt_attention_mask <-
-                e$prompt_attention_mask$to(device = "cpu")
-                .dserve_embed_cache[[key]] <- e
+            e <- cache[[key]]
+            if (!is.null(e)) {
+                order <<- c(setdiff(order, key), key)
+                return(e)
             }
+            raw <- encode_with_gemma3(prompt, model = te, tokenizer = tok,
+                                      max_sequence_length = 1024L,
+                                      device = enc_dev, verbose = FALSE)
+            conn <- torch::with_no_grad(pipe$connectors(
+                raw$prompt_embeds$to(device = "cpu",
+                                     dtype = torch::torch_bfloat16()),
+                raw$prompt_attention_mask$to(device = "cpu")))
+            e <- list(video_text_embedding = conn$video_text_embedding,
+                      audio_text_embedding = conn$audio_text_embedding,
+                      attention_mask = conn$attention_mask)
+            rm(raw, conn)
+            cache[[key]] <- e
+            order <<- c(order, key)
+            while (length(order) > max_prompts) {
+                rm(list = order[[1]], envir = cache)
+                order <<- order[-1]
+            }
+            gc(verbose = FALSE)
             e
         }
         list(model = model, video = TRUE, pipe = pipe, embeds = embeds,
@@ -183,6 +248,12 @@ serve <- function(port = 7812L,
 .dserve_route <- function(req, state) {
     if (isTRUE(req$too_large)) {
         return(.dserve_err(413L, "request body too large"))
+    }
+    if (!is.null(state$token)) {
+        auth <- req$headers[["authorization"]]
+        if (!identical(auth, paste("Bearer", state$token))) {
+            return(.dserve_err(401L, "unauthorized"))
+        }
     }
     path <- sub("\\?.*$", "", req$path)
 
@@ -225,6 +296,10 @@ serve <- function(port = 7812L,
     if (length(wh) != 2L || anyNA(wh)) {
         return(.dserve_err(400L, "size must look like 1024x1024"))
     }
+    if (wh[1] * wh[2] > state$max_pixels) {
+        return(.dserve_err(400L, sprintf(
+            "request exceeds limits (max %d pixels)", state$max_pixels)))
+    }
     seed <- if (is.null(body$seed)) NULL else as.integer(body$seed)
     img <- state$generate(body$prompt, width = wh[1], height = wh[2],
                           seed = seed, steps = body$steps)
@@ -240,15 +315,23 @@ serve <- function(port = 7812L,
     if (is.null(body) || is.null(body$prompt) || !nzchar(body$prompt)) {
         return(.dserve_err(400L, "body must be JSON with a prompt"))
     }
+    w <- as.integer(body$width %||% 768L)
+    h <- as.integer(body$height %||% 512L)
+    nf <- as.integer(body$num_frames %||% 121L)
+    if (w * h > state$max_pixels || nf > state$max_frames) {
+        return(.dserve_err(400L, sprintf(
+            "request exceeds limits (max %d pixels, %d frames)",
+            state$max_pixels, state$max_frames)))
+    }
     out <- tempfile(fileext = ".mp4")
     on.exit(unlink(out), add = TRUE)
     txt2vid_ltx2(
         prompt = body$prompt,
         pipeline = state$pipe,
-        prompt_embeds = state$embeds(body$prompt),
-        width = as.integer(body$width %||% 768L),
-        height = as.integer(body$height %||% 512L),
-        num_frames = as.integer(body$num_frames %||% 121L),
+        connector_embeds = state$embeds(body$prompt),
+        width = w,
+        height = h,
+        num_frames = nf,
         frame_rate = as.numeric(body$frame_rate %||% 24),
         seed = if (is.null(body$seed)) NULL else as.integer(body$seed),
         device = state$device, dtype = "bfloat16",
@@ -322,7 +405,8 @@ serve <- function(port = 7812L,
         body <- charToRaw(enc2utf8(body))
     }
     reason <- switch(as.character(status), "200" = "OK",
-                     "400" = "Bad Request", "404" = "Not Found",
+                     "400" = "Bad Request", "401" = "Unauthorized",
+                     "404" = "Not Found",
                      "405" = "Method Not Allowed",
                      "413" = "Payload Too Large",
                      "500" = "Internal Server Error", "Unknown")

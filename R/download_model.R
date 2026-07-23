@@ -154,16 +154,12 @@ download_model <- function(model_name = "sd21",
 
     needs_download <- !already_available | overwrite
 
-    # Interactive consent when files actually need downloading
+    # Consent when files actually need downloading: interactive prompt,
+    # or the diffuseR.consent option in non-interactive sessions
     if (download_models && any(needs_download)) {
-        if (interactive()) {
-            ans <- utils::askYesNo(
-                                   paste0("Download '", model_name, "' model files from HuggingFace?"),
-                                   default = TRUE
-            )
-            if (!isTRUE(ans)) {
-                stop("Download cancelled.", call. = FALSE)
-            }
+        if (!.ltx23_consent(paste0("'", model_name,
+                                   "' model files from HuggingFace"))) {
+            stop("Download cancelled.", call. = FALSE)
         }
     }
 

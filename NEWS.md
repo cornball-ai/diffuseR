@@ -8,7 +8,11 @@
   `/v1/videos/generations` for ltx, `GET /health`. Never downloads
   weights; an example systemd unit ships as
   `system.file("diffuser.service", package = "diffuseR")`. Port 7812
-  in the cornball serve range.
+  in the cornball serve range. Hardened for
+  persistence: optional bearer-token auth, hard pixel/frame limits
+  (400 on oversize), a bounded LRU of per-prompt connector embeds
+  (~9 MB each, never the raw Gemma stacks), and a clean process exit
+  on CUDA OOM so a supervisor restarts with sane GPU state.
 * Every model download is consent-gated: interactive prompt with the
   size stated, and non-interactive sessions require
   `options(diffuseR.consent = TRUE)`. Generation functions never
