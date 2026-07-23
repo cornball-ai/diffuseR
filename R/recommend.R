@@ -178,8 +178,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
 # on the cpu tier (nothing stages, so nothing to page-lock); TRUE when
 # RAM is undetectable (page-locking already fails soft per component).
 # Shared by recommend() and the phase-offloading loaders.
-.pin_decision <- function(model, precision, host_ram_gb = NULL,
-                          cpu = FALSE) {
+.pin_decision <- function(model, precision, host_ram_gb = NULL, cpu = FALSE) {
     if (isTRUE(cpu)) {
         return(FALSE)
     }
@@ -204,7 +203,11 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     if (!is.null(opt)) {
         return(isTRUE(opt))
     }
-    precision <- if (identical(format, "full")) "bf16" else format
+    if (identical(format, "full")) {
+        precision <- "bf16"
+    } else {
+        precision <- format
+    }
     .pin_decision(model, precision)
 }
 
@@ -233,7 +236,11 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                                max_hi, max_mid, max_lo, max_cpu,
                                attn_tight = NULL, gpu_encode_vram = 0) {
     gpu_text <- function(min_vram) {
-        if (min_vram >= gpu_encode_vram) "cuda" else "cpu"
+        if (min_vram >= gpu_encode_vram) {
+            "cuda"
+        } else {
+            "cpu"
+        }
     }
     list(
          list(precision = "bf16", min_vram = bf16_vram, needs = "bfloat16",

@@ -149,7 +149,11 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = conf)
     }
     if (device == "cuda") {
-        footprint <- if (identical(ckpt$format, "nf4")) 8 else 4
+        if (identical(ckpt$format, "nf4")) {
+            footprint <- 8
+        } else {
+            footprint <- 4
+        }
         if (identical(text_device, "cuda")) {
             # GPU T5 encode is the largest phase (~9.8 GB); size the gc
             # gate to it, not the smaller transformer footprint
@@ -206,7 +210,11 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     # stage and swap in for the encode); text_device controls where they
     # compute. On the CPU-encode tiers they stay resident and compute in
     # place (CLIP fp32, T5 fp32); when they GPU-encode, T5 loads bf16.
-    te_device <- if (phase_offload) "cpu" else text_device
+    if (phase_offload) {
+        te_device <- "cpu"
+    } else {
+        te_device <- text_device
+    }
     if (verbose) {
         message("Loading CLIP text encoder...")
     }
@@ -241,7 +249,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         components <- c(components, "text_encoder", "text_encoder2")
     }
     pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
-        components, verbose = verbose)
+                                        components, verbose = verbose)
 
     structure(pipe, class = "flux_pipeline")
 }

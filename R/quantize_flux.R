@@ -195,10 +195,10 @@ NULL
 # compute in place. Resident-fp8 transformers (flux2/zimage) also pin
 # their plain weight_fp8/weight_scale fields so staged transfer covers
 # them; nf4 packed weights are buffers and ride along automatically.
-.flux_build_staging <- function(pipe, pin, phase_offload, device,
-                                components, verbose = TRUE) {
+.flux_build_staging <- function(pipe, pin, phase_offload, device, components,
+                                verbose = TRUE) {
     if (!(isTRUE(pin) && isTRUE(phase_offload) &&
-          identical(device, "cuda") && torch::cuda_is_available())) {
+            identical(device, "cuda") && torch::cuda_is_available())) {
         return(NULL)
     }
     if (verbose) {

@@ -57,17 +57,17 @@ pipeline uses \code{\link{ltx23_memory_profile}} for frame-aware
 placement.
 
 The pinning decision: phase-swapped weights are page-locked host
-copies (see \code{\link{staging_ltx23}}) that transfer at DMA rate -
+copies (see \code{\link{staging}}) that transfer at DMA rate -
 but pinned pages are unswappable, so on small-RAM machines they turn
 memory pressure into OOM kills. \code{pin} is TRUE when available
 host RAM covers the model's pinned set twice over, FALSE below that,
 FALSE on the cpu tier (nothing stages), and TRUE when RAM cannot be
-detected (page-locking already fails soft per component). Today the
-LTX pipeline and Gemma3 encoder loaders take \code{pin} arguments
-and stage pinned weights (see \code{\link{staging_ltx23}}); the
-image-model loaders do not stage weights yet, so for them \code{pin}
-is forward-looking policy with no consumer.
-\code{options(diffuseR.pin_staging)} is the global switch.
+detected (page-locking already fails soft per component). The LTX
+pipeline, the Gemma3 encoder, and the FLUX-family image loaders
+(flux1, flux2, zimage) take \code{pin} arguments and stage pinned
+weights (see \code{\link{staging}}); the SD-family loaders place
+components statically and do not phase-swap, so \code{pin} is inert
+for them. \code{options(diffuseR.pin_staging)} is the global switch.
 
 }
 \examples{

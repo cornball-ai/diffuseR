@@ -5,7 +5,8 @@
 \usage{
 zimage_load_pipeline(model_dir = NULL, device = "cuda",
                      precision = c("auto", "fp8", "nf4"), text_device = NULL,
-                     attn_chunk = NULL, phase_offload = TRUE, verbose = TRUE)
+                     attn_chunk = NULL, phase_offload = TRUE, pin = NULL,
+                     verbose = TRUE)
 }
 \arguments{
 \item{model_dir}{Quantized artifact directory (default: the
@@ -23,6 +24,11 @@ fp8 when safetensors supports float8, else nf4), "fp8", or "nf4".}
 \item{attn_chunk}{Integer or NULL. Attention query-chunk override.}
 
 \item{phase_offload}{Logical. One GPU tenant per phase.}
+
+\item{pin}{Logical or NULL. Page-lock the phase-swapped weights for
+DMA-rate transfer (see \code{\link{staging}}). NULL (default)
+resolves via \code{options(diffuseR.pin_staging)} then the
+host-RAM-aware \code{\link{recommend}} decision.}
 
 \item{verbose}{Logical.}
 }

@@ -162,7 +162,7 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
         components <- c(components, "text_encoder")
     }
     pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
-        components, verbose = verbose)
+                                        components, verbose = verbose)
 
     structure(pipe, class = "zimage_pipeline")
 }
@@ -358,7 +358,8 @@ txt2img_zimage <- function(prompt, pipeline = NULL, width = 1024L,
     # Resident fp8's plain weight fields ride to the GPU with the phase.
     # When staging covers the transformer it already moved them (and the
     # field reassignment here would orphan the staged pairs), so skip it.
-    fp8_manual <- isTRUE(pipeline$fp8_resident) && is.null(staging[["transformer"]])
+    fp8_manual <- isTRUE(pipeline$fp8_resident) &&
+    is.null(staging[["transformer"]])
     if (fp8_manual) {
         .flux_fp8_to_device(transformer, device)
     }
