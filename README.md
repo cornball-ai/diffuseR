@@ -1,4 +1,3 @@
-![](man/figures/diffuseRlogo.png)
 
 # diffuseR
 
@@ -21,7 +20,7 @@ First install torch. As per [this comment](https://github.com/mlverse/torch/issu
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 2GB file.
 # For Windows and Linux: "cpu", "cu128" are the only currently supported
 # For MacOS the supported are: "cpu-intel" or "cpu-m1"
-kind <- "cu124"
+kind <- "cu128"
 version <- available.packages()["torch","Version"]
 options(repos = c(
   torch = sprintf("https://torch-cdn.mlverse.org/packages/%s/%s/", kind, version),
@@ -33,11 +32,8 @@ install.packages("torch")
 You can install the development version of diffuseR from GitHub:
 
 ```r
-# install.packages("devtools")
-devtools::install_github("cornball-ai/diffuseR")
-# Or
-# install.packages("targets")
-targets::install_github("cornball-ai/diffuseR")
+# install.packages("remotes")
+remotes::install_github("cornball-ai/diffuseR")
 ```
 
 ## Features
@@ -49,6 +45,8 @@ targets::install_github("cornball-ai/diffuseR")
 - **Scheduler Options**: DDIM and FlowMatch Euler (static and dynamic shifting)
 - **Device Support**: CPU and CUDA GPUs (including Blackwell RTX 50xx)
 - **R-native Interface**: Functional programming approach that feels natural in R
+- **HTTP serving**: `serve()` exposes any model over OpenAI-style endpoints
+  (images and video) from one persistent process - see `?serve`
 
 ## Hardware requirements
 
@@ -91,7 +89,7 @@ cat_img <- txt2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
-![](man/figures/cat.png)
+
 
 ### Advanced Usage with GPU
 
@@ -145,8 +143,8 @@ gambling_cat <- img2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
-![](man/figures/cat2.png)
-![](man/figures/gambling_cat.png)
+![](cat2.png)
+![](gambling_cat.png)
 
 
 ### FLUX and Z-Image
@@ -178,6 +176,30 @@ txt2img_flux2("a red fox sitting in a snowy forest, digital art",
 download_zimage_turbo()
 txt2img_zimage(paste("A storefront with a large wooden sign that reads",
                      "\"DIFFUSER\" in bold carved letters"), seed = 42)
+
+### Text-to-Video: LTX-2.3
+
+LTX-2.3 (22B, distilled) generates video with synchronized audio in 8
+steps. NF4-quantized it renders 768x512x49 in ~44s warm on an RTX
+5060 Ti; audio-driven talking-head generation and clip continuation
+are supported (see ?txt2vid_ltx2).
+
+```r
+download_ltx2()       # ~46GB download, one-time fp8 quantize
+txt2vid_ltx2("A river winding through a misty forest at dawn",
+             pipeline = ltx23_load_pipeline(),
+             filename = "river.mp4")
+```
+
+### Serving over HTTP
+
+```r
+# One persistent process, OpenAI-style endpoints, never downloads:
+serve(model = "flux2", port = 7812L, token = "my-secret")
+# curl -H "Authorization: Bearer my-secret" \
+#   -d '{"prompt":"a lighthouse at dusk","size":"512x512"}' \
+#   http://localhost:7812/v1/images/generations
+```
 
 # Or through the common dispatcher
 txt2img("a lighthouse at dusk", model_name = "flux2")
