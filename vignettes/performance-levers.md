@@ -16,9 +16,10 @@ This vignette is the map. The machine-readable version of the same
 policy is `recommend()`, which inspects your VRAM, host RAM, and
 installed `safetensors` capabilities and returns a configuration.
 Today `flux_memory_profile()` delegates to it and `serve()` consults
-it to pick between built LTX artifacts; for everything else it is
-advisory — call it and pass its fields to the loaders yourself. Full
-consumption (including `pin`) is arriving model by model.
+it to pick between built LTX artifacts; the FLUX-family loaders resolve
+their `pin` (and FLUX.1 its `text_device`) through it. For the rest of
+the fields it is advisory — call it and pass them to the loaders
+yourself.
 
 ## Lever 1: weight precision
 
@@ -30,7 +31,7 @@ carries an exact census of which weights it may touch).
 
 | model | DiT / UNet | text encoder(s) | VAE |
 |---|---|---|---|
-| FLUX.1 (12B) | nf4, fp8 (streamed), bf16, fp32 | T5: fp32 (CPU) · CLIP-L: fp16/fp32 | 16/32 |
+| FLUX.1 (12B) | nf4, fp8 (streamed), bf16, fp32 | T5: bf16 (GPU, 14 GB+) or fp32 (CPU) · CLIP-L: fp16/fp32 | 16/32 |
 | FLUX.2 klein (4B) | nf4, fp8 (resident), bf16, fp32 | Qwen3-4B: bf16/fp32 | 16/32 |
 | Z-Image (6B) | nf4, fp8 (resident), bf16, fp32 | Qwen3-4B: bf16/fp32 | 16/32 |
 | LTX-2.3 (22B video) | nf4, fp8 (streamed), bf16, fp32 | Gemma3-12B: nf4, bf16, fp32 | 16/32 |
@@ -57,10 +58,11 @@ device maps (`auto_devices()` strategies: `full_gpu`, `unet_gpu`,
 `cpu_only`); the flux family and LTX use phase offloading, where each
 component holds the GPU only for its own phase — text encoding,
 denoising, decoding — and the denoiser is the sole GPU tenant during
-the loop. Text encoders earn special placement: FLUX.1's T5 runs
-fp32 on the CPU for quality; the Qwen3 encoders phase-onload in bf16;
-the Gemma3 encoder can be GPU-resident or CPU-resident with a staged
-swap (see below).
+the loop. Text encoders earn special placement: FLUX.1's T5
+phase-onloads in bf16 on 14 GB+ cards (its ~9.8 GB encode phase fits)
+and runs fp32 on the CPU below that; the Qwen3 encoders phase-onload in
+bf16; the Gemma3 encoder can be GPU-resident or CPU-resident with a
+staged swap (see below).
 
 ## Lever 3: residency
 
@@ -78,11 +80,12 @@ From most to least VRAM:
    (11 GB of transformer re-onloads in 0.5 s), and the offload is a
    pointer swap back to the still-valid pinned copy — zero bytes
    moved, because inference never mutates weights. Page-locking costs
-   ~0.6 s/GB once at load. Built today for the LTX pipeline
-   components and the Gemma3 encoder.
+   ~0.6 s/GB once at load. Built for the LTX pipeline components, the
+   Gemma3 encoder, and the FLUX-family transformer, VAE decoder, and
+   text encoder(s).
 4. **Pageable phase swap** — the same movement through ordinary
-   memory, at roughly 2-16 GB/s depending on tensor layout. What the
-   flux-family encoders do today.
+   memory, at roughly 2-16 GB/s depending on tensor layout. The
+   fallback when pinning is opted out or page-locking fails.
 5. **Streamed weights** — the bigger-than-VRAM tier: weights stay in
    (pinned) host RAM permanently and stream across PCIe during each
    forward pass, about one byte per parameter per step. LTX fp8 and
@@ -107,8 +110,10 @@ soft per component. The global switch is
 `options(diffuseR.pin_staging = FALSE)` — reach for it under host
 memory pressure, in containers with hard memory caps, or for
 single-generation sessions where the one-time page-lock never pays
-itself back. Today the LTX pipeline and Gemma3 loaders consume the
-decision; the image-model loaders do not stage weights yet.
+itself back. The LTX pipeline, the Gemma3 loaders, and the FLUX-family
+image loaders consume the decision (their `pin` argument defaults to
+it); the SD-family loaders place components statically, so pinning is
+inert for them.
 
 ## Putting it together
 
@@ -121,5 +126,6 @@ r$note                    # fork suggestion when fp8 wanted but unreadable
 ```
 
 Treat the result as the machine's advice: pass its fields to the
-loaders and generators (only `flux_memory_profile()` and `serve()`'s
-LTX artifact selection consume it automatically today).
+loaders and generators. The FLUX-family loaders' `pin` (and FLUX.1's
+`text_device`), `flux_memory_profile()`, and `serve()`'s LTX artifact
+selection consume it automatically.
