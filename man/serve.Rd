@@ -5,7 +5,8 @@
 \usage{
 serve(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
       device = "cuda", token = NULL, max_pixels = 1024L^2, max_frames = 161L,
-      max_prompts = 32L, timeout = 300L, max_body = 1024L^2, warmup = TRUE)
+      max_steps = 50L, max_pixel_frames = NULL, max_prompts = 32L,
+      timeout = 300L, max_body = 1024L^2, warmup = TRUE)
 }
 \arguments{
 \item{port}{Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).}
@@ -22,6 +23,13 @@ must send \code{Authorization: Bearer <token>}.}
 and video frames). Default 1024^2.}
 
 \item{max_frames}{Integer. Maximum video frame count. Default 161.}
+
+\item{max_steps}{Integer. Maximum image inference steps. Default 50.}
+
+\item{max_pixel_frames}{Numeric. Joint video budget: width x height
+x frames must stay under it (NULL = max_pixels x 121, so full-
+resolution clips top out at 121 frames and longer clips must
+shrink spatially).}
 
 \item{max_prompts}{Integer. Bound on the per-prompt connector-embed
 cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.}

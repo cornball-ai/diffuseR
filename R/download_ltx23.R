@@ -147,3 +147,18 @@ download_ltx2 <- function(quantize = TRUE,
 
     invisible(result)
 }
+
+# TRUE when every file is already in the local hub cache, i.e. no
+# network fetch will happen. Consent gates key on this - never on a
+# single sentinel file, and never on artifact presence (a completed
+# artifact must not license re-downloading sources).
+.hub_all_cached <- function(repo, files, repo_type = NULL) {
+    all(vapply(files, function(f) {
+        args <- list(repo, f, local_files_only = TRUE)
+        if (!is.null(repo_type)) {
+            args$repo_type <- repo_type
+        }
+        !is.null(tryCatch(do.call(hfhub::hub_download, args),
+                          error = function(e) NULL))
+    }, logical(1)))
+}

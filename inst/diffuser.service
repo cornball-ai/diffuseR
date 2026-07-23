@@ -33,7 +33,11 @@ WorkingDirectory=/home/CHANGEME
 # littler (/usr/bin/r) does not read ~/.Renviron/.Rprofile, so set what
 # the server needs explicitly:
 Environment=HOME=/home/CHANGEME
-ExecStart=/usr/bin/r -e "diffuseR::serve(model = 'flux2', port = 7812L)"
+# Shared-secret auth: put DIFFUSER_TOKEN=<random string> in the env
+# file (chmod 600). serverSocket binds all interfaces, so run with a
+# token or keep the port firewalled to localhost/LAN.
+EnvironmentFile=/etc/diffuser.env
+ExecStart=/usr/bin/r -e "diffuseR::serve(model = 'flux2', port = 7812L, token = Sys.getenv('DIFFUSER_TOKEN'))"
 Restart=on-failure
 RestartSec=5
 # Pipeline load + warmup take a while; don't let a watchdog kill startup.

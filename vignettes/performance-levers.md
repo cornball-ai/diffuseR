@@ -14,11 +14,11 @@ models on no GPU at all. It does that with three independent levers:
 weight precision, per-component device placement, and memory residency.
 This vignette is the map. The machine-readable version of the same
 policy is `recommend()`, which inspects your VRAM, host RAM, and
-installed `safetensors` capabilities and returns a configuration. The
-SD device strategies and the LTX memory profile consume it today; the
-flux-family loaders select artifacts by what is built on disk, and
-full consumption of the recommendation (including `pin`) is arriving
-model by model.
+installed `safetensors` capabilities and returns a configuration.
+Today `flux_memory_profile()` delegates to it and `serve()` consults
+it to pick between built LTX artifacts; for everything else it is
+advisory — call it and pass its fields to the loaders yourself. Full
+consumption (including `pin`) is arriving model by model.
 
 ## Lever 1: weight precision
 
@@ -120,5 +120,6 @@ r$pin                     # page-lock the phase-swapped host copies?
 r$note                    # fork suggestion when fp8 wanted but unreadable
 ```
 
-The generation functions apply this automatically via their defaults;
-every field can be overridden by hand.
+Treat the result as the machine's advice: pass its fields to the
+loaders and generators (only `flux_memory_profile()` and `serve()`'s
+LTX artifact selection consume it automatically today).

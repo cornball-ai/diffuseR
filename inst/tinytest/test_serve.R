@@ -107,3 +107,38 @@ overf <- diffuseR:::.dserve_route(
   mkreq("POST", "/v1/videos/generations",
         body = '{"prompt":"x","num_frames":9999}'), vstate)
 expect_equal(overf$status, 400L)
+
+# --- steps, frame_rate, and joint-budget limits ------------------------------------
+
+state$max_steps <- 50L
+overstep <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/images/generations",
+        body = '{"prompt":"x","size":"64x64","steps":5000}'), state)
+expect_equal(overstep$status, 400L)
+expect_true(grepl("steps", jbody(overstep)$error$message))
+
+okstep <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/images/generations",
+        body = '{"prompt":"x","size":"64x64","steps":4}'), state)
+expect_equal(okstep$status, 200L)
+
+vstate$max_steps <- 50L
+vstate$max_pixel_frames <- 1024^2 * 121
+badfr <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/videos/generations",
+        body = '{"prompt":"x","frame_rate":1}'), vstate)
+expect_equal(badfr$status, 400L)
+expect_true(grepl("frame_rate", jbody(badfr)$error$message))
+
+# joint budget: each dimension legal alone, product over budget
+joint <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/videos/generations",
+        body = '{"prompt":"x","width":1024,"height":1024,"num_frames":161}'),
+  vstate)
+expect_equal(joint$status, 400L)
+expect_true(grepl("pixel-frames", jbody(joint)$error$message))
+
+tiny <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/videos/generations",
+        body = '{"prompt":"x","width":8,"height":8}'), vstate)
+expect_equal(tiny$status, 400L)

@@ -103,7 +103,7 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
                 local_files_only = TRUE),
                            error = function(e) NULL
         )
-        if (is.null(cached) && !have_artifact) {
+        if (is.null(cached) || !.hub_all_cached(.flux1_repo, .flux1_transformer_files)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
             if (!is.na(free) && free < 45) {
                 warning(sprintf(
@@ -148,11 +148,7 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
 
     if (text_encoders) {
         files <- c(.flux1_support_files, .flux1_t5_files)
-        have_t5 <- !is.null(tryCatch(
-                                     hfhub::hub_download(.flux1_repo, .flux1_t5_files[[3]],
-                    local_files_only = TRUE),
-                                     error = function(e) NULL
-            ))
+        have_t5 <- .hub_all_cached(.flux1_repo, files)
         if (!have_t5) {
             ok <- .ltx23_consent(
                                  "the FLUX text encoders, VAE, and tokenizer (~10 GB)"

@@ -159,10 +159,7 @@ download_sdxl <- function(verbose = TRUE) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to download model weights.")
     }
-    have <- !is.null(tryCatch(
-                              hfhub::hub_download(.sdxl_repo, .sdxl_files[[1]],
-                repo_type = "dataset", local_files_only = TRUE),
-                              error = function(e) NULL))
+    have <- .hub_all_cached(.sdxl_repo, .sdxl_files, repo_type = "dataset")
     if (!have) {
         ok <- .ltx23_consent(
                              "Stable Diffusion XL UNet + VAE + 2 CLIP text encoders (~7 GB)")
@@ -180,6 +177,11 @@ download_sdxl <- function(verbose = TRUE) {
     index_path <- paths[[length(.sdxl_files)]]
     idx <- jsonlite::fromJSON(index_path, simplifyVector = TRUE)
     shards <- unique(unlist(idx$weight_map))
+    shard_files <- paste0("diffusers/unet/", shards)
+    if (!.hub_all_cached(.sdxl_repo, shard_files, repo_type = "dataset") &&
+        !.ltx23_consent("the remaining SDXL UNet shards")) {
+        stop("Download cancelled.", call. = FALSE)
+    }
     for (s in shards) {
         hfhub::hub_download(.sdxl_repo, paste0("diffusers/unet/", s),
                             repo_type = "dataset")

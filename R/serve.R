@@ -59,6 +59,11 @@
 #' @param max_pixels Integer. Maximum width x height accepted (images
 #'   and video frames). Default 1024^2.
 #' @param max_frames Integer. Maximum video frame count. Default 161.
+#' @param max_steps Integer. Maximum image inference steps. Default 50.
+#' @param max_pixel_frames Numeric. Joint video budget: width x height
+#'   x frames must stay under it (NULL = max_pixels x 121, so full-
+#'   resolution clips top out at 121 frames and longer clips must
+#'   shrink spatially).
 #' @param max_prompts Integer. Bound on the per-prompt connector-embed
 #'   cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.
 #' @param timeout Integer. Per-connection I/O timeout in seconds.
@@ -74,9 +79,15 @@ serve <- function(port = 7812L,
                   model = c("flux2", "zimage", "flux1", "ltx"),
                   device = "cuda", token = NULL,
                   max_pixels = 1024L^2, max_frames = 161L,
+                  max_steps = 50L, max_pixel_frames = NULL,
                   max_prompts = 32L, timeout = 300L,
                   max_body = 1024L^2, warmup = TRUE) {
     model <- match.arg(model)
+    if (is.null(max_pixel_frames)) {
+        # Joint video budget: full max_pixels only up to 121 frames;
+        # longer clips must shrink spatially
+        max_pixel_frames <- as.numeric(max_pixels) * 121
+    }
 
     message("Loading ", model, " on ", device, " (no downloads; run the ",
             "download_*() function first if artifacts are missing)...")
@@ -84,6 +95,8 @@ serve <- function(port = 7812L,
     state$token <- token
     state$max_pixels <- as.integer(max_pixels)
     state$max_frames <- as.integer(max_frames)
+    state$max_steps <- as.integer(max_steps)
+    state$max_pixel_frames <- as.numeric(max_pixel_frames)
     message("Model loaded.")
 
     if (isTRUE(warmup) && model != "ltx") {
@@ -93,6 +106,14 @@ serve <- function(port = 7812L,
                                      height = 256L, seed = 1L))
             message("Warmup done.")
         }, error = function(e) {
+            # A CUDA OOM here strands GPU components before the socket
+            # even opens: fail startup so the supervisor sees it
+            if (grepl("CUDA out of memory", conditionMessage(e),
+                      fixed = TRUE)) {
+                stop("warmup hit CUDA out of memory; refusing to serve ",
+                     "with stranded GPU state: ", conditionMessage(e),
+                     call. = FALSE)
+            }
             message("warmup skipped: ", conditionMessage(e))
         })
     }
@@ -150,17 +171,35 @@ serve <- function(port = 7812L,
 .dserve_load <- function(model, device, max_prompts = 32L) {
     if (model == "ltx") {
         data_dir <- tools::R_user_dir("diffuseR", "data")
-        # Serve whichever LTX artifact is built (nf4 preferred; fp8 is
-        # what download_ltx2() produces by default)
-        ckpt_dir <- Filter(dir.exists,
-                           file.path(data_dir, c("ltx2.3-nf4", "ltx2.3-fp8")))
-        if (!length(ckpt_dir)) {
-            stop("No LTX-2.3 artifact under ", data_dir,
+        # Serve a COMPLETE artifact only (a partial/interrupted quantize
+        # must not shadow a valid one), and when both precisions are
+        # built, follow the machine-aware recommendation - on a card
+        # too small for resident nf4, recommend() prescribes streamed
+        # fp8 (which is also what download_ltx2() produces by default)
+        valid_artifact <- function(d) {
+            mp <- file.path(d, "manifest.json")
+            file.exists(mp) && isTRUE(tryCatch({
+                m <- jsonlite::fromJSON(mp)
+                length(m$shards) > 0 &&
+                all(file.exists(file.path(d, m$shards)))
+            }, error = function(e) FALSE))
+        }
+        dirs <- c(nf4 = file.path(data_dir, "ltx2.3-nf4"),
+                  fp8 = file.path(data_dir, "ltx2.3-fp8"))
+        avail <- dirs[vapply(dirs, valid_artifact, logical(1))]
+        if (!length(avail)) {
+            stop("No complete LTX-2.3 artifact under ", data_dir,
                  "; run download_ltx2() (fp8) or ltx23_quantize_nf4() first.",
                  call. = FALSE)
         }
-        pipe <- ltx23_load_pipeline(ckpt_dir[[1]], device = device,
-                                    verbose = FALSE)
+        pick <- if (length(avail) == 1L) {
+            avail[[1]]
+        } else {
+            prec <- tryCatch(recommend("ltx")$precision,
+                             error = function(e) "nf4")
+            if (prec %in% names(avail)) avail[[prec]] else avail[[1]]
+        }
+        pipe <- ltx23_load_pipeline(pick, device = device, verbose = FALSE)
         te_dir <- file.path(data_dir, "gemma3-nf4")
         if (!dir.exists(te_dir)) {
             stop("Gemma3 NF4 artifact not found at ", te_dir,
@@ -296,13 +335,22 @@ serve <- function(port = 7812L,
     if (length(wh) != 2L || anyNA(wh)) {
         return(.dserve_err(400L, "size must look like 1024x1024"))
     }
-    if (wh[1] * wh[2] > state$max_pixels) {
+    if (anyNA(wh) || any(wh < 16L) || wh[1] * wh[2] > state$max_pixels) {
         return(.dserve_err(400L, sprintf(
-            "request exceeds limits (max %d pixels)", state$max_pixels)))
+            "request exceeds limits (max %d pixels, min side 16)",
+            state$max_pixels)))
+    }
+    steps <- body$steps
+    if (!is.null(steps)) {
+        steps <- suppressWarnings(as.integer(steps))
+        if (is.na(steps) || steps < 1L || steps > state$max_steps) {
+            return(.dserve_err(400L, sprintf(
+                "steps must be between 1 and %d", state$max_steps)))
+        }
     }
     seed <- if (is.null(body$seed)) NULL else as.integer(body$seed)
     img <- state$generate(body$prompt, width = wh[1], height = wh[2],
-                          seed = seed, steps = body$steps)
+                          seed = seed, steps = steps)
     png <- png::writePNG(img)
     .dserve_json(list(
         created = as.integer(Sys.time()),
@@ -315,13 +363,20 @@ serve <- function(port = 7812L,
     if (is.null(body) || is.null(body$prompt) || !nzchar(body$prompt)) {
         return(.dserve_err(400L, "body must be JSON with a prompt"))
     }
-    w <- as.integer(body$width %||% 768L)
-    h <- as.integer(body$height %||% 512L)
-    nf <- as.integer(body$num_frames %||% 121L)
-    if (w * h > state$max_pixels || nf > state$max_frames) {
+    w <- suppressWarnings(as.integer(body$width %||% 768L))
+    h <- suppressWarnings(as.integer(body$height %||% 512L))
+    nf <- suppressWarnings(as.integer(body$num_frames %||% 121L))
+    fr <- suppressWarnings(as.numeric(body$frame_rate %||% 24))
+    if (anyNA(c(w, h, nf)) || w < 32L || h < 32L || nf < 9L ||
+        w * h > state$max_pixels || nf > state$max_frames ||
+        as.numeric(w) * h * nf > state$max_pixel_frames) {
         return(.dserve_err(400L, sprintf(
-            "request exceeds limits (max %d pixels, %d frames)",
-            state$max_pixels, state$max_frames)))
+            "request exceeds limits (max %d pixels, %d frames, %.0f pixel-frames)",
+            state$max_pixels, state$max_frames, state$max_pixel_frames)))
+    }
+    # frame_rate scales the audio-latent length inversely: bound it
+    if (is.na(fr) || fr < 12 || fr > 60) {
+        return(.dserve_err(400L, "frame_rate must be between 12 and 60"))
     }
     out <- tempfile(fileext = ".mp4")
     on.exit(unlink(out), add = TRUE)
@@ -332,7 +387,7 @@ serve <- function(port = 7812L,
         width = w,
         height = h,
         num_frames = nf,
-        frame_rate = as.numeric(body$frame_rate %||% 24),
+        frame_rate = fr,
         seed = if (is.null(body$seed)) NULL else as.integer(body$seed),
         device = state$device, dtype = "bfloat16",
         filename = out, verbose = FALSE
