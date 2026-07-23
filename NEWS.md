@@ -1,3 +1,20 @@
+# diffuseR 0.2.0.1
+
+* The FLUX-family image loaders (`flux_load_pipeline`,
+  `flux2_load_pipeline`, `zimage_load_pipeline`) now page-lock the
+  phase-swapped transformer, VAE decoder, and text encoder(s) at load,
+  so the per-generation CPU<->GPU moves run at DMA rate (offload becomes
+  a pointer swap). A new `pin` argument, `NULL` by default, resolves via
+  `options(diffuseR.pin_staging)` then the host-RAM-aware `recommend()`
+  decision. Resident-fp8 transformers (flux2/zimage) stage their fp8
+  weight fields too.
+* `flux_load_pipeline()` GPU-encodes T5-XXL (bfloat16) on 14 GB+ cards,
+  where its encode phase fits; smaller cards keep the float32 CPU
+  encode. `text_device` defaults to `NULL` (resolved from the VRAM
+  tier). An explicit `text_device = "cpu"` still encodes in place.
+* Internal: the pinned-staging helpers lost their `ltx23` prefix
+  (`staging.R`); `recommend()` and the loaders share one `.pin_decision`.
+
 # diffuseR 0.2.0
 
 ## Serving
