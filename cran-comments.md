@@ -23,8 +23,9 @@ package.
 * Model weights are never bundled and never downloaded without
   consent: every download function prompts interactively with the
   size stated, and non-interactive sessions require
-  options(diffuseR.consent = TRUE). Weights land under
-  tools::R_user_dir("diffuseR", "data").
+  options(diffuseR.consent = TRUE). Downloaded source weights use
+  hfhub's user cache; locally derived quantized artifacts are stored
+  under tools::R_user_dir("diffuseR", "data").
 * torch is in Imports; all tests, examples, and vignette code degrade
   gracefully when torch's backend (lantern) is not installed, as on
   win-builder.
