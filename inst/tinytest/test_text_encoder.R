@@ -1,3 +1,7 @@
+if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) {
+  exit_file("torch not fully installed")
+}
+
 # Test native CLIP text encoder
 
 # Skip if models not available

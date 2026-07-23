@@ -1,3 +1,7 @@
+if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) {
+  exit_file("torch not fully installed")
+}
+
 # Validation tests for FlowMatch scheduler against Python diffusers
 # These tests ensure numerical equivalence with HuggingFace implementation
 
