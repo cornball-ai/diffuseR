@@ -26,17 +26,17 @@
 #' placement.
 #'
 #' The pinning decision: phase-swapped weights are page-locked host
-#' copies (see \code{\link{staging_ltx23}}) that transfer at DMA rate -
+#' copies (see \code{\link{staging}}) that transfer at DMA rate -
 #' but pinned pages are unswappable, so on small-RAM machines they turn
 #' memory pressure into OOM kills. \code{pin} is TRUE when available
 #' host RAM covers the model's pinned set twice over, FALSE below that,
 #' FALSE on the cpu tier (nothing stages), and TRUE when RAM cannot be
-#' detected (page-locking already fails soft per component). Today the
-#' LTX pipeline and Gemma3 encoder loaders take \code{pin} arguments
-#' and stage pinned weights (see \code{\link{staging_ltx23}}); the
-#' image-model loaders do not stage weights yet, so for them \code{pin}
-#' is forward-looking policy with no consumer.
-#' \code{options(diffuseR.pin_staging)} is the global switch.
+#' detected (page-locking already fails soft per component). The LTX
+#' pipeline, the Gemma3 encoder, and the FLUX-family image loaders
+#' (flux1, flux2, zimage) take \code{pin} arguments and stage pinned
+#' weights (see \code{\link{staging}}); the SD-family loaders place
+#' components statically and do not phase-swap, so \code{pin} is inert
+#' for them. \code{options(diffuseR.pin_staging)} is the global switch.
 #'
 #' @param model "sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".
 #' @param vram_gb Numeric or NULL. Free VRAM in GB; auto-detected via
@@ -112,13 +112,8 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
         host_ram_gb <- .detect_host_ram()
     }
     pinned_set <- .pinned_set_gb(model, chosen$precision)
-    pin <- if (isTRUE(chosen$cpu)) {
-        FALSE # cpu tier: nothing phase-stages, nothing to page-lock
-    } else if (is.na(host_ram_gb)) {
-        TRUE # undetectable: page-locking fails soft per component
-    } else {
-        host_ram_gb >= 2 * pinned_set
-    }
+    pin <- .pin_decision(model, chosen$precision, host_ram_gb,
+                         cpu = isTRUE(chosen$cpu))
 
     list(
          model = model,
@@ -165,7 +160,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     sets <- list(
                  sd21 = c(fp16 = 3),
                  sdxl = c(fp16 = 8),
-                 flux1 = c(bf16 = 43, fp8 = 31, nf4 = 26), # DiT + T5 fp32 host copy
+                 flux1 = c(bf16 = 34, fp8 = 22, nf4 = 17), # DiT + T5 bf16 host copy
                  flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
                  zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
                  ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
@@ -176,6 +171,41 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     } else {
         v
     }
+}
+
+# Host-RAM-aware pinning decision for a model at a resolved precision.
+# TRUE when available host RAM covers the pinned set twice over; FALSE
+# on the cpu tier (nothing stages, so nothing to page-lock); TRUE when
+# RAM is undetectable (page-locking already fails soft per component).
+# Shared by recommend() and the phase-offloading loaders.
+.pin_decision <- function(model, precision, host_ram_gb = NULL,
+                          cpu = FALSE) {
+    if (isTRUE(cpu)) {
+        return(FALSE)
+    }
+    if (is.null(host_ram_gb)) {
+        host_ram_gb <- .detect_host_ram()
+    }
+    if (is.na(host_ram_gb)) {
+        return(TRUE)
+    }
+    host_ram_gb >= 2 * .pinned_set_gb(model, precision)
+}
+
+# Resolve a loader's pin argument. Precedence: an explicit pin= wins,
+# then options(diffuseR.pin_staging) (read with no default so an unset
+# option falls through), then the RAM-aware .pin_decision. A "full"
+# checkpoint is raw bf16, so it maps to the "bf16" pinned-set row.
+.resolve_pin <- function(pin, model, format) {
+    if (!is.null(pin)) {
+        return(isTRUE(pin))
+    }
+    opt <- getOption("diffuseR.pin_staging")
+    if (!is.null(opt)) {
+        return(isTRUE(opt))
+    }
+    precision <- if (identical(format, "full")) "bf16" else format
+    .pin_decision(model, precision)
 }
 
 # flux-family component placement: the big DiT and the VAE compute on
@@ -193,25 +223,34 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
 # Precision rises with VRAM (nf4 default, fp8/bf16 as upgrades) - the
 # inverse of the old flux_memory_profile, which had fp8 in a narrow
 # low-VRAM band it can no longer fit now that fp8 is GPU-resident.
+#
+# text_device is the phase where the encoder computes: "cuda" onloads it
+# to the GPU for the encode (fast, pinned), "cpu" keeps it resident on
+# the host. flux1's T5-XXL needs ~9.8 GB for its encode phase, so it
+# only GPU-encodes above gpu_encode_vram; the small flux2/zimage Qwen3
+# encodes on the GPU on every GPU tier (gpu_encode_vram = 0).
 .flux_family_tiers <- function(bf16_vram, fp8_vram, nf4_vram, nf4_tight_vram,
                                max_hi, max_mid, max_lo, max_cpu,
-                               attn_tight = NULL) {
+                               attn_tight = NULL, gpu_encode_vram = 0) {
+    gpu_text <- function(min_vram) {
+        if (min_vram >= gpu_encode_vram) "cuda" else "cpu"
+    }
     list(
          list(precision = "bf16", min_vram = bf16_vram, needs = "bfloat16",
               devices = .dev_flux(TRUE), offload = TRUE, max_pixels = max_hi,
-              attn_chunk = NULL),
+              text_device = gpu_text(bf16_vram), attn_chunk = NULL),
          list(precision = "fp8", min_vram = fp8_vram, needs = "float8_e4m3fn",
               devices = .dev_flux(TRUE), offload = TRUE, max_pixels = max_mid,
-              attn_chunk = NULL),
+              text_device = gpu_text(fp8_vram), attn_chunk = NULL),
          list(precision = "nf4", min_vram = nf4_vram, needs = NULL,
               devices = .dev_flux(TRUE), offload = TRUE, max_pixels = max_mid,
-              attn_chunk = NULL),
+              text_device = gpu_text(nf4_vram), attn_chunk = NULL),
          list(precision = "nf4", min_vram = nf4_tight_vram, needs = NULL,
               devices = .dev_flux(TRUE), offload = TRUE, max_pixels = max_lo,
-              attn_chunk = attn_tight),
+              text_device = gpu_text(nf4_tight_vram), attn_chunk = attn_tight),
          list(precision = "nf4", min_vram = 0, needs = NULL, cpu = TRUE,
               devices = .dev_flux(FALSE), offload = FALSE, max_pixels = max_cpu,
-              attn_chunk = NULL)
+              text_device = "cpu", attn_chunk = NULL)
     )
 }
 
@@ -250,7 +289,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                                     nf4_vram = 10, nf4_tight_vram = 8,
                                     max_hi = px(1536), max_mid = px(1024),
                                     max_lo = px(768), max_cpu = px(512),
-                                    attn_tight = 2048L),
+                                    attn_tight = 2048L, gpu_encode_vram = 14),
          # 4B but activation-heavy: 1024^2 peaks ~12.5 GB regardless of
          # weight precision, so the 1024^2 tiers want ~13 GB free.
          flux2 = .flux_family_tiers(bf16_vram = 16, fp8_vram = 14,

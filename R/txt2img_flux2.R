@@ -42,6 +42,10 @@ NULL
 #'   \code{device}; it encodes in its own phase and offloads).
 #' @param attn_chunk Integer or NULL. Attention query-chunk override.
 #' @param phase_offload Logical. One GPU tenant per phase.
+#' @param pin Logical or NULL. Page-lock the phase-swapped weights for
+#'   DMA-rate transfer (see \code{\link{staging}}). NULL (default)
+#'   resolves via \code{options(diffuseR.pin_staging)} then the
+#'   host-RAM-aware \code{\link{recommend}} decision.
 #' @param verbose Logical.
 #'
 #' @return A \code{flux2_pipeline} list.
@@ -50,7 +54,8 @@ NULL
 flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 precision = c("auto", "fp8", "nf4"),
                                 text_device = NULL, attn_chunk = NULL,
-                                phase_offload = TRUE, verbose = TRUE) {
+                                phase_offload = TRUE, pin = NULL,
+                                verbose = TRUE) {
     precision <- .flux_resolve_precision(match.arg(precision),
         file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-"))
     if (is.null(text_device)) {
@@ -70,6 +75,7 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     } else {
         flux_open_checkpoint(model_dir)
     }
+    pin <- .resolve_pin(pin, "flux2", ckpt$format %||% "full")
 
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         # Resident fp8 has an NF4-like stable footprint: the native
@@ -126,6 +132,12 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         verbose = verbose
     )
     pipe$decoder$to(device = component_device)
+    if (device == "cuda" && phase_offload) {
+        # Cast to the compute dtype once here so the per-generation
+        # onload is device-only (and the pinned copy is bf16, not fp32);
+        # the decode reads the decoder's own dtype and follows.
+        pipe$decoder$to(dtype = torch::torch_bfloat16())
+    }
 
     if (verbose) {
         message("Loading Qwen3 text encoder...")
@@ -137,6 +149,13 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         verbose = verbose
     )
     pipe$tokenizer <- qwen_bpe_tokenizer(.flux2_cached("tokenizer/tokenizer.json"))
+
+    components <- c("transformer", "decoder")
+    if (!identical(text_device, "cpu")) {
+        components <- c(components, "text_encoder")
+    }
+    pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
+        components, verbose = verbose)
 
     structure(pipe, class = "flux2_pipeline")
 }
@@ -237,15 +256,31 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
     }
 
     phase_offload <- isTRUE(pipeline$phase_offload) && device != "cpu"
-    onload <- function(module) {
+    staging <- pipeline$staging %||% list()
+    # Components move by name so pinned staging (see staging.R) can carry
+    # the CPU<->GPU transfer when the loader prepared it; otherwise the
+    # pageable module$to() path runs.
+    onload <- function(what) {
+        module <- pipeline[[what]]
         if (phase_offload) {
-            module$to(device = device)
+            st <- staging[[what]]
+            if (is.null(st)) {
+                module$to(device = device)
+            } else {
+                .staged_onload(st, device)
+            }
         }
         module
     }
-    offload <- function(module) {
+    offload <- function(what) {
+        module <- pipeline[[what]]
         if (phase_offload) {
-            module$to(device = "cpu")
+            st <- staging[[what]]
+            if (is.null(st)) {
+                module$to(device = "cpu")
+            } else {
+                .staged_offload(st)
+            }
             clear_vram()
         }
         invisible(module)
@@ -258,12 +293,19 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
         if (verbose) {
             message("Encoding prompt (Qwen3)...")
         }
-        onload(pipeline$text_encoder)
+        # An explicit text_device = "cpu" keeps Qwen3 fp32 on the host
+        # (it computes in place); only onload it when it phase-swaps.
+        gpu_encode <- !identical(pipeline$text_device, "cpu")
+        if (gpu_encode) {
+            onload("text_encoder")
+        }
         te_device <- pipeline$text_encoder$model$embed_tokens$weight$device
         prompt_embeds <- encode_with_qwen3(prompt, pipeline$text_encoder,
             pipeline$tokenizer, max_sequence_length = max_sequence_length,
             device = te_device)
-        offload(pipeline$text_encoder)
+        if (gpu_encode) {
+            offload("text_encoder")
+        }
     }
     prompt_embeds <- prompt_embeds$to(device = device, dtype = compute_dtype)
     txt_len <- prompt_embeds$shape[2]
@@ -301,8 +343,12 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
     )
 
     # --- Phase 3: denoise ------------------------------------------------------------
-    transformer <- onload(pipeline$transformer)
-    if (isTRUE(pipeline$fp8_resident)) {
+    transformer <- onload("transformer")
+    # Resident fp8's plain weight fields ride to the GPU with the phase.
+    # When staging covers the transformer it already moved them (and the
+    # field reassignment here would orphan the staged pairs), so skip it.
+    fp8_manual <- isTRUE(pipeline$fp8_resident) && is.null(staging[["transformer"]])
+    if (fp8_manual) {
         .flux_fp8_to_device(transformer, device)
     }
     if (verbose) {
@@ -314,10 +360,10 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
                               compute_dtype, chunk_size = pipeline$attn_chunk,
                               verbose = level
     )
-    if (isTRUE(pipeline$fp8_resident) && phase_offload) {
+    if (fp8_manual && phase_offload) {
         .flux_fp8_to_device(pipeline$transformer, "cpu")
     }
-    offload(pipeline$transformer)
+    offload("transformer")
     ltx23_release_dequant_buffers()
 
     # --- Phase 4: decode ---------------------------------------------------------------
@@ -332,17 +378,14 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
     )
     latents <- flux2_unpatchify_latents(latents)
 
-    decoder <- pipeline$decoder
-    if (phase_offload) {
-        decoder$to(device = device, dtype = compute_dtype)
-    }
+    decoder <- onload("decoder")
     torch::with_no_grad({
         dec_param <- decoder$post_quant_conv$weight
         img <- decoder(latents$to(device = dec_param$device,
                                   dtype = dec_param$dtype))
         img <- img$to(dtype = f32)$cpu()
     })
-    offload(decoder)
+    offload("decoder")
 
     img <- img$squeeze(1)$permute(c(2L, 3L, 1L))
     img <- img$add(1)$div(2)$clamp(0, 1)

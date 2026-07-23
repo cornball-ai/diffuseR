@@ -84,19 +84,26 @@ flux_unpack_latents <- function(latents, height, width, vae_scale_factor = 8L) {
 #' @param device Character. Compute device.
 #' @param precision "nf4" or "fp8"; NULL picks the
 #'   \code{\link{flux_memory_profile}} recommendation.
-#' @param text_device Device for the text encoders ("cpu" default; the
-#'   T5-XXL runs float32 there).
+#' @param text_device Where the text encoders compute. NULL (default)
+#'   takes the \code{\link{flux_memory_profile}} recommendation: "cuda"
+#'   on 14 GB+ cards (T5-XXL onloads in bfloat16 for its encode) and
+#'   "cpu" below that (T5-XXL runs float32 in place, since its ~9.8 GB
+#'   GPU encode phase would not fit).
 #' @param attn_chunk Integer or NULL. Attention query-chunk override.
 #' @param phase_offload Logical. One GPU tenant per phase.
+#' @param pin Logical or NULL. Page-lock the phase-swapped weights for
+#'   DMA-rate transfer (see \code{\link{staging}}). NULL (default)
+#'   resolves via \code{options(diffuseR.pin_staging)} then the
+#'   host-RAM-aware \code{\link{recommend}} decision.
 #' @param verbose Logical.
 #'
 #' @return A \code{flux_pipeline} list.
 #'
 #' @export
 flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
-                               precision = NULL, text_device = "cpu",
+                               precision = NULL, text_device = NULL,
                                attn_chunk = NULL, phase_offload = TRUE,
-                               verbose = TRUE) {
+                               pin = NULL, verbose = TRUE) {
     profile <- flux_memory_profile()
     if (verbose && !is.null(profile$note)) {
         message(profile$note)
@@ -120,6 +127,16 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     } else {
         flux_open_checkpoint(model_dir)
     }
+    pin <- .resolve_pin(pin, "flux1", ckpt$format %||% "full")
+    if (is.null(text_device)) {
+        # The recommend tier GPU-encodes T5 only where its ~9.8 GB phase
+        # fits (fp8/bf16 tiers); nf4 tiers keep the CPU-fp32 encode.
+        text_device <- if (device == "cuda") {
+            profile$text_device %||% "cpu"
+        } else {
+            "cpu"
+        }
+    }
 
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         # Must be set before the first CUDA allocation (see
@@ -132,10 +149,11 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         Sys.setenv(PYTORCH_CUDA_ALLOC_CONF = conf)
     }
     if (device == "cuda") {
-        if (identical(ckpt$format, "nf4")) {
-            footprint <- 8
-        } else {
-            footprint <- 4
+        footprint <- if (identical(ckpt$format, "nf4")) 8 else 4
+        if (identical(text_device, "cuda")) {
+            # GPU T5 encode is the largest phase (~9.8 GB); size the gc
+            # gate to it, not the smaller transformer footprint
+            footprint <- max(footprint, 10)
         }
         .flux_gc_gates(footprint_gb = footprint)
     }
@@ -160,7 +178,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     pipe$transformer <- flux_load_transformer(ckpt, device = component_device,
         dtype = if (device == "cpu") "float32" else "bfloat16",
-        pin = device == "cuda", verbose = verbose)
+        pin = pin && device == "cuda", verbose = verbose)
 
     vae_config <- jsonlite::fromJSON(.flux1_cached("vae/config.json"))
     pipe$vae_scaling_factor <- vae_config$scaling_factor %||% 0.3611
@@ -176,9 +194,19 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
                              verbose = verbose
     )
     dec$to(device = component_device)
+    if (device == "cuda" && phase_offload) {
+        # Cast to compute dtype once so the per-generation onload is
+        # device-only and the pinned copy is bf16 (see flux2 loader).
+        dec$to(dtype = torch::torch_bfloat16())
+    }
     dec$eval()
     pipe$decoder <- dec
 
+    # Text encoders load to the host when phase-offloading (so they can
+    # stage and swap in for the encode); text_device controls where they
+    # compute. On the CPU-encode tiers they stay resident and compute in
+    # place (CLIP fp32, T5 fp32); when they GPU-encode, T5 loads bf16.
+    te_device <- if (phase_offload) "cpu" else text_device
     if (verbose) {
         message("Loading CLIP text encoder...")
     }
@@ -187,7 +215,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                   clip, .flux1_cached("text_encoder/model.safetensors"),
                                   verbose = verbose
     )
-    clip$to(device = text_device)
+    clip$to(device = te_device)
     clip$eval()
     pipe$text_encoder <- clip
 
@@ -196,7 +224,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     t5_dir <- dirname(.flux1_cached("text_encoder_2/config.json"))
     pipe$text_encoder2 <- load_t5_text_encoder(
-        t5_dir, device = text_device,
+        t5_dir, device = te_device,
         dtype = if (text_device == "cpu") "float32" else "bfloat16",
         verbose = verbose
     )
@@ -207,6 +235,13 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
                           error = function(e) NULL
     )
     pipe$scheduler_shift <- sched_cfg$shift %||% 1.0
+
+    components <- c("transformer", "decoder")
+    if (!identical(text_device, "cpu")) {
+        components <- c(components, "text_encoder", "text_encoder2")
+    }
+    pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
+        components, verbose = verbose)
 
     structure(pipe, class = "flux_pipeline")
 }
@@ -313,15 +348,31 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     }
 
     phase_offload <- isTRUE(pipeline$phase_offload) && device != "cpu"
-    onload <- function(module) {
+    staging <- pipeline$staging %||% list()
+    # Components move by name so pinned staging (see staging.R) can carry
+    # the CPU<->GPU transfer when the loader prepared it; otherwise the
+    # pageable module$to() path runs.
+    onload <- function(what) {
+        module <- pipeline[[what]]
         if (phase_offload) {
-            module$to(device = device)
+            st <- staging[[what]]
+            if (is.null(st)) {
+                module$to(device = device)
+            } else {
+                .staged_onload(st, device)
+            }
         }
         module
     }
-    offload <- function(module) {
+    offload <- function(what) {
+        module <- pipeline[[what]]
         if (phase_offload) {
-            module$to(device = "cpu")
+            st <- staging[[what]]
+            if (is.null(st)) {
+                module$to(device = "cpu")
+            } else {
+                .staged_offload(st)
+            }
             clear_vram()
         }
         invisible(module)
@@ -330,20 +381,37 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     t0 <- Sys.time()
 
     # --- Phase 1: text encoding ------------------------------------------------
+    # On the CPU-encode tiers (text_device == "cpu") the encoders compute
+    # in place; otherwise each swaps to the GPU for its own encode. T5 and
+    # CLIP are independent (either embed may be supplied precomputed), so
+    # each onloads inside its own guard.
+    gpu_encode <- !identical(pipeline$text_device, "cpu")
     torch::with_no_grad({
         if (is.null(prompt_embeds)) {
             if (verbose) {
                 message("Encoding prompt (T5)...")
             }
+            if (gpu_encode) {
+                onload("text_encoder2")
+            }
             prompt_embeds <- encode_with_t5(prompt, pipeline$text_encoder2,
                 pipeline$tokenizer2, max_sequence_length = max_sequence_length)
+            if (gpu_encode) {
+                offload("text_encoder2")
+            }
         }
         if (is.null(pooled_prompt_embeds)) {
+            if (gpu_encode) {
+                onload("text_encoder")
+            }
             tokens <- CLIPTokenizer(prompt)
             clip_device <- pipeline$text_encoder$token_embedding$weight$device
             tokens <- tokens$to(device = clip_device)
             hidden <- pipeline$text_encoder(tokens)
             pooled_prompt_embeds <- clip_pooled_output(hidden, tokens)
+            if (gpu_encode) {
+                offload("text_encoder")
+            }
         }
     })
     prompt_embeds <- prompt_embeds$to(device = device, dtype = compute_dtype)
@@ -380,7 +448,7 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     )
 
     # --- Phase 3: denoise --------------------------------------------------------
-    transformer <- onload(pipeline$transformer)
+    transformer <- onload("transformer")
     if (verbose) {
         message(sprintf("Denoising: %d steps at %dx%d...", n_steps, width,
                         height))
@@ -390,7 +458,7 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
                              pooled_prompt_embeds, rope, compute_dtype,
                              chunk_size = pipeline$attn_chunk, verbose = level
     )
-    offload(pipeline$transformer)
+    offload("transformer")
     ltx23_release_dequant_buffers()
 
     # --- Phase 4: decode -----------------------------------------------------------
@@ -401,17 +469,14 @@ txt2img_flux <- function(prompt, pipeline = NULL, width = 1024L,
     latents <- latents$div(pipeline$vae_scaling_factor %||% 0.3611)$
     add(pipeline$vae_shift_factor %||% 0.1159)
 
-    decoder <- pipeline$decoder
-    if (phase_offload) {
-        decoder$to(device = device, dtype = compute_dtype)
-    }
+    decoder <- onload("decoder")
     torch::with_no_grad({
         dec_param <- decoder$conv_in$weight
         img <- decoder(latents$to(device = dec_param$device,
                                   dtype = dec_param$dtype))
         img <- img$to(dtype = f32)$cpu()
     })
-    offload(decoder)
+    offload("decoder")
 
     img <- img$squeeze(1)$permute(c(2L, 3L, 1L))
     img <- img$add(1)$div(2)$clamp(0, 1)
