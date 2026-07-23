@@ -352,7 +352,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         isTRUE(getOption("diffuseR.pin_staging", TRUE))) {
         # Page-lock every phase-offloaded component once so the
         # per-render CPU<->GPU moves run at full PCIe rate (offload
-        # becomes a pointer swap; see staging_ltx23.R). Falls back
+        # becomes a pointer swap; see staging.R). Falls back
         # silently per component if page-locking fails.
         if (verbose) {
             message("Pinning host staging buffers...")
@@ -360,7 +360,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         staging <- list()
         for (nm in intersect(c("transformer", "connectors", "vae",
                                "audio_vae", "vocoder"), names(pipe))) {
-            st <- .ltx23_pin_component(pipe[[nm]])
+            st <- .pin_component(pipe[[nm]])
             if (!is.null(st)) {
                 staging[[nm]] <- st
             }
@@ -568,7 +568,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
 
     # Each phase is the sole GPU tenant: components move on for their
     # phase and back off afterwards. Pipeline components are referred
-    # to by name so pinned staging (see staging_ltx23.R) can be used
+    # to by name so pinned staging (see staging.R) can be used
     # when the loader prepared it; plain modules (the upsampler) take
     # the pageable path.
     phase_offload <- phase_offload && device != "cpu"
@@ -612,7 +612,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             if (is.null(st)) {
                 module$to(device = device)
             } else {
-                .ltx23_staged_onload(st, device)
+                .staged_onload(st, device)
             }
         }
         module
@@ -635,7 +635,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             if (is.null(st)) {
                 module$to(device = "cpu")
             } else {
-                .ltx23_staged_offload(st)
+                .staged_offload(st)
             }
             # gc only -- NO cuda_empty_cache between phases: returning
             # blocks to the driver forces the next phase to regrow the

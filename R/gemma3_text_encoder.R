@@ -687,7 +687,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
     model$to(device = device)
 
     if (pin && device == "cpu") {
-        st <- .ltx23_pin_component(model)
+        st <- .pin_component(model)
         if (!is.null(st)) {
             attr(model, "staging") <- st
             if (verbose) {
@@ -861,8 +861,8 @@ encode_with_gemma3 <- function(prompts, model = NULL, tokenizer = NULL,
     if (!is.null(staging) && device != "cpu") {
         cur <- tryCatch(staging[[1]]$live$device$type, error = function(e) NULL)
         if (!identical(cur, device)) {
-            .ltx23_staged_onload(staging, device)
-            on.exit(.ltx23_staged_offload(staging), add = TRUE)
+            .staged_onload(staging, device)
+            on.exit(.staged_offload(staging), add = TRUE)
         }
     }
 
