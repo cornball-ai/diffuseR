@@ -314,6 +314,23 @@ serve <- function(port = 7812L,
     .dserve_err(404L, "not found")
 }
 
+# One length-1 atomic value or the default; JSON arrays/objects sent
+# for scalar fields become NA so validation answers 400, not 500
+.dserve_scalar <- function(x, default = NULL) {
+    if (is.null(x)) {
+        return(default)
+    }
+    if (!is.atomic(x) || length(x) != 1L) {
+        return(NA)
+    }
+    x
+}
+
+.dserve_prompt_ok <- function(p) {
+    is.atomic(p) && length(p) == 1L && is.character(p) && !is.na(p) &&
+    nzchar(p)
+}
+
 .dserve_body <- function(req) {
     if (!length(req$body)) {
         return(NULL)
@@ -324,13 +341,18 @@ serve <- function(port = 7812L,
 
 .dserve_image <- function(req, state) {
     body <- .dserve_body(req)
-    if (is.null(body) || is.null(body$prompt) || !nzchar(body$prompt)) {
-        return(.dserve_err(400L, "body must be JSON with a prompt"))
+    if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
+        return(.dserve_err(400L, "body must be JSON with a single string prompt"))
     }
-    if (!is.null(body$n) && as.integer(body$n) > 1L) {
+    n <- .dserve_scalar(body$n, 1L)
+    if (is.na(suppressWarnings(as.integer(n))) ||
+        as.integer(n) > 1L) {
         return(.dserve_err(400L, "n > 1 is not supported"))
     }
-    size <- if (is.null(body$size)) "1024x1024" else body$size
+    size <- .dserve_scalar(body$size, "1024x1024")
+    if (!is.character(size) || is.na(size)) {
+        return(.dserve_err(400L, "size must look like 1024x1024"))
+    }
     wh <- suppressWarnings(as.integer(strsplit(size, "x", fixed = TRUE)[[1]]))
     if (length(wh) != 2L || anyNA(wh)) {
         return(.dserve_err(400L, "size must look like 1024x1024"))
@@ -340,7 +362,7 @@ serve <- function(port = 7812L,
             "request exceeds limits (max %d pixels, min side 16)",
             state$max_pixels)))
     }
-    steps <- body$steps
+    steps <- .dserve_scalar(body$steps)
     if (!is.null(steps)) {
         steps <- suppressWarnings(as.integer(steps))
         if (is.na(steps) || steps < 1L || steps > state$max_steps) {
@@ -348,7 +370,13 @@ serve <- function(port = 7812L,
                 "steps must be between 1 and %d", state$max_steps)))
         }
     }
-    seed <- if (is.null(body$seed)) NULL else as.integer(body$seed)
+    seed <- .dserve_scalar(body$seed)
+    if (!is.null(seed)) {
+        seed <- suppressWarnings(as.integer(seed))
+        if (is.na(seed)) {
+            return(.dserve_err(400L, "seed must be a single integer"))
+        }
+    }
     img <- state$generate(body$prompt, width = wh[1], height = wh[2],
                           seed = seed, steps = steps)
     png <- png::writePNG(img)
@@ -360,13 +388,13 @@ serve <- function(port = 7812L,
 
 .dserve_video <- function(req, state) {
     body <- .dserve_body(req)
-    if (is.null(body) || is.null(body$prompt) || !nzchar(body$prompt)) {
-        return(.dserve_err(400L, "body must be JSON with a prompt"))
+    if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
+        return(.dserve_err(400L, "body must be JSON with a single string prompt"))
     }
-    w <- suppressWarnings(as.integer(body$width %||% 768L))
-    h <- suppressWarnings(as.integer(body$height %||% 512L))
-    nf <- suppressWarnings(as.integer(body$num_frames %||% 121L))
-    fr <- suppressWarnings(as.numeric(body$frame_rate %||% 24))
+    w <- suppressWarnings(as.integer(.dserve_scalar(body$width, 768L)))
+    h <- suppressWarnings(as.integer(.dserve_scalar(body$height, 512L)))
+    nf <- suppressWarnings(as.integer(.dserve_scalar(body$num_frames, 121L)))
+    fr <- suppressWarnings(as.numeric(.dserve_scalar(body$frame_rate, 24)))
     if (anyNA(c(w, h, nf)) || w < 32L || h < 32L || nf < 9L ||
         w * h > state$max_pixels || nf > state$max_frames ||
         as.numeric(w) * h * nf > state$max_pixel_frames) {
@@ -378,6 +406,13 @@ serve <- function(port = 7812L,
     if (is.na(fr) || fr < 12 || fr > 60) {
         return(.dserve_err(400L, "frame_rate must be between 12 and 60"))
     }
+    vseed <- .dserve_scalar(body$seed)
+    if (!is.null(vseed)) {
+        vseed <- suppressWarnings(as.integer(vseed))
+        if (is.na(vseed)) {
+            return(.dserve_err(400L, "seed must be a single integer"))
+        }
+    }
     out <- tempfile(fileext = ".mp4")
     on.exit(unlink(out), add = TRUE)
     txt2vid_ltx2(
@@ -388,7 +423,7 @@ serve <- function(port = 7812L,
         height = h,
         num_frames = nf,
         frame_rate = fr,
-        seed = if (is.null(body$seed)) NULL else as.integer(body$seed),
+        seed = vseed,
         device = state$device, dtype = "bfloat16",
         filename = out, verbose = FALSE
     )

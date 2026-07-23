@@ -142,3 +142,25 @@ tiny <- diffuseR:::.dserve_route(
   mkreq("POST", "/v1/videos/generations",
         body = '{"prompt":"x","width":8,"height":8}'), vstate)
 expect_equal(tiny$status, 400L)
+
+# --- scalar validation: JSON arrays for scalar fields are 400s ---------------------
+
+arrprompt <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/images/generations",
+        body = '{"prompt":["a","b"],"size":"64x64"}'), state)
+expect_equal(arrprompt$status, 400L)
+
+arrsize <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/images/generations",
+        body = '{"prompt":"x","size":["64x64","128x128"]}'), state)
+expect_equal(arrsize$status, 400L)
+
+arrseed <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/images/generations",
+        body = '{"prompt":"x","size":"64x64","seed":[1,2]}'), state)
+expect_equal(arrseed$status, 400L)
+
+arrw <- diffuseR:::.dserve_route(
+  mkreq("POST", "/v1/videos/generations",
+        body = '{"prompt":"x","width":[512,640]}'), vstate)
+expect_equal(arrw$status, 400L)
