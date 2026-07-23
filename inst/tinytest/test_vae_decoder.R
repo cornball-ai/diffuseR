@@ -1,3 +1,7 @@
+if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) {
+  exit_file("torch not fully installed")
+}
+
 # Test native VAE decoder
 
 # Skip if no GPU or models not available

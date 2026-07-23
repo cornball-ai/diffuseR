@@ -19,6 +19,10 @@ text_encoder2_native(vocab_size = 49408, context_length = 77, embed_dim = 1280,
 \item{num_heads}{Number of attention heads (default 20)}
 
 \item{mlp_dim}{MLP hidden dimension (default 5120)}
+
+\item{return_penultimate}{Return the penultimate hidden state
+alongside the pooled output (SDXL's \code{hidden_states[-2]}
+prompt embeds; the pooled output still comes from the full stack)}
 }
 \value{
 An nn_module representing the text encoder

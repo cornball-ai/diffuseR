@@ -3,14 +3,14 @@
 \alias{ltx23_quantize_nf4}
 \title{Quantize an LTX-2.3 checkpoint to NF4 shards}
 \usage{
-ltx23_quantize_nf4(checkpoint_path,
-                   output_dir = file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.3-nf4"),
-                   shard_bytes = 1.9e+09, force = FALSE, verbose = TRUE)
+ltx23_quantize_nf4(checkpoint_path, output_dir = NULL, shard_bytes = 1.9e+09,
+                   force = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{checkpoint_path}{Source .safetensors (bf16 single file).}
 
-\item{output_dir}{Output directory for shards + manifest.}
+\item{output_dir}{Output directory for shards + manifest; NULL (the
+default) resolves under tools::R_user_dir("diffuseR", "data").}
 
 \item{shard_bytes}{Numeric. Target shard size in bytes. The default
 1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that

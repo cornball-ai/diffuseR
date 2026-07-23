@@ -25,14 +25,6 @@
 #' @name staging_ltx23
 NULL
 
-#' Pin a component's tensors for fast phase transfer
-#'
-#' @param module An nn_module on the CPU.
-#'
-#' @return A list of \code{list(live, pinned)} tensor pairs, or NULL
-#'   if pinning is unavailable (no CUDA, or page-locking failed).
-#'
-#' @keywords internal
 # Allocate pinned host memory without Tensor$pin_memory(): this torch
 # build's binding requires the deprecated device argument (omitting it
 # errors with "Expected a torch_device"; passing it prints two libtorch
@@ -57,6 +49,14 @@ NULL
     })
 }
 
+#' Pin a component's tensors for fast phase transfer
+#'
+#' @param module An nn_module on the CPU.
+#'
+#' @return A list of \code{list(live, pinned)} tensor pairs, or NULL
+#'   if pinning is unavailable (no CUDA, or page-locking failed).
+#'
+#' @keywords internal
 .ltx23_pin_component <- function(module) {
     if (!torch::cuda_is_available()) {
         return(NULL)

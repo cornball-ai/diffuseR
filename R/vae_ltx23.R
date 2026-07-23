@@ -35,14 +35,17 @@ ltx23_video_encoder3d <- torch::nn_module(
                           block_out_channels = c(256L, 512L, 1024L, 1024L),
                           spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
                           layers_per_block = c(4L, 6L, 4L, 2L, 2L),
-                          downsample_type = c("spatial", "temporal", "spatiotemporal",
-            "spatiotemporal"),
+                          downsample_type = NULL,
                           patch_size = 4L,
                           patch_size_t = 1L,
                           resnet_norm_eps = 1e-6,
                           is_causal = TRUE,
                           spatial_padding_mode = "zeros"
     ) {
+    if (is.null(downsample_type)) {
+        downsample_type <- c("spatial", "temporal", "spatiotemporal",
+                             "spatiotemporal")
+    }
     self$patch_size <- as.integer(patch_size)
     self$patch_size_t <- as.integer(patch_size_t)
     self$in_channels <- in_channels * patch_size ^ 2
@@ -145,8 +148,7 @@ ltx23_video_decoder3d <- torch::nn_module(
                           block_out_channels = c(256L, 512L, 512L, 1024L),
                           spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
                           layers_per_block = c(4L, 6L, 4L, 2L, 2L),
-                          upsample_type = c("spatiotemporal", "spatiotemporal", "temporal",
-            "spatial"),
+                          upsample_type = NULL,
                           patch_size = 4L,
                           patch_size_t = 1L,
                           resnet_norm_eps = 1e-6,
@@ -155,6 +157,10 @@ ltx23_video_decoder3d <- torch::nn_module(
                           upsample_factor = c(2L, 2L, 1L, 2L),
                           spatial_padding_mode = "zeros"
     ) {
+    if (is.null(upsample_type)) {
+        upsample_type <- c("spatiotemporal", "spatiotemporal", "temporal",
+                           "spatial")
+    }
     self$patch_size <- as.integer(patch_size)
     self$patch_size_t <- as.integer(patch_size_t)
     self$out_channels <- out_channels * patch_size ^ 2
@@ -263,9 +269,8 @@ ltx23_video_vae <- torch::nn_module(
         decoder_layers_per_block = c(4L, 6L, 4L, 2L, 2L),
         spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
         decoder_spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
-        downsample_type = c("spatial", "temporal", "spatiotemporal",
-                            "spatiotemporal"),
-        upsample_type = c("spatiotemporal", "spatiotemporal", "temporal", "spatial"),
+        downsample_type = NULL,
+        upsample_type = NULL,
         upsample_residual = c(FALSE, FALSE, FALSE, FALSE),
         upsample_factor = c(2L, 2L, 1L, 2L),
         patch_size = 4L,
@@ -276,6 +281,14 @@ ltx23_video_vae <- torch::nn_module(
         encoder_spatial_padding_mode = "zeros",
         decoder_spatial_padding_mode = "zeros"
     ) {
+    if (is.null(downsample_type)) {
+        downsample_type <- c("spatial", "temporal", "spatiotemporal",
+                             "spatiotemporal")
+    }
+    if (is.null(upsample_type)) {
+        upsample_type <- c("spatiotemporal", "spatiotemporal", "temporal",
+                           "spatial")
+    }
     self$latent_channels <- as.integer(latent_channels)
 
     self$encoder <- ltx23_video_encoder3d(

@@ -12,3 +12,4 @@
 ^inst/validation/\.venv$
 ^ref$
 ^tasks$
+^inst/tinytest/fixtures$

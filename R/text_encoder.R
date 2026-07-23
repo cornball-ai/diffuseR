@@ -586,6 +586,9 @@ load_text_encoder_weights <- function(native_encoder, torchscript_path,
 #' @param num_layers Number of transformer layers (default 32)
 #' @param num_heads Number of attention heads (default 20)
 #' @param mlp_dim MLP hidden dimension (default 5120)
+#' @param return_penultimate Return the penultimate hidden state
+#'   alongside the pooled output (SDXL's \code{hidden_states[-2]}
+#'   prompt embeds; the pooled output still comes from the full stack)
 #'
 #' @return An nn_module representing the text encoder
 #' @export

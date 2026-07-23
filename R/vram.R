@@ -21,8 +21,12 @@ NULL
 #' }
 #' }
 is_blackwell_gpu <- function() {
-    # Check compute capability via torch
-    if (torch::cuda_is_available()) {
+    # Check compute capability via torch. cuda_is_available() ERRORS
+    # (not FALSE) when the torch package is installed without its
+    # lantern binaries - fresh installs, win-builder, CRAN checks - so
+    # probe soft: no lantern means no CUDA means not Blackwell.
+    avail <- tryCatch(torch::cuda_is_available(), error = function(e) FALSE)
+    if (avail) {
         cap <- tryCatch(torch::cuda_get_device_capability(0L),
                         error = function(e) NULL)
         if (!is.null(cap)) {

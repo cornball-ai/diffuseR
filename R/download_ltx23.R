@@ -76,7 +76,7 @@ download_ltx2 <- function(quantize = TRUE,
                 local_files_only = TRUE),
                            error = function(e) NULL
         )
-        if (is.null(cached) && !have_fp8) {
+        if (is.null(cached)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
             if (!is.na(free) && free < 75) {
                 warning(sprintf(
@@ -122,11 +122,7 @@ download_ltx2 <- function(quantize = TRUE,
                       "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json",
                       "tokenizer/special_tokens_map.json"
         )
-        have_te <- !is.null(tryCatch(
-                                     hfhub::hub_download(.ltx23_text_encoder_repo, te_files[[2]],
-                    local_files_only = TRUE),
-                                     error = function(e) NULL
-            ))
+        have_te <- .hub_all_cached(.ltx23_text_encoder_repo, te_files)
         if (!have_te) {
             ok <- .ltx23_consent(
                                  "the Gemma3 text encoder and tokenizer (~25 GB, Lightricks/LTX-2)"
@@ -146,4 +142,19 @@ download_ltx2 <- function(quantize = TRUE,
     }
 
     invisible(result)
+}
+
+# TRUE when every file is already in the local hub cache, i.e. no
+# network fetch will happen. Consent gates key on this - never on a
+# single sentinel file, and never on artifact presence (a completed
+# artifact must not license re-downloading sources).
+.hub_all_cached <- function(repo, files, repo_type = NULL) {
+    all(vapply(files, function(f) {
+        args <- list(repo, f, local_files_only = TRUE)
+        if (!is.null(repo_type)) {
+            args$repo_type <- repo_type
+        }
+        !is.null(tryCatch(do.call(hfhub::hub_download, args),
+                          error = function(e) NULL))
+    }, logical(1)))
 }

@@ -1,4 +1,3 @@
-![](man/figures/diffuseRlogo.png)
 
 # diffuseR
 
@@ -11,9 +10,7 @@
 
 ## Example output
 
-![](man/figures/20250602_231518_retro_tin_toy_robot.png)
-![](man/figures/20250528_200344_Calvin_and_Hobbes_on_a_beach__Calvin_wearing_a_red.png)
-![](man/figures/20250601_111817_Beach_at_night__glowing_waves__stars_in_the_sky__h.png)
+![](man/figures/sdxl_vs_flux2_radio_studio.jpg)
 
 ## Installation
 
@@ -23,7 +20,7 @@ First install torch. As per [this comment](https://github.com/mlverse/torch/issu
 options(timeout = 600) # increasing timeout is recommended since we will be downloading a 2GB file.
 # For Windows and Linux: "cpu", "cu128" are the only currently supported
 # For MacOS the supported are: "cpu-intel" or "cpu-m1"
-kind <- "cu124"
+kind <- "cu128"
 version <- available.packages()["torch","Version"]
 options(repos = c(
   torch = sprintf("https://torch-cdn.mlverse.org/packages/%s/%s/", kind, version),
@@ -35,11 +32,8 @@ install.packages("torch")
 You can install the development version of diffuseR from GitHub:
 
 ```r
-# install.packages("devtools")
-devtools::install_github("cornball-ai/diffuseR")
-# Or
-# install.packages("targets")
-targets::install_github("cornball-ai/diffuseR")
+# install.packages("remotes")
+remotes::install_github("cornball-ai/diffuseR")
 ```
 
 ## Features
@@ -51,6 +45,24 @@ targets::install_github("cornball-ai/diffuseR")
 - **Scheduler Options**: DDIM and FlowMatch Euler (static and dynamic shifting)
 - **Device Support**: CPU and CUDA GPUs (including Blackwell RTX 50xx)
 - **R-native Interface**: Functional programming approach that feels natural in R
+- **HTTP serving**: `serve()` exposes any model over OpenAI-style endpoints
+  (images and video) from one persistent process - see `?serve`
+
+## Hardware requirements
+
+Approximate, per model, from the floor configuration (lowest precision,
+CPU-only) to the best-quality tier. `recommend("model")` picks the right
+configuration for your machine automatically; the `vignette("performance-levers")`
+explains the levers.
+
+| model | minimum (floor quality) | best quality |
+|---|---|---|
+| SD 2.1 | 4 GB RAM, no GPU | 6 GB VRAM + 4 GB RAM (fp16) |
+| SDXL | 10 GB RAM, no GPU | 12 GB VRAM + 8 GB RAM (fp16) |
+| FLUX.2 Klein | 12 GB RAM, no GPU | 16 GB VRAM + 20 GB RAM (bf16) |
+| Z-Image-Turbo | 14 GB RAM, no GPU | 18 GB VRAM + 24 GB RAM (bf16) |
+| FLUX.1-schnell | 28 GB RAM, no GPU | 24 GB VRAM + 45 GB RAM (bf16) |
+| LTX-2.3 video | 40 GB RAM, no GPU | 16 GB VRAM + 45 GB RAM (fp8, streamed) |
 
 ## Quick Start
 
@@ -77,7 +89,7 @@ cat_img <- txt2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
-![](man/figures/cat.png)
+
 
 ### Advanced Usage with GPU
 
@@ -131,8 +143,8 @@ gambling_cat <- img2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
-![](man/figures/cat2.png)
-![](man/figures/gambling_cat.png)
+![](cat2.png)
+![](gambling_cat.png)
 
 
 ### FLUX and Z-Image
@@ -164,6 +176,30 @@ txt2img_flux2("a red fox sitting in a snowy forest, digital art",
 download_zimage_turbo()
 txt2img_zimage(paste("A storefront with a large wooden sign that reads",
                      "\"DIFFUSER\" in bold carved letters"), seed = 42)
+
+### Text-to-Video: LTX-2.3
+
+LTX-2.3 (22B, distilled) generates video with synchronized audio in 8
+steps. NF4-quantized it renders 768x512x49 in ~44s warm on an RTX
+5060 Ti; audio-driven talking-head generation and clip continuation
+are supported (see ?txt2vid_ltx2).
+
+```r
+download_ltx2()       # ~46GB download, one-time fp8 quantize
+txt2vid_ltx2("A river winding through a misty forest at dawn",
+             pipeline = ltx23_load_pipeline(),
+             filename = "river.mp4")
+```
+
+### Serving over HTTP
+
+```r
+# One persistent process, OpenAI-style endpoints, never downloads:
+serve(model = "flux2", port = 7812L, token = "my-secret")
+# curl -H "Authorization: Bearer my-secret" \
+#   -d '{"prompt":"a lighthouse at dusk","size":"512x512"}' \
+#   http://localhost:7812/v1/images/generations
+```
 
 # Or through the common dispatcher
 txt2img("a lighthouse at dusk", model_name = "flux2")
@@ -229,7 +265,7 @@ so negative prompts do not apply. When the image needs legible text
 
 ### Downloading Models
 
-Models are automatically downloaded from HuggingFace on first use. For gated models (like FLUX.1-schnell), you need to:
+Model downloads are explicit and consent-gated: call the model's `download_*()` function once (interactive sessions are prompted with the size; non-interactive sessions require `options(diffuseR.consent = TRUE)`). For gated models (like FLUX.1-schnell), you need to:
 
 1. Create a HuggingFace account at https://huggingface.co
 2. Accept the model's license agreement (visit the model page and click "Agree")

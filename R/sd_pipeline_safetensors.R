@@ -74,11 +74,7 @@ download_sd21 <- function(verbose = TRUE) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to download model weights.")
     }
-    have <- !is.null(tryCatch(
-                              hfhub::hub_download(.sd21_repo, .sd21_files[[1]],
-                repo_type = "dataset", local_files_only = TRUE),
-                              error = function(e) NULL
-        ))
+    have <- .hub_all_cached(.sd21_repo, .sd21_files, repo_type = "dataset")
     if (!have) {
         ok <- .ltx23_consent(
                              "Stable Diffusion 2.1 UNet + VAE + CLIP text encoder (~2.5 GB)"

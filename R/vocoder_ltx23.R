@@ -417,14 +417,13 @@ ltx23_vocoder_with_bwe <- torch::nn_module(
                           upsample_kernel_sizes = c(11L, 4L, 4L, 4L, 4L, 4L),
                           upsample_factors = c(5L, 2L, 2L, 2L, 2L, 2L),
                           resnet_kernel_sizes = c(3L, 7L, 11L),
-                          resnet_dilations = list(c(1L, 3L, 5L), c(1L, 3L, 5L), c(1L, 3L, 5L)),
+                          resnet_dilations = NULL,
                           bwe_in_channels = 128L,
                           bwe_hidden_channels = 512L,
                           bwe_upsample_kernel_sizes = c(12L, 11L, 4L, 4L, 4L),
                           bwe_upsample_factors = c(6L, 5L, 2L, 2L, 2L),
                           bwe_resnet_kernel_sizes = c(3L, 7L, 11L),
-                          bwe_resnet_dilations = list(c(1L, 3L, 5L), c(1L, 3L, 5L),
-            c(1L, 3L, 5L)),
+                          bwe_resnet_dilations = NULL,
                           filter_length = 512L,
                           hop_length = 80L,
                           window_length = 512L,
@@ -432,6 +431,13 @@ ltx23_vocoder_with_bwe <- torch::nn_module(
                           input_sampling_rate = 16000L,
                           output_sampling_rate = 48000L
     ) {
+    if (is.null(resnet_dilations)) {
+        resnet_dilations <- list(c(1L, 3L, 5L), c(1L, 3L, 5L), c(1L, 3L, 5L))
+    }
+    if (is.null(bwe_resnet_dilations)) {
+        bwe_resnet_dilations <- list(c(1L, 3L, 5L), c(1L, 3L, 5L),
+                                     c(1L, 3L, 5L))
+    }
     self$hop_length <- as.integer(hop_length)
     self$rate_ratio <- as.integer(output_sampling_rate %/% input_sampling_rate)
 

@@ -81,7 +81,7 @@ download_zimage_turbo <- function(quantize = TRUE,
                 local_files_only = TRUE),
                            error = function(e) NULL
         )
-        if (is.null(cached) && !have_artifact) {
+        if (is.null(cached) || !.hub_all_cached(.zimage_repo, .zimage_transformer_files)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
             if (!is.na(free) && free < 35) {
                 warning(sprintf(
@@ -125,11 +125,7 @@ download_zimage_turbo <- function(quantize = TRUE,
     }
 
     if (text_encoders) {
-        have_te <- !is.null(tryCatch(
-                                     hfhub::hub_download(.zimage_repo, .zimage_support_files[[5]],
-                    local_files_only = TRUE),
-                                     error = function(e) NULL
-            ))
+        have_te <- .hub_all_cached(.zimage_repo, .zimage_support_files)
         if (!have_te) {
             ok <- .ltx23_consent(
                                  "the Qwen3-4B text encoder, tokenizer, and VAE (~8.2 GB)"

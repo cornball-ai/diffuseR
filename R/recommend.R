@@ -4,9 +4,11 @@
 #' model. The policy:
 #'
 #' \itemize{
-#'   \item nf4 is the default tier. Its weights are packed uint8 plus
-#'     float32 blocks in sub-2 GB shards, which every safetensors reads,
-#'     so it always loads.
+#'   \item nf4 is the default tier for the quantized families (flux1,
+#'     flux2, zimage, ltx). Its weights are packed uint8 plus float32
+#'     blocks in sub-2 GB shards, which every safetensors reads, so it
+#'     always loads. The SD models ship no quantized weights; their
+#'     floor is fp16 with placement varying by VRAM.
 #'   \item When the card has room for a higher-quality tier (fp8 or
 #'     bf16) AND the installed safetensors can \emph{read} that dtype
 #'     (\code{\link{.st_can_read}}), that tier is recommended instead.
@@ -161,8 +163,8 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
 # order of magnitude, not the byte.
 .pinned_set_gb <- function(model, precision) {
     sets <- list(
-                 sd21 = c(fp16 = 3, nf4 = 2),
-                 sdxl = c(fp16 = 8, nf4 = 4),
+                 sd21 = c(fp16 = 3),
+                 sdxl = c(fp16 = 8),
                  flux1 = c(bf16 = 43, fp8 = 31, nf4 = 26), # DiT + T5 fp32 host copy
                  flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
                  zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
@@ -213,18 +215,19 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     )
 }
 
-# SD-family ladder: fp16 for cards that fit the full model, nf4 default
-# for tighter cards, cpu otherwise. Both dtypes are CRAN-readable, so no
-# fork gate. Device maps reuse the auto_devices strategy builder.
+# SD-family ladder: the SD models ship no quantized weights, so every
+# tier is fp16 - what varies is placement (all-GPU, UNet-only-GPU, or
+# CPU) and the area budget. Device maps reuse the auto_devices
+# strategy builder.
 .sd_tiers <- function(model, fp16_vram, nf4_vram, max_fp16, max_nf4, max_cpu) {
     list(
          list(precision = "fp16", min_vram = fp16_vram, needs = NULL,
               devices = .build_fallback_devices(model, "full_gpu"),
               offload = FALSE, max_pixels = max_fp16),
-         list(precision = "nf4", min_vram = nf4_vram, needs = NULL,
+         list(precision = "fp16", min_vram = nf4_vram, needs = NULL,
               devices = .build_fallback_devices(model, "unet_gpu"),
               offload = TRUE, max_pixels = max_nf4),
-         list(precision = "nf4", min_vram = 0, needs = NULL, cpu = TRUE,
+         list(precision = "fp16", min_vram = 0, needs = NULL, cpu = TRUE,
               devices = .build_fallback_devices(model, "cpu_only"),
               offload = FALSE, max_pixels = max_cpu)
     )
