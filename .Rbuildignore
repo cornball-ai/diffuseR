@@ -13,3 +13,4 @@
 ^ref$
 ^tasks$
 ^inst/tinytest/fixtures$
+^cran-comments\.md$
