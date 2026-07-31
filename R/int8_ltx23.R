@@ -1,3 +1,13 @@
+## STATUS 2026-07-31: benchmarked against NF4 on a 16 GB card and it is
+## 3.27x SLOWER end to end (105.6 s vs 32.3 s warm, 768x512x49), even
+## though the quantizer itself decodes 5.2x faster with 4.3x lower error.
+## Cause: this file never touches the jit path, so ~3,700 cast-set
+## weights run as eager R forwards every step. Also, the int8 cast set is
+## 18.52 GB and cannot be GPU-resident on 16 GB. Not shippable as-is.
+## See INT8_STATUS.md at the repo root for the numbers, the VRAM
+## arithmetic, and the jit_trace constant-folding landmine that makes a
+## naive fusion attempt silently stop streaming.
+
 #' INT8 Weight Storage for the LTX-2.3 Transformer
 #'
 #' Streamed 8-bit weights: the cast-set linears (the official LTX fp8
