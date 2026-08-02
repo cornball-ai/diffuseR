@@ -38,12 +38,11 @@ save_video(video, frame_dir, format = "frames", verbose = FALSE)
 length(list.files(frame_dir, pattern = "[.]png$"))
 unlink(frame_dir, recursive = TRUE)
 
-# MP4 and GIF need an ffmpeg binary or the 'av' package.
-\donttest{
-if (requireNamespace("av", quietly = TRUE)) {
-  out <- file.path(tempdir(), "output.mp4")
-  save_video(video, out, fps = 24, verbose = FALSE)
-  unlink(out)
-}
-}
+# MP4 and GIF need an ffmpeg binary or the 'av' package. Not shown as
+# a live example: both backends hand off to an ffmpeg process that
+# inherits this session's stdin, and R CMD check feeds the example
+# script to R on stdin, so the encoder eats a byte of the script and
+# every later example parses one character short.
+# save_video(video, "output.mp4", fps = 24)
+# save_video(video, "output.gif", fps = 10)
 }
