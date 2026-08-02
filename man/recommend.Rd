@@ -71,15 +71,18 @@ for them. \code{options(diffuseR.pin_staging)} is the global switch.
 
 }
 \examples{
-\dontrun{
-# Auto-detect VRAM and probe the installed safetensors
-recommend("flux2")
-
-# A 16 GB card without float8 support: fp8 wanted, nf4 recommended
+# Stating vram_gb and st_caps makes the policy deterministic: no GPU
+# and no installed safetensors needed.
 r <- recommend("flux1", vram_gb = 16,
                st_caps = list(bfloat16 = TRUE, float8_e4m3fn = FALSE))
-r$precision       # "nf4"
+r$precision       # "nf4": fp8 fits the card, but cannot be read
 r$fork_suggested  # TRUE
 cat(r$note)       # the fork-or-nf4 message
-}
+
+# Same card, once safetensors can read float8
+recommend("flux1", vram_gb = 16,
+          st_caps = list(bfloat16 = TRUE, float8_e4m3fn = TRUE))$precision
+
+# Auto-detect VRAM and probe the installed safetensors
+str(recommend("flux2"))
 }

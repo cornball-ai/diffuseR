@@ -13,6 +13,11 @@ ltx23_latent_upsampler(in_channels = 128L, mid_channels = 1024L,
 
 \item{num_blocks_per_stage}{Integer.}
 }
+\value{
+Module whose forward(hidden_states) returns the 2x
+  spatially upscaled latent, a tensor with the same batch, channel
+  and frame counts and doubled height and width.
+}
 \description{
 Latents [B, 128, F, H, W] -> [B, 128, F, 2H, 2W].
 }

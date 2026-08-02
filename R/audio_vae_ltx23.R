@@ -23,6 +23,10 @@ NULL
 #' @param stride Integer.
 #' @param causality_axis "height", "width", "width-compatibility", or "none".
 #'
+#' @return Module whose forward(x) returns the convolved tensor, padded
+#'   so that each output frame depends only on current and earlier
+#'   input frames.
+#'
 #' @export
 ltx23_audio_causal_conv2d <- torch::nn_module(
     "ltx23_audio_causal_conv2d",
@@ -62,6 +66,9 @@ ltx23_audio_causal_conv2d <- torch::nn_module(
 #'
 #' @param in_channels,out_channels Integers.
 #' @param causality_axis Character.
+#'
+#' @return Module whose forward(x) returns \code{x} plus the residual
+#'   branch, a tensor of the same shape as \code{x}.
 #'
 #' @export
 ltx23_audio_resnet_block <- torch::nn_module(
@@ -109,6 +116,9 @@ ltx23_audio_resnet_block <- torch::nn_module(
 #' @param in_channels Integer.
 #' @param causality_axis Character.
 #'
+#' @return Module whose forward(x) returns the tensor upsampled 2x by
+#'   nearest-neighbour interpolation and convolved.
+#'
 #' @export
 ltx23_audio_upsample <- torch::nn_module(
     "ltx23_audio_upsample",
@@ -139,6 +149,9 @@ ltx23_audio_upsample <- torch::nn_module(
 #' @param in_channels Integer.
 #' @param causality_axis Character.
 #'
+#' @return Module whose forward(x) returns the strided convolution of
+#'   \code{x}, halving the downsampled axes.
+#'
 #' @export
 ltx23_audio_downsample <- torch::nn_module(
     "ltx23_audio_downsample",
@@ -167,6 +180,10 @@ ltx23_audio_downsample <- torch::nn_module(
 #' @param base_channels,num_res_blocks,latent_channels,ch_mult,causality_axis
 #'   See \code{\link{ltx23_audio_decoder}}.
 #' @param in_channels Integer. Mel channels (2 = stereo).
+#'
+#' @return Module whose forward(x) returns the encoded audio latent, a
+#'   tensor downsampled along time and mel axes with the configured
+#'   latent channel count.
 #'
 #' @export
 ltx23_audio_encoder <- torch::nn_module(
@@ -268,6 +285,9 @@ ltx23_audio_encoder <- torch::nn_module(
 #' @param ch_mult Integer vector. Channel multipliers per level.
 #' @param causality_axis Character.
 #' @param mel_bins Integer. Output mel bins (crop/pad target).
+#'
+#' @return Module whose forward(x) returns the decoded mel
+#'   spectrogram reconstructed from an audio latent.
 #'
 #' @export
 ltx23_audio_decoder <- torch::nn_module(
@@ -390,6 +410,11 @@ ltx23_audio_decoder <- torch::nn_module(
 #' @param base_channels,output_channels,num_res_blocks,latent_channels,ch_mult,causality_axis,mel_bins
 #'   See \code{\link{ltx23_audio_decoder}}.
 #' @param in_channels Integer. Mel input channels (2 = stereo).
+#'
+#' @return Module bundling the audio encoder and decoder. Its
+#'   forward(z) is \code{decode(z)}, returning the mel spectrogram for a
+#'   latent; \code{$encode()} and \code{$decode()} are callable
+#'   separately.
 #'
 #' @export
 ltx23_audio_vae <- torch::nn_module(

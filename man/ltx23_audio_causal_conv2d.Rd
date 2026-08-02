@@ -15,6 +15,11 @@ ltx23_audio_causal_conv2d(in_channels, out_channels, kernel_size = 3L,
 
 \item{in_channels,out_channels}{Integers.}
 }
+\value{
+Module whose forward(x) returns the convolved tensor, padded
+  so that each output frame depends only on current and earlier
+  input frames.
+}
 \description{
 Pads asymmetrically along the causal axis ("height" = time frames for
 LTX audio) before an unpadded Conv2d.

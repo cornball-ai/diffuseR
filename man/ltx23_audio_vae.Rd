@@ -13,6 +13,12 @@ ltx23_audio_vae(base_channels = 128L, output_channels = 2L,
 
 \item{base_channels,output_channels,num_res_blocks,latent_channels,ch_mult,causality_axis,mel_bins}{See \code{\link{ltx23_audio_decoder}}.}
 }
+\value{
+Module bundling the audio encoder and decoder. Its
+  forward(z) is \code{decode(z)}, returning the mel spectrogram for a
+  latent; \code{$encode()} and \code{$decode()} are callable
+  separately.
+}
 \description{
 Encoder + decoder plus the per-channel latent statistics loaded from
 the checkpoint. Encoding is used for audio-conditioned generation

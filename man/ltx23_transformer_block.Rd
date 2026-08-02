@@ -36,6 +36,12 @@ ltx23_transformer_block(dim, num_attention_heads, attention_head_dim,
 \item{video_cross_attn_adaln,audio_cross_attn_adaln}{Logicals. LTX-2.3
 text cross-attention modulation (9 mod params instead of 6).}
 }
+\value{
+Module whose forward(hidden_states, ...) returns
+  \code{list(hidden_states, audio_hidden_states)}, the video and audio
+  streams after self-attention, cross-attention and the feed-forward,
+  each the same shape as its input.
+}
 \description{
 Dual-stream (video + audio) block: modulated self-attention per
 modality, text cross-attention per modality (with LTX-2.3 query and

@@ -26,6 +26,10 @@ NULL
 #' @param mod_param_sets Integer. Number of (shift, scale, gate) triples.
 #' @param bias Logical.
 #'
+#' @return Module whose forward(temb) returns the modulation tensor
+#'   \code{linear(silu(temb))}, holding \code{mod_param_sets} triples of
+#'   (shift, scale, gate) along the last axis.
+#'
 #' @export
 flux2_modulation <- torch::nn_module(
                                      "flux2_modulation",
@@ -62,6 +66,9 @@ flux2_modulation <- torch::nn_module(
 #' @param mult Numeric. Inner dim multiplier (FLUX.2: 3.0).
 #' @param bias Logical.
 #'
+#' @return Module whose forward(x) returns the SwiGLU-gated projection
+#'   of \code{x}, a tensor with the last axis of width \code{dim_out}.
+#'
 #' @export
 flux2_feed_forward <- torch::nn_module(
                                        "flux2_feed_forward",
@@ -93,6 +100,11 @@ flux2_feed_forward <- torch::nn_module(
 #' @param mlp_ratio Numeric. MLP hidden multiplier (FLUX.2: 3.0).
 #' @param eps Numeric. RMS norm epsilon.
 #' @param bias Logical.
+#'
+#' @return Module whose forward(hidden_states, image_rotary_emb,
+#'   chunk_size) returns the block output [B, S, query_dim]: attention
+#'   and MLP branches computed in parallel from one fused projection,
+#'   concatenated, and projected back by a second fused layer.
 #'
 #' @export
 flux2_parallel_self_attention <- torch::nn_module(

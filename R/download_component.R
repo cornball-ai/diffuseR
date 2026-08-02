@@ -21,7 +21,8 @@ download_component <- function(model_name = "sd21", component,
                                show_progress = TRUE) {
     filename <- paste0(component, "-", device, ".pt")
     if (!requireNamespace("hfhub", quietly = TRUE)) {
-        stop("Package 'hfhub' is required. Install with: install.packages('hfhub')")
+        stop("Package 'hfhub' is required. Install it from CRAN before ",
+             "calling download_component() again.")
     }
     repo_id <- paste0("cornball-ai/", model_name, "-R")
 

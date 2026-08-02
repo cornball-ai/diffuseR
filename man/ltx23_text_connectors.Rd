@@ -45,6 +45,13 @@ Gemma3-12B).}
 \item{video_hidden_dim,audio_hidden_dim}{Integers. Projection targets
 (DiT inner dims: 4096 / 2048).}
 }
+\value{
+Module whose forward(text_encoder_hidden_states,
+  attention_mask) returns \code{list(video_text_embedding,
+  audio_text_embedding, attention_mask)}: the caption states adapted
+  for the video and audio cross-attention streams, plus the binary
+  mask to use with them.
+}
 \description{
 Takes raw stacked per-layer text encoder hidden states and produces
 the video and audio text embeddings for the DiT: per-token RMS norm,

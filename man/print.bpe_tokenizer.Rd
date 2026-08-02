@@ -10,6 +10,10 @@
 
 \item{...}{Additional arguments (ignored).}
 }
+\value{
+Invisibly returns \code{x}. Called for the side effect of
+  printing a summary of the tokenizer to the console.
+}
 \description{
 Print BPE Tokenizer
 }

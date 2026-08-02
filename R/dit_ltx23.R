@@ -37,6 +37,11 @@ NULL
 #' @param gated_attn,cross_attn_mod,audio_gated_attn,audio_cross_attn_mod,perturbed_attn
 #'   LTX-2.3 feature flags (all TRUE for the 2.3 checkpoints).
 #'
+#' @return Module whose forward(hidden_states, ...) returns
+#'   \code{list(sample, audio_sample)}: the predicted velocity for the
+#'   video latent tokens and, when the audio branch is active, for the
+#'   audio latent tokens (\code{audio_sample} is NULL otherwise).
+#'
 #' @export
 ltx23_transformer <- torch::nn_module(
                                       "ltx23_transformer",

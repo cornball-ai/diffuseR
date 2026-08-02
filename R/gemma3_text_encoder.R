@@ -405,6 +405,10 @@ gemma3_decoder_layer <- torch::nn_module(
 #' Full Gemma3 text encoder model.
 #'
 #' @param config Model configuration list.
+#' @return Module whose forward(input_ids, ...) returns
+#'   \code{list(last_hidden_state, hidden_states)}: the final hidden
+#'   state [B, S, hidden_size] and the list of per-layer hidden states.
+#'
 #' @export
 gemma3_text_model <- torch::nn_module(
                                       "Gemma3TextModel",

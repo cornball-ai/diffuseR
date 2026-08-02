@@ -16,6 +16,11 @@ ltx23_upsample1d(ratio = 2L, kernel_size = NULL, window_type = "kaiser",
 \item{persistent}{Logical. Register the filter as a buffer (present in
 checkpoints); FALSE stores the computed filter as a plain field.}
 }
+\value{
+Module whose forward(x) returns \code{x} interpolated up by
+  \code{ratio} along the time axis, with the filter padding trimmed
+  off.
+}
 \description{
 Anti-aliasing 1D upsampler (transposed low-pass)
 }

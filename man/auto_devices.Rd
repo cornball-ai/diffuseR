@@ -32,14 +32,11 @@ compatibility issues, regardless of available VRAM. The native modules
 (`use_native_unet` and friends) do not have this restriction.
 }
 \examples{
-\dontrun{
-# Auto-detect best configuration
-devices <- auto_devices("sdxl")
+# Force a strategy: no GPU or nvidia-smi needed.
+str(auto_devices("sdxl", strategy = "cpu_only"))
 
-# Use with models2devices
-m2d <- models2devices("sdxl", devices = auto_devices("sdxl"))
+str(auto_devices("sd21", strategy = "unet_gpu"))
 
-# Force CPU-only
-devices <- auto_devices("sdxl", strategy = "cpu_only")
-}
+# Auto-detect free VRAM and pick a strategy for this machine.
+str(auto_devices("sdxl"))
 }

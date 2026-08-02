@@ -1,9 +1,12 @@
 #' safetensors read-capability probes and fork messaging
 #'
-#' CRAN safetensors (<= 0.2.1) reads bfloat16 but cannot write it, and
-#' has no float8 support at all; the fixes are upstream
-#' (mlverse/safetensors#11 for bfloat16 write, #13 for float8) and in the
-#' cornball-ai/safetensors fork. Two capabilities matter and they differ:
+#' The CRAN build of safetensors 0.2.1 reads bfloat16 but cannot write
+#' it, and has no float8 support at all. Both fixes merged upstream on
+#' 2026-07-31 (mlverse/safetensors#11 for bfloat16 write, #13 for
+#' float8) without a version bump, so the installed version number
+#' cannot tell you which build you have. That is why every gate here is
+#' a runtime probe: write a tiny tensor, read it back, cache the answer.
+#' Two capabilities matter and they differ:
 #'
 #' \itemize{
 #'   \item \emph{write} (\code{\link{flux_quantize}}'s internal
@@ -111,11 +114,11 @@ NULL
         sprintf("%s needs", precision)
     }
     sprintf(paste0(
-                   "%s cornball-ai/safetensors until CRAN safetensors ships ",
-                   "%s. Install ",
-                   "remotes::install_github(\"cornball-ai/safetensors\"), or ",
-                   "press on with nf4: same weights, slightly lower precision, ",
-                   "and it just works."),
+                   "%s a safetensors newer than the one on CRAN: %s is ",
+                   "merged upstream but not yet released. Install the ",
+                   "development version from the mlverse/safetensors ",
+                   "repository on GitHub, or press on with nf4: same ",
+                   "weights, slightly lower precision, and it just works."),
             lead, detail)
 }
 
@@ -156,8 +159,9 @@ NULL
                    "overflows a 32-bit offset on files at or above 2^31 ",
                    "bytes (~2.15 GB). Rebuild the artifact with smaller ",
                    "shards (the quantizers now default to ",
-                   "shard_bytes = 1.9e9), or install ",
-                   "remotes::install_github(\"cornball-ai/safetensors\"). ",
+                   "shard_bytes = 1.9e9), or install the development ",
+                   "version of safetensors from the mlverse/safetensors ",
+                   "repository on GitHub, where the fix is merged. ",
                    "Underlying error: %s"),
             basename(file_path), size_bytes / 1e9, underlying)
 }

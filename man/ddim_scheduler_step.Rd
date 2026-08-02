@@ -89,13 +89,17 @@ Salimans, T., & Ho, J. (2022).
 \url{https://arxiv.org/abs/2202.00512}
 }
 \examples{
-\dontrun{
-# Perform a denoising step
-result <- ddim_scheduler_step(
-  model_output = model_output,
-  timestep = timestep,
-  sample = sample,
-  eta = 0,  # Deterministic sampling
-  prediction_type = "epsilon")
+if (torch::torch_is_installed()) {
+  scheduler <- ddim_scheduler_create(num_inference_steps = 5)
+  sample <- torch::torch_randn(c(1, 4, 8, 8))
+  model_output <- torch::torch_randn(c(1, 4, 8, 8))
+  result <- ddim_scheduler_step(
+    model_output = model_output,
+    timestep = scheduler$timesteps[1],
+    sample = sample,
+    schedule = scheduler,
+    eta = 0, # Deterministic sampling
+    prediction_type = "epsilon")
+  result$shape
 }
 }

@@ -31,11 +31,11 @@ Each profile also specifies:
 - max_resolution: maximum image dimension
 }
 \examples{
-\dontrun{
-# Auto-detect profile
-profile <- sdxl_memory_profile()
+# A stated VRAM budget is deterministic and needs no GPU.
+str(sdxl_memory_profile(vram_gb = 8))
 
-# Specific VRAM
-profile <- sdxl_memory_profile(vram_gb = 8)
-}
+str(sdxl_memory_profile(vram_gb = 24))
+
+# Auto-detect free VRAM on this machine.
+str(sdxl_memory_profile())
 }

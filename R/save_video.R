@@ -17,15 +17,21 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Save as MP4
-#' save_video(video_array, "output.mp4", fps = 24)
+#' video <- array(runif(4 * 16 * 16 * 3), dim = c(4, 16, 16, 3))
 #'
-#' # Save as GIF
-#' save_video(video_array, "output.gif", fps = 10)
+#' # Individual PNG frames need no external encoder.
+#' frame_dir <- file.path(tempdir(), "frames")
+#' save_video(video, frame_dir, format = "frames", verbose = FALSE)
+#' length(list.files(frame_dir, pattern = "[.]png$"))
+#' unlink(frame_dir, recursive = TRUE)
 #'
-#' # Save as individual frames
-#' save_video(video_array, "frames/", format = "frames")
+#' # MP4 and GIF need an ffmpeg binary or the 'av' package.
+#' \donttest{
+#' if (requireNamespace("av", quietly = TRUE)) {
+#'   out <- file.path(tempdir(), "output.mp4")
+#'   save_video(video, out, fps = 24, verbose = FALSE)
+#'   unlink(out)
+#' }
 #' }
 save_video <- function(video, file, fps = 24, format = NULL,
                        backend = "auto", quality = 85, verbose = TRUE) {

@@ -38,6 +38,11 @@ re-analysis configuration.}
 
 \item{input_sampling_rate,output_sampling_rate}{Integers.}
 }
+\value{
+Module whose forward(mel_spec) returns the
+  bandwidth-extended waveform [B, 1, samples], trimmed to the sample
+  count implied by the input frames and the rate ratio.
+}
 \description{
 Full mel [B, 2, T, 64] -> 48 kHz stereo waveform pipeline: 16 kHz
 vocoder, causal mel re-analysis, BWE vocoder residual added to a

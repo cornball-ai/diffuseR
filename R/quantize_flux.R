@@ -278,13 +278,15 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
     format <- match.arg(format)
     if (format == "fp8" && !.st_can_write("float8_e4m3fn")) {
         stop("The installed safetensors package cannot write float8 ",
-             "tensors (needs the float8 support pending in ",
-             "mlverse/safetensors#13; until it lands on CRAN, install ",
-             "remotes::install_github(\"cornball-ai/safetensors\") or ",
-             "use format = \"nf4\").", call. = FALSE)
+             "tensors (needs the float8 support from ",
+             "mlverse/safetensors#13, which is merged upstream but not ",
+             "yet on CRAN; install the development version of ",
+             "safetensors from GitHub, or use format = \"nf4\").",
+             call. = FALSE)
     }
     # Residents load into the compute dtype either way; bf16 halves the
-    # artifact but CRAN safetensors (<= 0.2.1) cannot write it yet
+    # artifact but the CRAN build of safetensors 0.2.1 cannot write it
+    # (the fix is merged upstream; the probe decides, not the version)
     resident_dtype <- if (.st_can_write("bfloat16")) {
         torch::torch_bfloat16()
     } else {
@@ -441,9 +443,10 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     format <- ckpt$format %||% "full"
     if (identical(format, "fp8") && !.st_can_write("float8_e4m3fn")) {
         stop("This fp8 artifact needs float8 support the installed ",
-             "safetensors lacks (pending in mlverse/safetensors#13). ",
-             "Install remotes::install_github(\"cornball-ai/safetensors\"), ",
-             "or rebuild the artifact as nf4.", call. = FALSE)
+             "safetensors lacks (mlverse/safetensors#13, merged upstream ",
+             "but not yet on CRAN). Install the development version of ",
+             "safetensors from GitHub, or rebuild the artifact as nf4.",
+             call. = FALSE)
     }
     hooks <- .flux_family_hooks(ckpt$config)
 

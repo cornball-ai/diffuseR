@@ -111,6 +111,10 @@ ltx23_apply_split_rotary_emb <- function(x, freqs) {
 #' @param rope_type "split" (LTX 2.3) or "interleaved".
 #' @param num_attention_heads Integer. Needed for the split layout.
 #'
+#' @return Module whose forward(coords, device) returns
+#'   \code{list(cos_freqs, sin_freqs)}, the two rotary tables to apply
+#'   to queries and keys.
+#'
 #' @export
 ltx23_rotary_pos_embed <- torch::nn_module(
     "ltx23_rotary_pos_embed",

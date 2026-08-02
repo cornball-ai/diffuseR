@@ -35,14 +35,16 @@ Where alpha_cumprod is the cumulative product of (1-beta) values up to the
 specified timestep, with beta being the noise schedule.
 }
 \examples{
-\dontrun{
-# Assuming we have latents, noise, and a scheduler
-noised_latents <- scheduler_add_noise(
-  original_latents = latents,
-  noise = torch::torch_randn_like(latents),
-  timestep = scheduler$timesteps[1],
-  scheduler_obj = scheduler
-)
+if (torch::torch_is_installed()) {
+  scheduler <- ddim_scheduler_create(num_inference_steps = 5)
+  latents <- torch::torch_randn(c(1, 4, 8, 8))
+  noised_latents <- scheduler_add_noise(
+    original_latents = latents,
+    noise = torch::torch_randn_like(latents),
+    timestep = scheduler$timesteps[1],
+    scheduler_obj = scheduler
+  )
+  noised_latents$shape
 }
 
 }

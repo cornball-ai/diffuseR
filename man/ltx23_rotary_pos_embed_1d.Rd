@@ -20,6 +20,11 @@ ltx23_rotary_pos_embed_1d(dim, base_seq_len = 4096L, theta = 10000,
 
 \item{num_attention_heads}{Integer. For the split per-head layout.}
 }
+\value{
+Module whose forward(batch_size, pos, device) returns
+  \code{list(cos_freqs, sin_freqs)}, the 1-D rotary tables for a
+  sequence of length \code{pos}.
+}
 \description{
 1D rotary embeddings for the text connectors
 }

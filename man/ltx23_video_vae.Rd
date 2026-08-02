@@ -35,6 +35,11 @@ ltx23_video_vae(in_channels = 3L, out_channels = 3L, latent_channels = 128L,
 
 \item{encoder_spatial_padding_mode,decoder_spatial_padding_mode}{Characters.}
 }
+\value{
+Module bundling the video encoder and decoder. Its
+  forward(z) is \code{decode(z)}, returning pixels for a latent;
+  \code{$encode()} and \code{$decode()} are callable separately.
+}
 \description{
 Encoder + decoder + per-channel latent statistics (loaded from the
 checkpoint's \code{per_channel_statistics}). The checkpoint's

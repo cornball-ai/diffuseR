@@ -12,6 +12,11 @@ flux2_modulation(dim, mod_param_sets = 2L, bias = FALSE)
 
 \item{bias}{Logical.}
 }
+\value{
+Module whose forward(temb) returns the modulation tensor
+  \code{linear(silu(temb))}, holding \code{mod_param_sets} triples of
+  (shift, scale, gate) along the last axis.
+}
 \description{
 \code{linear(silu(temb))} producing \code{mod_param_sets} triples of
 (shift, scale, gate). Computed once per forward at model level and

@@ -15,6 +15,10 @@ ltx23_video_mid_block3d(in_channels, num_layers = 1L, resnet_eps = 1e-06,
 
 \item{spatial_padding_mode}{Character.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  bottleneck output, a tensor of the same shape as the input.
+}
 \description{
 A plain ResNet stack at a fixed channel count.
 }

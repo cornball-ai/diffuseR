@@ -30,6 +30,11 @@ ltx23_video_encoder3d(in_channels = 3L, out_channels = 128L,
 
 \item{patch_size,patch_size_t}{Integers. Pixel patchification.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  encoded video latent [B, C, F, H, W], with the last channel
+  repeated to carry the per-channel scale expected downstream.
+}
 \description{
 Pixel video [B, 3, F, H, W] -> latent statistics
 [B, 2 * latent_channels, F/8, H/32, W/32] (mean and a uniform log-var

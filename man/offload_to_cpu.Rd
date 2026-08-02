@@ -17,9 +17,8 @@ The module (modified in place).
 Moves a torch module and all its parameters to CPU.
 }
 \examples{
-\dontrun{
-model$to(device = "cuda")
-output <- model(x)
-offload_to_cpu(model)
+if (torch::torch_is_installed()) {
+  model <- torch::nn_linear(4, 2)
+  offload_to_cpu(model)
 }
 }

@@ -15,7 +15,7 @@ Invisibly returns a list with used and free VRAM in GB.
 Prints current VRAM usage from nvidia-smi.
 }
 \examples{
-\dontrun{
-vram_report("After model load")
+if (torch::torch_is_installed()) {
+  vram_report("After model load")
 }
 }

@@ -12,7 +12,8 @@
 #' @keywords internal
 hf_download_pt <- function(model_name, filename, download = TRUE) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
-        stop("Package 'hfhub' is required. Install with: install.packages('hfhub')")
+        stop("Package 'hfhub' is required. Install it from CRAN before ",
+             "calling download_model() again.")
     }
 
     repo_id <- paste0("cornball-ai/", model_name, "-R")

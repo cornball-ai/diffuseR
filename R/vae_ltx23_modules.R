@@ -17,6 +17,9 @@ NULL
 #'
 #' @param eps Numeric. Stability epsilon.
 #'
+#' @return Module whose forward(x) returns \code{x} divided by its
+#'   per-channel root mean square, a tensor of the same shape.
+#'
 #' @export
 ltx23_per_channel_rms_norm <- torch::nn_module(
     "ltx23_per_channel_rms_norm",
@@ -39,6 +42,11 @@ ltx23_per_channel_rms_norm <- torch::nn_module(
 #' @param kernel_size Integer or length-3 vector (t, h, w).
 #' @param stride Integer or length-3 vector.
 #' @param spatial_padding_mode Character. Conv padding mode.
+#'
+#' @return Module whose forward(hidden_states, causal) returns the 3-D
+#'   convolution of the input. With \code{causal = TRUE} the temporal
+#'   axis is left-padded by replicating the first frame, so no output
+#'   frame sees a later input frame.
 #'
 #' @export
 ltx23_causal_conv3d <- torch::nn_module(
@@ -90,6 +98,9 @@ ltx23_causal_conv3d <- torch::nn_module(
 #' @param in_channels,out_channels Integers.
 #' @param eps Numeric. Shortcut LayerNorm epsilon.
 #' @param spatial_padding_mode Character.
+#'
+#' @return Module whose forward(inputs, causal) returns \code{inputs}
+#'   plus the residual branch, a tensor of the same shape.
 #'
 #' @export
 ltx23_video_resnet_block3d <- torch::nn_module(
@@ -150,6 +161,10 @@ ltx23_video_resnet_block3d <- torch::nn_module(
 #' @param stride Length-3 integer vector (t, h, w).
 #' @param spatial_padding_mode Character.
 #'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   space-to-depth downsampled tensor plus its residual: spatial and
+#'   temporal extents shrink by \code{stride}, channels grow to match.
+#'
 #' @export
 ltx23_video_downsampler3d <- torch::nn_module(
     "ltx23_video_downsampler3d",
@@ -205,6 +220,10 @@ ltx23_video_downsampler3d <- torch::nn_module(
 #' @param residual Logical. Add the rearranged input as a residual.
 #' @param upscale_factor Integer.
 #' @param spatial_padding_mode Character.
+#'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   depth-to-space upsampled tensor: spatial and temporal extents grow
+#'   by \code{stride}, channels shrink to match.
 #'
 #' @export
 ltx23_video_upsampler3d <- torch::nn_module(
@@ -272,6 +291,10 @@ ltx23_video_upsampler3d <- torch::nn_module(
 #' @param downsample_type "spatial", "temporal", or "spatiotemporal".
 #' @param spatial_padding_mode Character.
 #'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   stage output: the resnet stack applied in sequence, then the
+#'   optional downsampler.
+#'
 #' @export
 ltx23_video_down_block3d <- torch::nn_module(
     "ltx23_video_down_block3d",
@@ -329,6 +352,9 @@ ltx23_video_down_block3d <- torch::nn_module(
 #' @param resnet_eps Numeric.
 #' @param spatial_padding_mode Character.
 #'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   bottleneck output, a tensor of the same shape as the input.
+#'
 #' @export
 ltx23_video_mid_block3d <- torch::nn_module(
     "ltx23_video_mid_block3d",
@@ -365,6 +391,10 @@ ltx23_video_mid_block3d <- torch::nn_module(
 #' @param upsample_residual Logical.
 #' @param upscale_factor Integer.
 #' @param spatial_padding_mode Character.
+#'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   stage output: the optional input projection and upsampler, then the
+#'   resnet stack applied in sequence.
 #'
 #' @export
 ltx23_video_up_block3d <- torch::nn_module(

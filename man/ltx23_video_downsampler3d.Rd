@@ -13,6 +13,11 @@ ltx23_video_downsampler3d(in_channels, out_channels, stride = c(1L, 1L, 1L),
 
 \item{in_channels,out_channels}{Integers.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  space-to-depth downsampled tensor plus its residual: spatial and
+  temporal extents shrink by \code{stride}, channels grow to match.
+}
 \description{
 Conv followed by space/time-to-channel rearrangement, plus a grouped
 channel-mean residual of the same rearrangement.

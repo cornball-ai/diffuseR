@@ -31,6 +31,12 @@
 #' @param patch_size Integer. Spatial patch size. Default 2.
 #' @param f_patch_size Integer. Temporal patch size. Default 1.
 #'
+#' @return Module whose forward(x, t, cap_feats, chunk_size) returns the
+#'   predicted velocity for the single latent, a tensor [C, F, H, W]
+#'   matching the shape of \code{x}. Note that the checkpoint negates
+#'   this output and consumes a reversed timestep; see
+#'   \code{\link{txt2img_zimage}}.
+#'
 #' @export
 zimage_transformer <- torch::nn_module(
                                        "zimage_transformer",

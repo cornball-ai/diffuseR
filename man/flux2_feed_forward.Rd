@@ -14,6 +14,10 @@ flux2_feed_forward(dim, dim_out = NULL, mult = 3, bias = FALSE)
 
 \item{bias}{Logical.}
 }
+\value{
+Module whose forward(x) returns the SwiGLU-gated projection
+  of \code{x}, a tensor with the last axis of width \code{dim_out}.
+}
 \description{
 \code{linear_in} projects to twice the inner dim; SwiGLU gates the
 first half with SiLU and multiplies by the second half;

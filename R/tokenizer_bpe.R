@@ -106,6 +106,10 @@ bpe_tokenizer <- function(tokenizer_path) {
 #' Print BPE Tokenizer
 #' @param x A bpe_tokenizer object.
 #' @param ... Additional arguments (ignored).
+#'
+#' @return Invisibly returns \code{x}. Called for the side effect of
+#'   printing a summary of the tokenizer to the console.
+#'
 #' @export
 print.bpe_tokenizer <- function(x, ...) {
     cat("BPE Tokenizer\n")
