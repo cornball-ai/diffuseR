@@ -19,7 +19,18 @@ fake_pipeline <- function() {
               class = "test_pipeline")
 }
 
+# Everything from here to the "state machine" section builds real
+# nn_modules or torch dtypes, so it needs a working lantern. torch
+# installed WITHOUT its lantern binaries is the normal state on
+# win-builder and CRAN, and there `torch::nn_linear()` errors rather
+# than returning. The state-machine sections below are pure R and run
+# everywhere.
+have_torch <- requireNamespace("torch", quietly = TRUE) &&
+    torch::torch_is_installed()
+
 # --- component discovery ----------------------------------------------------------
+
+if (have_torch) {
 
 pipe <- fake_pipeline()
 comps <- diffuseR:::.resident_components(pipe)
@@ -39,6 +50,8 @@ expect_equal(diffuseR:::.dtype_bytes(torch::torch_float16()), 2)
 expect_equal(diffuseR:::.dtype_bytes(torch::torch_bfloat16()), 2)
 expect_equal(diffuseR:::.dtype_bytes(torch::torch_uint8()), 1)
 expect_equal(diffuseR:::.dtype_bytes(torch::torch_int64()), 8)
+
+} # end have_torch
 
 # --- byte formatting --------------------------------------------------------------
 
@@ -140,7 +153,7 @@ expect_equal(resident_status(u)$state, "unloaded")
 
 # --- CUDA round trip --------------------------------------------------------------
 
-if (at_home() && torch::cuda_is_available()) {
+if (have_torch && at_home() && torch::cuda_is_available()) {
     pipe <- fake_pipeline()
     staging <- diffuseR:::.resident_pin(pipe, verbose = FALSE)
     expect_equal(sort(names(staging)),
