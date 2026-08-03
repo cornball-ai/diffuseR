@@ -52,7 +52,7 @@ NULL
 #'
 #' @export
 flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
-                                precision = c("auto", "fp8", "nf4"),
+                                precision = c("auto", "fp8", "nf4", "bf16"),
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, pin = NULL,
                                 verbose = TRUE) {
@@ -66,8 +66,9 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         }
     }
     if (is.null(model_dir)) {
-        model_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
-                               paste0("flux2-klein-4b-", precision))
+        model_dir <- .flux_model_dir("flux2", precision,
+            file.path(tools::R_user_dir("diffuseR", "data"),
+                      "flux2-klein-4b-"))
     }
 
     ckpt <- if (file.exists(file.path(model_dir, "manifest.json"))) {

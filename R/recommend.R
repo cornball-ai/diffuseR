@@ -131,8 +131,31 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
          pinned_set_gb = pinned_set,
          host_ram_gb = host_ram_gb,
          fork_suggested = fork,
-         note = if (fork) .st_fork_note(want$precision) else NULL
+         note = if (fork) {
+             .st_fork_note(want$precision)
+         } else {
+             .bf16_note(model, chosen$precision)
+         }
     )
+}
+
+# bf16 is not a built artifact: it is the unquantized source the
+# quantizers read. Recommending the tier without saying that leaves the
+# user with a precision they cannot act on, so spell out the one call
+# that makes it available.
+.bf16_note <- function(model, precision) {
+    if (!identical(precision, "bf16")) {
+        return(NULL)
+    }
+    fn <- switch(model, flux1 = "download_flux1",
+                 flux2 = "download_flux2_klein",
+                 zimage = "download_zimage_turbo", NULL)
+    if (is.null(fn)) {
+        return(NULL)
+    }
+    sprintf(paste0("bf16 loads the unquantized source rather than a ",
+                   "quantized artifact. Keep it with %s(quantize = FALSE), ",
+                   "then load with precision = \"bf16\"."), fn)
 }
 
 # Available host RAM in GB (Linux MemAvailable); NA where undetectable

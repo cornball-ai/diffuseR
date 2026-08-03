@@ -76,6 +76,55 @@ NULL
     }
 }
 
+# Locate a flux-family model's unquantized transformer in the hfhub
+# cache. bf16 is not a built artifact: it IS the source the quantizers
+# read, so the "bf16 tier" means loading those weights directly
+# (flux_load_transformer() handles them as format "full"). Resolves from
+# the cache only -- a loader must never trigger a multi-GB download as a
+# side effect of a precision choice.
+.flux_source_dir <- function(model) {
+    if (!requireNamespace("hfhub", quietly = TRUE)) {
+        stop("The hfhub package is required to locate bf16 source weights.",
+             call. = FALSE)
+    }
+    spec <- switch(model,
+                   flux1 = list(repo = .flux1_repo,
+                                files = .flux1_transformer_files,
+                                fn = "download_flux1"),
+                   flux2 = list(repo = .flux2_repo,
+                                files = .flux2_transformer_files,
+                                fn = "download_flux2_klein"),
+                   zimage = list(repo = .zimage_repo,
+                                 files = .zimage_transformer_files,
+                                 fn = "download_zimage_turbo"),
+                   stop("No bf16 source known for model '", model, "'",
+                        call. = FALSE))
+    paths <- lapply(spec$files, function(f) {
+        tryCatch(hfhub::hub_download(spec$repo, f, local_files_only = TRUE),
+                 error = function(e) NULL)
+    })
+    if (any(vapply(paths, is.null, logical(1)))) {
+        stop(sprintf(paste0("bf16 needs the unquantized %s transformer, ",
+                            "which is not in the HuggingFace cache. Run ",
+                            "%s(quantize = FALSE) to fetch it, or pick a ",
+                            "quantized precision."),
+                     spec$repo, spec$fn), call. = FALSE)
+    }
+    # Every file list starts with transformer/config.json, so the parent
+    # of the first hit is the transformer directory.
+    dirname(paths[[1]])
+}
+
+# Where a loader should read weights for a resolved precision: the
+# built artifact for nf4/fp8, the cached source for bf16.
+.flux_model_dir <- function(model, precision, prefix) {
+    if (identical(precision, "bf16")) {
+        .flux_source_dir(model)
+    } else {
+        paste0(prefix, precision)
+    }
+}
+
 # Transformer constructor arguments from a diffusers config.json
 .flux_transformer_args <- function(config) {
     if (is.null(config)) {

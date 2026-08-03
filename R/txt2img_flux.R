@@ -119,7 +119,7 @@ flux_load_pipeline <- function(model_dir = NULL, device = "cuda",
         precision <- .flux_resolve_precision("auto", prefix)
     }
     if (is.null(model_dir)) {
-        model_dir <- paste0(prefix, precision)
+        model_dir <- .flux_model_dir("flux1", precision, prefix)
     }
 
     ckpt <- if (file.exists(file.path(model_dir, "manifest.json"))) {
