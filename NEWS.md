@@ -1,4 +1,4 @@
-# diffuseR 0.2.1.3
+# diffuseR 0.2.2
 
 * Every precision `recommend()` can return is now reachable. `bf16` was
   advertised for flux1 at 24 GB and flux2/zimage at 16-24 GB while no
@@ -22,7 +22,6 @@
   License and FLUX.1-schnell is gated, so hosting would cover half the
   catalog and leave two models on a different workflow.
 
-# diffuseR 0.2.1.2
 
 * Model residency: `resident_load()`, `resident_activate()`,
   `resident_deactivate()`, `resident_generate()`, `resident_status()`
@@ -48,9 +47,7 @@
   cycle. FLUX.1 and LTX both have pinned sets larger than the card, so
   they exercise the refusal path rather than bulk onload.
 
-# diffuseR 0.2.1.1
-
-Addresses the CRAN review of the 0.2.0 submission.
+Addressing the CRAN review of the 0.2.0 submission:
 
 * Every exported `.Rd` with a `\usage` block now documents its return
   value: 50 `@return` tags added, chiefly to the `nn_module` generators

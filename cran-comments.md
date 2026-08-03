@@ -1,10 +1,27 @@
+## Resubmission
+
+This is a resubmission of 0.2.0. The four points raised in review are
+addressed:
+
+* Software names are single-quoted in the Description ('Python',
+  'Stable Diffusion', 'Hugging Face', with a URL for the last).
+* The doubled spaces are gone. They came from trailing whitespace on
+  every continuation line, which DCF folding turned into two spaces.
+* \value is now present on all 50 exported .Rd files that were missing
+  it, describing the class and meaning of the result. (Topic pages that
+  document no function, and therefore have no \usage, do not have one.)
+* 14 of the 23 \dontrun{} examples were unwrapped and now run during
+  check; they were also rewritten to be self-contained rather than
+  referring to objects that were never defined. The 10 that remain are
+  listed below with the reason for each.
+
 ## Test environments
 
 * Ubuntu 24.04 (local), R 4.6.x: R CMD check --as-cran
 * Windows 10, R 4.6.0 (full test suite against installed torch backend)
-* Windows 10, R-devel (2026-07-21 r90286), torch installed without its
-  lantern backend (tests skip gracefully)
-* win-builder, R-devel (2026-07-22 r90289)
+* Windows 10, R-devel, torch installed without its lantern backend
+  (tests skip gracefully)
+* win-builder, R-devel
 
 ## R CMD check results
 
@@ -20,14 +37,8 @@ package.
 
 ## Notes for the reviewers
 
-* On the previous submission we were asked to replace `\dontrun{}`
-  with `\donttest{}`. We unwrapped 14 of the 23 examples so they now
-  run during check (device/profile policy helpers, both schedulers,
-  the VRAM helpers, `save_image()`, `save_video()` frame output, and a
-  small `vae_decoder_native()`), and rewrote them to be self-contained
-  rather than referencing undefined objects. Nine remain under
-  `\dontrun{}` because they cannot execute anywhere without model
-  weights on disk:
+* Ten examples remain under `\dontrun{}`. Each needs multi-GB model
+  weights on disk, so none can execute on a check machine:
 
   - `download_model()`, `download_component()` - network downloads of
     multi-GB weights.
@@ -37,12 +48,20 @@ package.
     generation; needs the weights and minutes of compute.
   - `ltx23_open_checkpoint()` - needs a ~20 GB LTX-2.3 checkpoint the
     user downloads under Lightricks' own license.
+  - `resident_load()` - loads a full pipeline onto a GPU.
   - `load_decoder_weights()` in the `vae_decoder_native()` page -
     needs a checkpoint file. The rest of that example runs.
 
   `\donttest{}` would not help for these: CRAN runs `\donttest{}`
-  examples, and each of these would either attempt a large download or
-  fail on a missing file.
+  examples, and each would either attempt a large download or fail on a
+  missing file.
+
+* `save_video()`'s MP4 example is deliberately shown as a comment
+  rather than run. Both encoder backends hand off to an ffmpeg process
+  that inherits the session's stdin, which `R CMD check --as-cran` uses
+  to feed the example script to R, so a live call consumes part of the
+  script and later examples parse short. The frame-writing path is
+  exercised live instead.
 
 * Model weights are never bundled and never downloaded without
   consent: every download function prompts interactively with the
