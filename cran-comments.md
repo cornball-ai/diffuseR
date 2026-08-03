@@ -18,9 +18,11 @@ addressed:
 ## Test environments
 
 * Ubuntu 24.04 (local), R 4.6.x: R CMD check --as-cran
-* Windows 10, R 4.6.0 (full test suite against installed torch backend)
-* Windows 10, R-devel, torch installed without its lantern backend
-  (tests skip gracefully)
+* Windows 10, R 4.6.0 and R-devel: R CMD check --as-cran, with torch's
+  lantern backend installed (so the full suite runs)
+* Ubuntu, with lantern deliberately absent, to exercise the path
+  win-builder and CRAN take: examples and tests skip gracefully rather
+  than erroring
 * win-builder, R-devel
 
 ## R CMD check results
@@ -71,4 +73,6 @@ package.
   under tools::R_user_dir("diffuseR", "data").
 * torch is in Imports; all tests, examples, and vignette code degrade
   gracefully when torch's backend (lantern) is not installed, as on
-  win-builder.
+  win-builder. Note that `torch::cuda_is_available()` raises an error
+  rather than returning FALSE in that state, so the package probes it
+  through `tryCatch()` everywhere it is reachable without a GPU.

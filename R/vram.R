@@ -58,8 +58,13 @@ is_blackwell_gpu <- function() {
         return(mb / 1024)
     }
 
-    # Fallback: check if CUDA available but can't determine VRAM
-    if (torch::cuda_is_available()) {
+    # Fallback: check if CUDA available but can't determine VRAM.
+    # cuda_is_available() ERRORS (not FALSE) when torch is installed
+    # without its lantern binaries - fresh installs, win-builder, CRAN -
+    # and this branch is exactly where those machines land, since they
+    # have no nvidia-smi either. Probe soft, same as is_blackwell_gpu().
+    if (isTRUE(tryCatch(torch::cuda_is_available(),
+                        error = function(e) FALSE))) {
         # Conservative estimate - assume 8GB if we can't detect
         message("Could not detect VRAM via nvidia-smi; assuming 8 GB.")
         return(8)
