@@ -1,3 +1,15 @@
+# diffuseR 0.2.1.2
+
+* Model residency: `resident_load()`, `resident_activate()`,
+  `resident_deactivate()`, `resident_generate()`, `resident_status()`
+  and `resident_unload()` keep a pipeline's weights page-locked on the
+  host and treat the GPU copy as disposable, so handing a small card
+  between models is a DMA transfer rather than a full reload. Same
+  contract as whisper and chatterbox, with no `gpu.ctl` dependency.
+  This sits above the per-generation phase offloading in the
+  `txt2img_*` functions: those swap one component at a time within a
+  render, residency decides who owns the card between renders.
+
 # diffuseR 0.2.1.1
 
 Addresses the CRAN review of the 0.2.0 submission.
