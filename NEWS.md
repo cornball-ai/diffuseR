@@ -22,7 +22,6 @@
   License and FLUX.1-schnell is gated, so hosting would cover half the
   catalog and leave two models on a different workflow.
 
-
 * Model residency: `resident_load()`, `resident_activate()`,
   `resident_deactivate()`, `resident_generate()`, `resident_status()`
   and `resident_unload()` keep a pipeline's weights page-locked on the
@@ -54,8 +53,9 @@ Addressing the CRAN review of the 0.2.0 submission:
   for the FLUX, FLUX.2, Z-Image, LTX-2.3 and Gemma3 ports.
 * Examples: 14 of the 23 `\dontrun{}` blocks now run during check, and
   were rewritten to be self-contained instead of referencing undefined
-  objects. The 9 that remain need model weights on disk and are
-  itemised in `cran-comments.md`.
+  objects. The 10 that remain need model weights on disk and are
+  itemised in `cran-comments.md` (the nine left from that pass, plus
+  `resident_load()`, added below).
 * `ddim_scheduler_create()` was uncallable at its documented defaults:
   `beta_schedule` was never passed through `match.arg()`, so `switch()`
   errored on the length-3 default, and the `device` default was a

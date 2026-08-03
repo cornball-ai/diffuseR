@@ -216,4 +216,3 @@ expect_error(diffuseR:::.flux_source_dir("nosuch"), pattern = "No bf16 source")
 expect_equal(recommend("ltx", vram_gb = 16)$precision, "nf4")
 expect_true("precision" %in% names(formals(download_ltx2)))
 expect_equal(eval(formals(download_ltx2)$precision), c("nf4", "fp8"))
-
