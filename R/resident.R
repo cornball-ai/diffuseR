@@ -158,6 +158,27 @@
     TRUE
 }
 
+#' How many components actually have their tensors on the GPU
+#'
+#' Ground truth, as opposed to the handle's declared state. The two can
+#' disagree: a pipeline built with \code{phase_offload = TRUE} swaps each
+#' component back to pinned host memory as its phase finishes, so after a
+#' render the handle is still "active" while the card holds nothing. A
+#' broker deciding who to evict needs the measurement, not the claim.
+#'
+#' @param staging A named list of staging sets.
+#'
+#' @return Integer. Number of components whose live tensors are on CUDA.
+#'
+#' @keywords internal
+.resident_on_gpu_count <- function(staging) {
+    sum(vapply(staging, function(st) {
+        isTRUE(length(st) > 0) &&
+        identical(tryCatch(st[[1]]$live$device$type,
+                           error = function(e) NA_character_), "cuda")
+    }, logical(1)))
+}
+
 #' Refuse operations that the current state cannot serve
 #'
 #' @param res A resident handle.
@@ -249,6 +270,17 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
                      flux2 = flux2_load_pipeline,
                      zimage = zimage_load_pipeline,
                      ltx = ltx23_load_pipeline)
+    # Capture the phase-offload choice here rather than reading it back
+    # off the pipeline: the FLUX family stores it as a field, LTX takes
+    # it again at generate time and stores nothing, so the field is
+    # absent there and a NULL would be misread as "stays resident".
+    # Every family loader defaults it TRUE.
+    dots <- list(...)
+    phase_offload <- if (is.null(dots$phase_offload)) {
+        TRUE
+    } else {
+        isTRUE(dots$phase_offload)
+    }
     pipeline <- loader(device = "cuda", verbose = verbose, ...)
 
     staging <- .resident_pin(pipeline, verbose = verbose)
@@ -260,6 +292,7 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
     res$model <- model
     res$device <- bound
     res$pipeline <- pipeline
+    res$phase_offload <- phase_offload
     res$staging <- staging
     res$components <- names(.resident_components(pipeline))
     res$pinned_bytes <- .resident_pinned_bytes(staging)
@@ -267,6 +300,32 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
     res$last_error <- NULL
     res$loaded_at <- Sys.time()
     structure(res, class = "diffuseR_resident")
+}
+
+#' Refuse a bulk activation that cannot fit
+#'
+#' Fails before the transfer rather than part-way through it. A partial
+#' onload that OOMs is recoverable (activation rolls back), but it wastes
+#' the transfer and reports a libtorch allocator error instead of the
+#' actual problem, which is that this model does not fit this card.
+#'
+#' @param res A resident handle.
+#'
+#' @return Invisibly TRUE, or an error naming both figures.
+#'
+#' @keywords internal
+.resident_check_fits <- function(res) {
+    free_gb <- tryCatch(.detect_vram(use_free = TRUE),
+                        error = function(e) NA_real_)
+    need_gb <- res$pinned_bytes / 1024^3
+    if (!is.na(free_gb) && free_gb > 0 && need_gb > free_gb) {
+        stop(sprintf(paste0("%s needs %.2f GB resident but only %.2f GB of ",
+                            "VRAM is free. Load the pipeline with ",
+                            "phase_offload = TRUE so components move on ",
+                            "one phase at a time."),
+                     res$model, need_gb, free_gb), call. = FALSE)
+    }
+    invisible(TRUE)
 }
 
 # gc() then empty the caching allocator. Split out so every transition
@@ -284,6 +343,26 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
 #' pinned host state; a rollback that cannot itself be verified leaves
 #' the handle broken.
 #'
+#' What activation does depends on how the pipeline was loaded:
+#'
+#' \itemize{
+#'   \item \code{phase_offload = TRUE} (the default, and what the
+#'     \code{txt2img_*} functions expect): no bulk transfer. The render
+#'     moves each component on as its phase begins and back off as it
+#'     ends, from these same pinned copies, so pre-loading them would be
+#'     undone within one phase. Activation is the ownership claim.
+#'   \item \code{phase_offload = FALSE}: every component is copied to the
+#'     card up front and stays there across renders. This is the fast
+#'     path, and it is checked against free VRAM first.
+#' }
+#'
+#' The distinction is not cosmetic. FLUX.1's pinned set is 15.73 GB,
+#' which does not fit a 15.47 GiB card -- bulk-onloading it OOMs even
+#' though the phased render fits comfortably. So \code{state} is a claim
+#' about who owns the card, not a measurement of what is on it; read
+#' \code{components_on_gpu} from \code{\link{resident_status}} for the
+#' measurement.
+#'
 #' @param res A \code{diffuseR_resident} handle.
 #'
 #' @return Invisibly the handle, with state "active".
@@ -299,9 +378,23 @@ resident_activate <- function(res) {
         stop("cannot activate from state '", res$state, "'", call. = FALSE)
     }
     res$state <- "activating"
+    # A phase-offloading pipeline moves each component onto the card as
+    # its phase begins and straight back off as it ends, from these same
+    # pinned copies. Bulk-onloading here is therefore redundant -- the
+    # render undoes it within one phase -- and actively harmful: FLUX.1's
+    # pinned set is 15.73 GB, which does not fit a 15.47 GiB card even
+    # though the phased render does. For those pipelines, activation is
+    # the ownership claim; the transfers stay per-phase.
+    # The loader's own field wins when it kept one (the FLUX family
+    # downgrades phase_offload to FALSE on a CPU device); otherwise fall
+    # back to what resident_load() was asked for.
+    bulk <- !isTRUE(res$pipeline$phase_offload %||% res$phase_offload)
     ok <- tryCatch({
-        for (nm in names(res$staging)) {
-            .staged_onload(res$staging[[nm]], res$device)
+        if (bulk) {
+            .resident_check_fits(res)
+            for (nm in names(res$staging)) {
+                .staged_onload(res$staging[[nm]], res$device)
+            }
         }
         TRUE
     }, error = function(e) {
@@ -416,8 +509,17 @@ resident_generate <- function(res, prompt, ...) {
 #'   \code{pinned_bytes} (page-locked host bytes held),
 #'   \code{gpu_allocated} and \code{gpu_reserved} (bytes the CUDA
 #'   caching allocator reports live and held for this process, NA
-#'   without CUDA), \code{loaded_at}, and \code{last_error} (NULL unless
-#'   a transition failed).
+#'   without CUDA), \code{components_on_gpu} (how many components are
+#'   *actually* resident right now), \code{loaded_at}, and
+#'   \code{last_error} (NULL unless a transition failed).
+#'
+#'   \code{state} is the handle's claim on the card;
+#'   \code{components_on_gpu} is the measurement. They disagree by
+#'   design after a render on a \code{phase_offload = TRUE} pipeline,
+#'   which returns each component to pinned host memory as its phase
+#'   finishes: the handle stays "active" (it still owns the card's
+#'   budget and can render again without touching disk) while
+#'   \code{components_on_gpu} is 0. Schedule on the measurement.
 #'
 #' @export
 resident_status <- function(res) {
@@ -427,6 +529,7 @@ resident_status <- function(res) {
          state = res$state,
          device = res$device,
          components = names(res$staging),
+         components_on_gpu = .resident_on_gpu_count(res$staging),
          pinned_bytes = res$pinned_bytes,
          gpu_allocated = mem$allocated,
          gpu_reserved = mem$reserved,
@@ -494,6 +597,8 @@ print.diffuseR_resident <- function(x, ...) {
     cat("  device:     ", s$device, "\n", sep = "")
     cat("  components: ",
         if (length(s$components)) paste(s$components, collapse = ", ") else "-",
+        "\n", sep = "")
+    cat("  on gpu:     ", s$components_on_gpu, " of ", length(s$components),
         "\n", sep = "")
     cat("  pinned:     ", .fmt_gb(s$pinned_bytes), "\n", sep = "")
     if (!is.na(s$gpu_allocated)) {

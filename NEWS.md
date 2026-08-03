@@ -8,7 +8,21 @@
   contract as whisper and chatterbox, with no `gpu.ctl` dependency.
   This sits above the per-generation phase offloading in the
   `txt2img_*` functions: those swap one component at a time within a
-  render, residency decides who owns the card between renders.
+  render, residency decides who owns the card between renders. For a
+  phase-offloading pipeline (the default) activation is the ownership
+  claim and the transfers stay per-phase; only a pipeline loaded with
+  `phase_offload = FALSE` is copied to the card wholesale, and that
+  path is checked against free VRAM first. `resident_status()` reports
+  `components_on_gpu` alongside `state`, because the two legitimately
+  disagree: a render returns every component to pinned host memory as
+  its phase ends, so an active handle can hold nothing.
+
+  Verified on an RTX 5060 Ti (16 GB) against local artifacts: flux2
+  (11.22 GB pinned, 9.1 s render), flux1 (15.73 GB, 40.1 s), zimage
+  (13.45 GB, 19.5 s) and ltx (18.41 GB across 5 components). All three
+  image models reproduce bit-for-bit across a deactivate/activate
+  cycle. FLUX.1 and LTX both have pinned sets larger than the card, so
+  they exercise the refusal path rather than bulk onload.
 
 # diffuseR 0.2.1.1
 
