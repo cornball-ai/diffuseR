@@ -202,6 +202,11 @@ ltx23_release_dequant_buffers <- function() {
 #' @param out_features,in_features Integers.
 #' @param bias Logical.
 #'
+#' @return Module whose forward(x) returns the linear projection of
+#'   \code{x}, dequantizing the NF4 weight into a reusable buffer first.
+#'   Same result as an \code{nn_linear} of the same shape, at roughly an
+#'   eighth of the resident weight bytes.
+#'
 #' @export
 ltx23_nf4_linear <- torch::nn_module(
                                      "ltx23_nf4_linear",

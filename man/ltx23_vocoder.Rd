@@ -28,6 +28,10 @@ ltx23_vocoder(in_channels = 128L, hidden_channels = 1536L, out_channels = 2L,
 
 \item{antialias_ratio,antialias_kernel_size}{Integers.}
 }
+\value{
+Module whose forward(hidden_states, time_last) returns the
+  synthesized waveform [B, 1, samples] for a mel spectrogram.
+}
 \description{
 Mel spectrogram [B, C, T, M] -> waveform [B, out_channels, samples].
 Channel and mel dims are flattened into conv channels; each upsample

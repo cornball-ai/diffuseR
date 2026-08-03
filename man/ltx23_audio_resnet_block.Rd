@@ -11,6 +11,10 @@ ltx23_audio_resnet_block(in_channels, out_channels = NULL,
 
 \item{in_channels,out_channels}{Integers.}
 }
+\value{
+Module whose forward(x) returns \code{x} plus the residual
+  branch, a tensor of the same shape as \code{x}.
+}
 \description{
 PixelNorm -> SiLU -> causal conv, twice, with a 1x1 causal conv
 shortcut (\code{nin_shortcut}) on channel change.

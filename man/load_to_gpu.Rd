@@ -17,9 +17,9 @@ The module (modified in place).
 Moves a torch module and all its parameters to CUDA.
 }
 \examples{
-\dontrun{
-load_to_gpu(model)
-output <- model(x)
-offload_to_cpu(model)
+if (torch::torch_is_installed()) {
+  model <- torch::nn_linear(4, 2)
+  # "cuda" needs a GPU; "cpu" is the portable round trip.
+  load_to_gpu(model, device = "cpu")
 }
 }

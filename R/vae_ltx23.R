@@ -26,6 +26,10 @@ NULL
 #' @param is_causal Logical.
 #' @param spatial_padding_mode Character.
 #'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   encoded video latent [B, C, F, H, W], with the last channel
+#'   repeated to carry the per-channel scale expected downstream.
+#'
 #' @export
 ltx23_video_encoder3d <- torch::nn_module(
     "ltx23_video_encoder3d",
@@ -138,6 +142,10 @@ ltx23_video_encoder3d <- torch::nn_module(
 #' @param upsample_residual Logical vector per up block.
 #' @param upsample_factor Integer vector per up block.
 #' @param spatial_padding_mode Character.
+#'
+#' @return Module whose forward(hidden_states, causal) returns the
+#'   decoded pixel tensor [B, 3, F, H, W], with the final patch axes
+#'   flattened back into height and width.
 #'
 #' @export
 ltx23_video_decoder3d <- torch::nn_module(
@@ -255,6 +263,10 @@ ltx23_video_decoder3d <- torch::nn_module(
 #' @param resnet_norm_eps Numeric.
 #' @param encoder_causal,decoder_causal Logicals. Temporal padding modes.
 #' @param encoder_spatial_padding_mode,decoder_spatial_padding_mode Characters.
+#'
+#' @return Module bundling the video encoder and decoder. Its
+#'   forward(z) is \code{decode(z)}, returning pixels for a latent;
+#'   \code{$encode()} and \code{$decode()} are callable separately.
 #'
 #' @export
 ltx23_video_vae <- torch::nn_module(

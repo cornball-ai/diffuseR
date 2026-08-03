@@ -74,6 +74,9 @@ ltx23_kaiser_sinc_filter1d <- function(cutoff, half_width, kernel_size) {
 #' @param ratio Integer. Downsampling ratio.
 #' @param kernel_size Integer or NULL (default 6*ratio rounded even).
 #'
+#' @return Module whose forward(x) returns \code{x} low-pass filtered
+#'   and decimated by \code{ratio} along the time axis.
+#'
 #' @export
 ltx23_downsample1d <- torch::nn_module(
                                        "ltx23_downsample1d",
@@ -101,6 +104,10 @@ ltx23_downsample1d <- torch::nn_module(
 #' @param window_type "kaiser" (BigVGAN default) or "hann" (final resampler).
 #' @param persistent Logical. Register the filter as a buffer (present in
 #'   checkpoints); FALSE stores the computed filter as a plain field.
+#'
+#' @return Module whose forward(x) returns \code{x} interpolated up by
+#'   \code{ratio} along the time axis, with the filter padding trimmed
+#'   off.
 #'
 #' @export
 ltx23_upsample1d <- torch::nn_module(
@@ -164,6 +171,10 @@ ltx23_upsample1d <- torch::nn_module(
 #' @param channels Integer.
 #' @param eps Numeric.
 #'
+#' @return Module whose forward(hidden_states) returns the Snake
+#'   activation \code{x + sin(alpha * x)^2 / beta}, a tensor of the same
+#'   shape as the input.
+#'
 #' @export
 ltx23_snake_beta <- torch::nn_module(
                                      "ltx23_snake_beta",
@@ -189,6 +200,11 @@ ltx23_snake_beta <- torch::nn_module(
 #' @param channels Integer. Channels for the SnakeBeta activation.
 #' @param ratio,kernel_size Integers. Resampling config.
 #'
+#' @return Module whose forward(x) returns the activation applied at 2x
+#'   rate (upsample, activate, downsample), a tensor of the same shape
+#'   as \code{x}, with the aliasing the raw activation would introduce
+#'   filtered out.
+#'
 #' @export
 ltx23_antialias_act1d <- torch::nn_module(
     "ltx23_antialias_act1d",
@@ -212,6 +228,10 @@ ltx23_antialias_act1d <- torch::nn_module(
 #' @param kernel_size Integer.
 #' @param dilations Integer vector.
 #' @param antialias_ratio,antialias_kernel_size Integers.
+#'
+#' @return Module whose forward(x) returns \code{x} after the dilated
+#'   convolution pairs have been added back as residuals, a tensor of
+#'   the same shape.
 #'
 #' @export
 ltx23_vocoder_resblock <- torch::nn_module(
@@ -265,6 +285,9 @@ ltx23_vocoder_resblock <- torch::nn_module(
 #' @param resnet_dilations List of integer vectors.
 #' @param antialias_ratio,antialias_kernel_size Integers.
 #' @param final_bias Logical.
+#'
+#' @return Module whose forward(hidden_states, time_last) returns the
+#'   synthesized waveform [B, 1, samples] for a mel spectrogram.
 #'
 #' @export
 ltx23_vocoder <- torch::nn_module(
@@ -368,6 +391,9 @@ ltx23_causal_stft <- torch::nn_module(
 #'
 #' @param filter_length,hop_length,window_length,num_mel_channels Integers.
 #'
+#' @return Module whose forward(waveform) returns the log-mel
+#'   spectrogram [B, n_mels, frames], clamped at 1e-5 before the log.
+#'
 #' @export
 ltx23_mel_stft <- torch::nn_module(
                                    "ltx23_mel_stft",
@@ -406,6 +432,10 @@ ltx23_mel_stft <- torch::nn_module(
 #'   re-analysis configuration.
 #' @param input_sampling_rate,output_sampling_rate Integers.
 #' @param hop_length Integer. Mel analysis hop.
+#'
+#' @return Module whose forward(mel_spec) returns the
+#'   bandwidth-extended waveform [B, 1, samples], trimmed to the sample
+#'   count implied by the input frames and the rate ratio.
 #'
 #' @export
 ltx23_vocoder_with_bwe <- torch::nn_module(

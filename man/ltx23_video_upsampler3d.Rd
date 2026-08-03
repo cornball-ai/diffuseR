@@ -17,6 +17,11 @@ ltx23_video_upsampler3d(in_channels, stride = c(1L, 1L, 1L), residual = FALSE,
 
 \item{spatial_padding_mode}{Character.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  depth-to-space upsampled tensor: spatial and temporal extents grow
+  by \code{stride}, channels shrink to match.
+}
 \description{
 Conv followed by channel-to-space/time rearrangement, with an optional
 channel-repeat residual and an upscale factor that divides the conv

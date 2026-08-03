@@ -44,6 +44,10 @@ ltx23_per_token_rms_norm <- function(x, eps = 1e-6) {
 #' @param rope_type "split" (LTX-2.3) or "interleaved".
 #' @param num_attention_heads Integer. For the split per-head layout.
 #'
+#' @return Module whose forward(batch_size, pos, device) returns
+#'   \code{list(cos_freqs, sin_freqs)}, the 1-D rotary tables for a
+#'   sequence of length \code{pos}.
+#'
 #' @export
 ltx23_rotary_pos_embed_1d <- torch::nn_module(
     "ltx23_rotary_pos_embed_1d",
@@ -141,6 +145,11 @@ ltx23_transformer_block_1d <- torch::nn_module(
 #' @param rope_base_seq_len,rope_theta,rope_double_precision,rope_type RoPE config.
 #' @param eps Numeric. Norm epsilon.
 #' @param gated_attention Logical. Per-head attention output gates.
+#'
+#' @return Module whose forward(hidden_states, attention_mask,
+#'   attn_mask_binarize_threshold) returns
+#'   \code{list(hidden_states, attention_mask)}: the transformed
+#'   sequence and the (possibly binarized) mask that accompanies it.
 #'
 #' @export
 ltx23_connector_transformer_1d <- torch::nn_module(
@@ -265,6 +274,12 @@ ltx23_connector_transformer_1d <- torch::nn_module(
 #' @param video_hidden_dim,audio_hidden_dim Integers. Projection targets
 #'   (DiT inner dims: 4096 / 2048).
 #' @param proj_bias Logical. Projection bias (TRUE for LTX-2.3).
+#'
+#' @return Module whose forward(text_encoder_hidden_states,
+#'   attention_mask) returns \code{list(video_text_embedding,
+#'   audio_text_embedding, attention_mask)}: the caption states adapted
+#'   for the video and audio cross-attention streams, plus the binary
+#'   mask to use with them.
 #'
 #' @export
 ltx23_text_connectors <- torch::nn_module(

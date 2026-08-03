@@ -26,10 +26,20 @@ Native R torch implementation of the SDXL VAE decoder.
 Replaces TorchScript decoder for better GPU compatibility.
 }
 \examples{
+if (torch::torch_is_installed()) {
+  # A small decoder; the SD/SDXL defaults are far too large to build
+  # inside an example.
+  decoder <- vae_decoder_native(latent_channels = 4,
+                                block_channels = 32,
+                                norm_groups = 32)
+  latents <- torch::torch_randn(c(1, 4, 8, 8))
+  image <- torch::with_no_grad(decoder(latents))
+  image$shape
+}
+
+# Real weights come from a downloaded checkpoint.
 \dontrun{
 decoder <- vae_decoder_native()
 load_decoder_weights(decoder, "path/to/decoder.pt")
-latents <- torch::torch_randn(c(1, 4, 64, 64))
-image <- decoder(latents)
 }
 }

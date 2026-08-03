@@ -13,6 +13,11 @@ flux_ada_layer_norm_continuous(dim, cond_dim = dim, bias = TRUE)
 \item{bias}{Logical. Bias on the projection (TRUE for FLUX.1, FALSE
 for FLUX.2).}
 }
+\value{
+Module whose forward(x, cond) returns \code{x} normalized and
+  then scaled and shifted by the conditioning embedding, a tensor of
+  the same shape as \code{x}.
+}
 \description{
 Scale/shift conditioning of the final norm. Note the chunk order:
 scale first, then shift (the reverse of adaLN-Zero). Reference:

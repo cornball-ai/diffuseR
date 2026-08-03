@@ -11,9 +11,11 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' save_image(output_tensor, "sample.png")
-#' }
+#' img <- array(runif(32 * 32 * 3), dim = c(32, 32, 3))
+#' out <- file.path(tempdir(), "sample.png")
+#' save_image(img, out)
+#' file.exists(out)
+#' unlink(out)
 save_image <- function(img, save_to = "output.png", normalize = TRUE) {
     # img_array <- tensor2image(img, normalize = normalize)
     dims <- dim(img)

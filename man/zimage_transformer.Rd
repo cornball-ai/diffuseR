@@ -35,6 +35,13 @@ c(32, 48, 48).}
 
 \item{f_patch_size}{Integer. Temporal patch size. Default 1.}
 }
+\value{
+Module whose forward(x, t, cap_feats, chunk_size) returns the
+  predicted velocity for the single latent, a tensor [C, F, H, W]
+  matching the shape of \code{x}. Note that the checkpoint negates
+  this output and consumes a reversed timestep; see
+  \code{\link{txt2img_zimage}}.
+}
 \description{
 Fresh R port of ZImageTransformer2DModel from the diffusers reference
 (Apache-2.0, src/diffusers/models/transformers/transformer_z_image.py).

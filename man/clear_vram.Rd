@@ -15,7 +15,7 @@ Invisibly returns NULL.
 Forces garbage collection and clears CUDA memory cache.
 }
 \examples{
-\dontrun{
-clear_vram()
+if (torch::torch_is_installed()) {
+  clear_vram()
 }
 }

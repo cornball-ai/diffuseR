@@ -26,6 +26,11 @@ ltx23_video_up_block3d(in_channels, out_channels = NULL, num_layers = 1L,
 
 \item{in_channels,out_channels}{Integers.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  stage output: the optional input projection and upsampler, then the
+  resnet stack applied in sequence.
+}
 \description{
 Optional channel-changing conv-in ResNet, pixel-shuffle upsampler,
 then a ResNet stack at the output channel count.

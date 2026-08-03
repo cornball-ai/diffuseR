@@ -10,6 +10,13 @@ ltx23_fp8_linear(out_features, in_features, bias = TRUE)
 
 \item{out_features,in_features}{Integers.}
 }
+\value{
+Module whose forward(x) returns the linear projection of
+  \code{x}, with the fp8 weight bytes transferred and cast up to the
+  compute dtype for the matmul. Same result as an
+  \code{nn_linear} of the same shape, at a quarter of the resident
+  weight bytes.
+}
 \description{
 Weight lives as float8_e4m3fn plus a float32 scale in plain module
 fields (so \code{$to(device)} moves only the bias); the forward pass

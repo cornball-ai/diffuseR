@@ -36,6 +36,10 @@ ltx23_upsampler_res_block <- torch::nn_module(
 #' @param mid_channels Integer.
 #' @param num_blocks_per_stage Integer.
 #'
+#' @return Module whose forward(hidden_states) returns the 2x
+#'   spatially upscaled latent, a tensor with the same batch, channel
+#'   and frame counts and doubled height and width.
+#'
 #' @export
 ltx23_latent_upsampler <- torch::nn_module(
     "ltx23_latent_upsampler",

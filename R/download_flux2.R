@@ -75,7 +75,8 @@ download_flux2_klein <- function(quantize = TRUE,
                 local_files_only = TRUE),
                            error = function(e) NULL
         )
-        if (is.null(cached) || !.hub_all_cached(.flux2_repo, .flux2_transformer_files)) {
+        if (is.null(cached) ||
+            !.hub_all_cached(.flux2_repo, .flux2_transformer_files)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
             if (!is.na(free) && free < 25) {
                 warning(sprintf(

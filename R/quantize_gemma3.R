@@ -146,7 +146,7 @@ gemma3_quantize_nf4 <- function(model_path, output_dir = NULL,
 #' @param pin Logical. When loading to the CPU, page-lock the weights
 #'   so \code{\link{encode_with_gemma3}} can swap the model to the GPU
 #'   at DMA speed per encode and back for free (see
-#'   \code{\link{staging_ltx23}}). Default follows
+#'   \code{\link{staging}}). Default follows
 #'   \code{options(diffuseR.pin_staging)}.
 #' @param verbose Logical.
 #'
@@ -216,7 +216,7 @@ load_gemma3_nf4 <- function(artifact_dir, device = "cuda",
     model$to(device = device)
     model$eval()
     if (pin && device == "cpu") {
-        st <- .ltx23_pin_component(model)
+        st <- .pin_component(model)
         if (!is.null(st)) {
             attr(model, "staging") <- st
             if (verbose) {

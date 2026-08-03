@@ -10,6 +10,12 @@ ltx23_antialias_act1d(channels, ratio = 2L, kernel_size = 12L)
 
 \item{ratio,kernel_size}{Integers. Resampling config.}
 }
+\value{
+Module whose forward(x) returns the activation applied at 2x
+  rate (upsample, activate, downsample), a tensor of the same shape
+  as \code{x}, with the aliasing the raw activation would introduce
+  filtered out.
+}
 \description{
 Upsample 2x, apply the activation, downsample 2x.
 }

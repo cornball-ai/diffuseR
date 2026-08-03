@@ -39,6 +39,12 @@ ltx23_is_fp8_cast_key <- function(mapped_key) {
 #' @param out_features,in_features Integers.
 #' @param bias Logical.
 #'
+#' @return Module whose forward(x) returns the linear projection of
+#'   \code{x}, with the fp8 weight bytes transferred and cast up to the
+#'   compute dtype for the matmul. Same result as an
+#'   \code{nn_linear} of the same shape, at a quarter of the resident
+#'   weight bytes.
+#'
 #' @export
 ltx23_fp8_linear <- torch::nn_module(
                                      "ltx23_fp8_linear",
@@ -54,7 +60,7 @@ ltx23_fp8_linear <- torch::nn_module(
                                      set_fp8_weight = function(weight, scale, pin = FALSE) {
     weight <- weight$to(device = "cpu")
     if (pin && torch::cuda_is_available()) {
-        weight <- .ltx23_pin_host(weight)
+        weight <- .pin_host(weight)
     }
     self$weight_fp8 <- weight
     self$weight_scale <- scale$to(device = "cpu",

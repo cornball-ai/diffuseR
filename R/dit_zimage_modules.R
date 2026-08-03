@@ -26,6 +26,9 @@ NULL
 #' @param dim Integer. Model width.
 #' @param hidden_dim Integer. Hidden width.
 #'
+#' @return Module whose forward(x) returns \code{w2(silu(w1(x)) * w3(x))},
+#'   a tensor of the same shape as \code{x}.
+#'
 #' @export
 zimage_feed_forward <- torch::nn_module(
                                         "zimage_feed_forward",
@@ -51,6 +54,11 @@ zimage_feed_forward <- torch::nn_module(
 #' @param n_heads Integer. Attention heads; head dim is dim / n_heads.
 #' @param norm_eps Numeric. RMSNorm epsilon. Default 1e-5.
 #' @param modulation Logical. Whether the block is timestep-modulated.
+#'
+#' @return Module whose forward(x, freqs, adaln_input, chunk_size)
+#'   returns the residual block output, a tensor of the same shape as
+#'   \code{x}. \code{adaln_input} is used only when the block was built
+#'   with \code{modulation = TRUE}.
 #'
 #' @export
 zimage_block <- torch::nn_module(
@@ -109,6 +117,10 @@ zimage_block <- torch::nn_module(
 #' @param out_channels Integer. Patch output dim
 #'   (patch^2 * f_patch * latent channels).
 #'
+#' @return Module whose forward(x, c) returns the token-to-patch
+#'   projection [B, S, out_channels], ready for unpatchifying into a
+#'   latent.
+#'
 #' @export
 zimage_final_layer <- torch::nn_module(
                                        "zimage_final_layer",
@@ -137,6 +149,9 @@ zimage_final_layer <- torch::nn_module(
 #' @param out_size Integer. Output width, min(dim, 256).
 #' @param mid_size Integer. Hidden width. The full model uses 1024.
 #' @param freq_size Integer. Sinusoid width. Default 256.
+#'
+#' @return Module whose forward(t) returns the timestep embedding
+#'   [B, out_size].
 #'
 #' @export
 zimage_t_embedder <- torch::nn_module(

@@ -17,6 +17,10 @@ NULL
 #' @param eps Numeric. Stability epsilon.
 #' @param elementwise_affine Logical. Learn a scale weight.
 #'
+#' @return Module whose forward(x) returns \code{x} RMS-normalized over
+#'   the last axis and cast back to the input dtype, a tensor of the
+#'   same shape.
+#'
 #' @export
 ltx23_rms_norm <- torch::nn_module(
                                    "ltx23_rms_norm",
@@ -342,6 +346,9 @@ ltx23_ada_layer_norm_single <- torch::nn_module(
 #' @param rope_type "split" or "interleaved".
 #' @param apply_gated_attention Logical. Add per-head sigmoid output gates.
 #'
+#' @return Module whose forward(hidden_states, ...) returns the attended
+#'   states [B, S, query_dim] after the output projection.
+#'
 #' @export
 ltx23_attention <- torch::nn_module(
                                     "ltx23_attention",
@@ -485,6 +492,10 @@ ltx23_attention <- torch::nn_module(
 #' @param dim Integer. Input/output dimension.
 #' @param mult Integer. Hidden dimension multiplier.
 #'
+#' @return Module whose forward(x) returns the projected states passed
+#'   through a tanh-approximated GELU, a tensor of the same shape as
+#'   \code{x}.
+#'
 #' @export
 ltx23_feed_forward <- torch::nn_module(
                                        "ltx23_feed_forward",
@@ -543,6 +554,11 @@ ltx23_get_mod_params <- function(scale_shift_table, temb, batch_size) {
 #' @param elementwise_affine Logical. Block norms carry weights (FALSE for LTX).
 #' @param rope_type "split" or "interleaved".
 #' @param perturbed_attn Logical. Enable the STG perturbation arguments.
+#'
+#' @return Module whose forward(hidden_states, ...) returns
+#'   \code{list(hidden_states, audio_hidden_states)}, the video and audio
+#'   streams after self-attention, cross-attention and the feed-forward,
+#'   each the same shape as its input.
 #'
 #' @export
 ltx23_transformer_block <- torch::nn_module(

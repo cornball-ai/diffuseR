@@ -75,13 +75,11 @@
 #'
 #' @return Does not return normally; runs until interrupted.
 #' @export
-serve <- function(port = 7812L,
-                  model = c("flux2", "zimage", "flux1", "ltx"),
-                  device = "cuda", token = NULL,
-                  max_pixels = 1024L^2, max_frames = 161L,
-                  max_steps = 50L, max_pixel_frames = NULL,
-                  max_prompts = 32L, timeout = 300L,
-                  max_body = 1024L^2, warmup = TRUE) {
+serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
+                  device = "cuda", token = NULL, max_pixels = 1024L ^ 2,
+                  max_frames = 161L, max_steps = 50L,
+                  max_pixel_frames = NULL, max_prompts = 32L, timeout = 300L,
+                  max_body = 1024L ^ 2, warmup = TRUE) {
     model <- match.arg(model)
     if (is.null(max_pixel_frames)) {
         # Joint video budget: full max_pixels only up to 121 frames;
@@ -120,18 +118,16 @@ serve <- function(port = 7812L,
 
     srv <- serverSocket(port)
     on.exit(close(srv), add = TRUE)
-    message("diffuseR::serve listening on port ", port,
-            " (interrupt to stop)")
+    message("diffuseR::serve listening on port ", port, " (interrupt to stop)")
 
     repeat {
         con <- tryCatch(
-                        socketAccept(srv, blocking = TRUE, open = "r+b",
-                                     timeout = timeout),
+                        socketAccept(srv, blocking = TRUE, open = "r+b", timeout = timeout),
                         error = function(e) {
-                            message("accept error: ", conditionMessage(e))
-                            Sys.sleep(0.5)
-                            NULL
-                        }
+            message("accept error: ", conditionMessage(e))
+            Sys.sleep(0.5)
+            NULL
+        }
         )
         if (is.null(con)) {
             next
@@ -143,23 +139,23 @@ serve <- function(port = 7812L,
                 resp <- tryCatch(
                                  .dserve_route(req, state),
                                  error = function(e) {
-                                     r <- .dserve_err(500L, conditionMessage(e))
-                                     if (grepl("CUDA out of memory",
-                                               conditionMessage(e),
-                                               fixed = TRUE)) {
-                                         attr(r, "fatal") <- TRUE
-                                     }
-                                     r
-                                 }
+                    r <- .dserve_err(500L, conditionMessage(e))
+                    if (grepl("CUDA out of memory",
+                              conditionMessage(e),
+                              fixed = TRUE)) {
+                        attr(r, "fatal") <- TRUE
+                    }
+                    r
+                }
                 )
                 .dserve_send(con, resp$status, resp$content_type, resp$body)
             }
         },
-            error = function(e) message("request error: ", conditionMessage(e)),
-            finally = {
-                try(close(con), silent = TRUE)
-                gc(verbose = FALSE) # bound dead handles; keep the warm pool
-            })
+                 error = function(e) message("request error: ", conditionMessage(e)),
+                 finally = {
+            try(close(con), silent = TRUE)
+            gc(verbose = FALSE) # bound dead handles; keep the warm pool
+        })
         if (exists("resp", inherits = FALSE) && isTRUE(attr(resp, "fatal"))) {
             message("CUDA out of memory: exiting for a clean supervisor restart")
             quit(save = "no", status = 70L)
@@ -197,7 +193,11 @@ serve <- function(port = 7812L,
         } else {
             prec <- tryCatch(recommend("ltx")$precision,
                              error = function(e) "nf4")
-            if (prec %in% names(avail)) avail[[prec]] else avail[[1]]
+            if (prec %in% names(avail)) {
+                avail[[prec]]
+            } else {
+                avail[[1]]
+            }
         }
         pipe <- ltx23_load_pipeline(pick, device = device, verbose = FALSE)
         te_dir <- file.path(data_dir, "gemma3-nf4")
@@ -213,8 +213,7 @@ serve <- function(port = 7812L,
         }
         tok_dir <- dirname(hfhub::hub_download("Lightricks/LTX-2",
                 "tokenizer/tokenizer.json", local_files_only = TRUE))
-        te <- load_gemma3_text_encoder(te_dir, device = "cpu",
-                                       verbose = FALSE)
+        te <- load_gemma3_text_encoder(te_dir, device = "cpu", verbose = FALSE)
         tok <- gemma3_tokenizer(tok_dir)
         enc_dev <- if (identical(device, "cuda") &&
             torch::cuda_is_available()) {
@@ -237,9 +236,9 @@ serve <- function(port = 7812L,
                                       max_sequence_length = 1024L,
                                       device = enc_dev, verbose = FALSE)
             conn <- torch::with_no_grad(pipe$connectors(
-                raw$prompt_embeds$to(device = "cpu",
-                                     dtype = torch::torch_bfloat16()),
-                raw$prompt_attention_mask$to(device = "cpu")))
+                    raw$prompt_embeds$to(device = "cpu",
+                        dtype = torch::torch_bfloat16()),
+                    raw$prompt_attention_mask$to(device = "cpu")))
             e <- list(video_text_embedding = conn$video_text_embedding,
                       audio_text_embedding = conn$audio_text_embedding,
                       attention_mask = conn$attention_mask)
@@ -262,8 +261,7 @@ serve <- function(port = 7812L,
         pipe <- loader(device = device, verbose = FALSE)
         genfn <- switch(model, flux1 = txt2img_flux, flux2 = txt2img_flux2,
                         zimage = txt2img_zimage)
-        generate <- function(prompt, width, height, seed = NULL,
-                             steps = NULL) {
+        generate <- function(prompt, width, height, seed = NULL, steps = NULL) {
             args <- list(prompt = prompt, pipeline = pipe,
                          width = as.integer(width),
                          height = as.integer(height), seed = seed,
@@ -279,8 +277,7 @@ serve <- function(port = 7812L,
                 res
             }
         }
-        list(model = model, video = FALSE, generate = generate,
-             device = device)
+        list(model = model, video = FALSE, generate = generate, device = device)
     }
 }
 
@@ -301,13 +298,15 @@ serve <- function(port = 7812L,
     }
     if (identical(req$method, "POST") && path == "/v1/images/generations") {
         if (isTRUE(state$video)) {
-            return(.dserve_err(400L, "this server hosts a video model; POST /v1/videos/generations"))
+            return(.dserve_err(400L,
+                               "this server hosts a video model; POST /v1/videos/generations"))
         }
         return(.dserve_image(req, state))
     }
     if (identical(req$method, "POST") && path == "/v1/videos/generations") {
         if (!isTRUE(state$video)) {
-            return(.dserve_err(400L, "this server hosts an image model; POST /v1/images/generations"))
+            return(.dserve_err(400L,
+                               "this server hosts an image model; POST /v1/images/generations"))
         }
         return(.dserve_video(req, state))
     }
@@ -342,11 +341,11 @@ serve <- function(port = 7812L,
 .dserve_image <- function(req, state) {
     body <- .dserve_body(req)
     if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
-        return(.dserve_err(400L, "body must be JSON with a single string prompt"))
+        return(.dserve_err(400L,
+                           "body must be JSON with a single string prompt"))
     }
     n <- .dserve_scalar(body$n, 1L)
-    if (is.na(suppressWarnings(as.integer(n))) ||
-        as.integer(n) > 1L) {
+    if (is.na(suppressWarnings(as.integer(n))) || as.integer(n) > 1L) {
         return(.dserve_err(400L, "n > 1 is not supported"))
     }
     size <- .dserve_scalar(body$size, "1024x1024")
@@ -359,15 +358,15 @@ serve <- function(port = 7812L,
     }
     if (anyNA(wh) || any(wh < 16L) || wh[1] * wh[2] > state$max_pixels) {
         return(.dserve_err(400L, sprintf(
-            "request exceeds limits (max %d pixels, min side 16)",
-            state$max_pixels)))
+                    "request exceeds limits (max %d pixels, min side 16)",
+                    state$max_pixels)))
     }
     steps <- .dserve_scalar(body$steps)
     if (!is.null(steps)) {
         steps <- suppressWarnings(as.integer(steps))
         if (is.na(steps) || steps < 1L || steps > state$max_steps) {
             return(.dserve_err(400L, sprintf(
-                "steps must be between 1 and %d", state$max_steps)))
+                        "steps must be between 1 and %d", state$max_steps)))
         }
     }
     seed <- .dserve_scalar(body$seed)
@@ -381,15 +380,16 @@ serve <- function(port = 7812L,
                           seed = seed, steps = steps)
     png <- png::writePNG(img)
     .dserve_json(list(
-        created = as.integer(Sys.time()),
-        data = list(list(b64_json = jsonlite::base64_enc(png)))
-    ))
+                      created = as.integer(Sys.time()),
+                      data = list(list(b64_json = jsonlite::base64_enc(png)))
+        ))
 }
 
 .dserve_video <- function(req, state) {
     body <- .dserve_body(req)
     if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
-        return(.dserve_err(400L, "body must be JSON with a single string prompt"))
+        return(.dserve_err(400L,
+                           "body must be JSON with a single string prompt"))
     }
     w <- suppressWarnings(as.integer(.dserve_scalar(body$width, 768L)))
     h <- suppressWarnings(as.integer(.dserve_scalar(body$height, 512L)))
@@ -399,8 +399,8 @@ serve <- function(port = 7812L,
         w * h > state$max_pixels || nf > state$max_frames ||
         as.numeric(w) * h * nf > state$max_pixel_frames) {
         return(.dserve_err(400L, sprintf(
-            "request exceeds limits (max %d pixels, %d frames, %.0f pixel-frames)",
-            state$max_pixels, state$max_frames, state$max_pixel_frames)))
+                    "request exceeds limits (max %d pixels, %d frames, %.0f pixel-frames)",
+                    state$max_pixels, state$max_frames, state$max_pixel_frames)))
     }
     # frame_rate scales the audio-latent length inversely: bound it
     if (is.na(fr) || fr < 12 || fr > 60) {
@@ -416,16 +416,16 @@ serve <- function(port = 7812L,
     out <- tempfile(fileext = ".mp4")
     on.exit(unlink(out), add = TRUE)
     txt2vid_ltx2(
-        prompt = body$prompt,
-        pipeline = state$pipe,
-        connector_embeds = state$embeds(body$prompt),
-        width = w,
-        height = h,
-        num_frames = nf,
-        frame_rate = fr,
-        seed = vseed,
-        device = state$device, dtype = "bfloat16",
-        filename = out, verbose = FALSE
+                 prompt = body$prompt,
+                 pipeline = state$pipe,
+                 connector_embeds = state$embeds(body$prompt),
+                 width = w,
+                 height = h,
+                 num_frames = nf,
+                 frame_rate = fr,
+                 seed = vseed,
+                 device = state$device, dtype = "bfloat16",
+                 filename = out, verbose = FALSE
     )
     bytes <- readBin(out, "raw", n = file.size(out))
     list(status = 200L, content_type = "video/mp4", body = bytes)
@@ -496,8 +496,7 @@ serve <- function(port = 7812L,
     }
     reason <- switch(as.character(status), "200" = "OK",
                      "400" = "Bad Request", "401" = "Unauthorized",
-                     "404" = "Not Found",
-                     "405" = "Method Not Allowed",
+                     "404" = "Not Found", "405" = "Method Not Allowed",
                      "413" = "Payload Too Large",
                      "500" = "Internal Server Error", "Unknown")
     head <- paste0(

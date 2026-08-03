@@ -3,10 +3,13 @@
 \alias{st_caps}
 \title{safetensors read-capability probes and fork messaging}
 \description{
-CRAN safetensors (<= 0.2.1) reads bfloat16 but cannot write it, and
-has no float8 support at all; the fixes are upstream
-(mlverse/safetensors#11 for bfloat16 write, #13 for float8) and in the
-cornball-ai/safetensors fork. Two capabilities matter and they differ:
+The CRAN build of safetensors 0.2.1 reads bfloat16 but cannot write
+it, and has no float8 support at all. Both fixes merged upstream on
+2026-07-31 (mlverse/safetensors#11 for bfloat16 write, #13 for
+float8) without a version bump, so the installed version number
+cannot tell you which build you have. That is why every gate here is
+a runtime probe: write a tiny tensor, read it back, cache the answer.
+Two capabilities matter and they differ:
 }
 \details{
 \itemize{

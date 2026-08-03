@@ -28,6 +28,10 @@ ltx23_attention(query_dim, heads = 8L, kv_heads = NULL, dim_head = 64L,
 
 \item{bias,out_bias}{Logicals. Projection biases.}
 }
+\value{
+Module whose forward(hidden_states, ...) returns the attended
+  states [B, S, query_dim] after the output projection.
+}
 \description{
 Attention with RMS q/k norms across heads, optional per-head output
 gating (LTX-2.3), separate query/key RoPE (for a2v/v2a cross

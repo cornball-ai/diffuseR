@@ -21,6 +21,11 @@ ltx23_video_down_block3d(in_channels, out_channels = NULL, num_layers = 1L,
 
 \item{in_channels,out_channels}{Integers.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  stage output: the resnet stack applied in sequence, then the
+  optional downsampler.
+}
 \description{
 ResNet stack (at the input channel count) followed by a
 pixel-unshuffle downsampler that also changes the channel count.

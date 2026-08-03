@@ -22,6 +22,13 @@ flux_attention(query_dim, heads, dim_head, added_kv = FALSE, pre_only = FALSE,
 \item{bias}{Logical. Bias on the linear projections (TRUE for FLUX.1,
 FALSE for FLUX.2).}
 }
+\value{
+Module whose forward(hidden_states, encoder_hidden_states,
+  image_rotary_emb, chunk_size) returns the attended image stream
+  [B, S, query_dim]. When \code{encoder_hidden_states} is supplied
+  (double-stream blocks) it returns \code{list(image, text)} instead,
+  each projected by its own output layer.
+}
 \description{
 Multi-head attention with per-head RMS q/k norms and rotary position
 embeddings. With \code{added_kv = TRUE} (double-stream blocks) the

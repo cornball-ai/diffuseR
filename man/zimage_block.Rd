@@ -14,6 +14,12 @@ zimage_block(dim, n_heads, norm_eps = 1e-05, modulation = TRUE)
 
 \item{modulation}{Logical. Whether the block is timestep-modulated.}
 }
+\value{
+Module whose forward(x, freqs, adaln_input, chunk_size)
+  returns the residual block output, a tensor of the same shape as
+  \code{x}. \code{adaln_input} is used only when the block was built
+  with \code{modulation = TRUE}.
+}
 \description{
 Sandwich-norm residual block shared by the noise refiner, the context
 refiner and the main trunk. With \code{modulation = TRUE} the block

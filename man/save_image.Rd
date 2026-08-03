@@ -20,7 +20,9 @@ Converts a Torch tensor to a normalized RGB image array, saves it as a PNG file,
 and optionally displays it in the RStudio Viewer pane using `grid::grid.raster()`.
 }
 \examples{
-\dontrun{
-save_image(output_tensor, "sample.png")
-}
+img <- array(runif(32 * 32 * 3), dim = c(32, 32, 3))
+out <- file.path(tempdir(), "sample.png")
+save_image(img, out)
+file.exists(out)
+unlink(out)
 }

@@ -4,8 +4,8 @@
 \title{Load the FLUX.1-schnell pipeline}
 \usage{
 flux_load_pipeline(model_dir = NULL, device = "cuda", precision = NULL,
-                   text_device = "cpu", attn_chunk = NULL,
-                   phase_offload = TRUE, verbose = TRUE)
+                   text_device = NULL, attn_chunk = NULL, phase_offload = TRUE,
+                   pin = NULL, verbose = TRUE)
 }
 \arguments{
 \item{model_dir}{Quantized artifact directory (default: the
@@ -17,12 +17,20 @@ diffusers transformer directory for full-precision loading.}
 \item{precision}{"nf4" or "fp8"; NULL picks the
 \code{\link{flux_memory_profile}} recommendation.}
 
-\item{text_device}{Device for the text encoders ("cpu" default; the
-T5-XXL runs float32 there).}
+\item{text_device}{Where the text encoders compute. NULL (default)
+takes the \code{\link{flux_memory_profile}} recommendation: "cuda"
+on 14 GB+ cards (T5-XXL onloads in bfloat16 for its encode) and
+"cpu" below that (T5-XXL runs float32 in place, since its ~9.8 GB
+GPU encode phase would not fit).}
 
 \item{attn_chunk}{Integer or NULL. Attention query-chunk override.}
 
 \item{phase_offload}{Logical. One GPU tenant per phase.}
+
+\item{pin}{Logical or NULL. Page-lock the phase-swapped weights for
+DMA-rate transfer (see \code{\link{staging}}). NULL (default)
+resolves via \code{options(diffuseR.pin_staging)} then the
+host-RAM-aware \code{\link{recommend}} decision.}
 
 \item{verbose}{Logical.}
 }

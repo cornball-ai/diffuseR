@@ -9,7 +9,7 @@ ddim_scheduler_create(num_train_timesteps = 1000, num_inference_steps = 50,
                       beta_start = 0.00085, beta_end = 0.012,
                       rescale_betas_zero_snr = FALSE,
                       dtype = torch::torch_float32(),
-                      device = c(torch::torch_device("cpu"), torch::torch_device("cuda")))
+                      device = torch::torch_device("cpu"))
 }
 \arguments{
 \item{num_train_timesteps}{Integer. The number of diffusion steps used to
@@ -66,13 +66,13 @@ Song, J., Meng, C., & Ermon, S. (2020).
 \url{https://arxiv.org/abs/2010.02502}
 }
 \examples{
-\dontrun{
-# Create a DDIM scheduler with custom parameters
-scheduler <- ddim_scheduler_create(
-  num_train_timesteps = 1000,
-  num_inference_steps = 30,
-  eta = 0.5,
-  beta_schedule = "scaled_linear"
-)
+if (torch::torch_is_installed()) {
+  scheduler <- ddim_scheduler_create(
+    num_train_timesteps = 1000,
+    num_inference_steps = 5,
+    eta = 0.5,
+    beta_schedule = "scaled_linear"
+  )
+  scheduler$timesteps
 }
 }

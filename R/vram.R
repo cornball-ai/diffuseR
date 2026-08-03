@@ -15,11 +15,9 @@ NULL
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' if (is_blackwell_gpu()) {
-#'   message("Using Blackwell-compatible settings")
-#' }
-#' }
+#' # Soft probe: FALSE on any machine without a Blackwell card, and on
+#' # machines where torch has no lantern binaries.
+#' is_blackwell_gpu()
 is_blackwell_gpu <- function() {
     # Check compute capability via torch. cuda_is_available() ERRORS
     # (not FALSE) when the torch package is installed without its
@@ -83,10 +81,9 @@ is_blackwell_gpu <- function() {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' model$to(device = "cuda")
-#' output <- model(x)
-#' offload_to_cpu(model)
+#' if (torch::torch_is_installed()) {
+#'   model <- torch::nn_linear(4, 2)
+#'   offload_to_cpu(model)
 #' }
 offload_to_cpu <- function(module, gc = TRUE) {
     module$to(device = "cpu")
@@ -109,10 +106,10 @@ offload_to_cpu <- function(module, gc = TRUE) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' load_to_gpu(model)
-#' output <- model(x)
-#' offload_to_cpu(model)
+#' if (torch::torch_is_installed()) {
+#'   model <- torch::nn_linear(4, 2)
+#'   # "cuda" needs a GPU; "cpu" is the portable round trip.
+#'   load_to_gpu(model, device = "cpu")
 #' }
 load_to_gpu <- function(module, device = "cuda") {
     module$to(device = device)
@@ -130,8 +127,8 @@ load_to_gpu <- function(module, device = "cuda") {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' vram_report("After model load")
+#' if (torch::torch_is_installed()) {
+#'   vram_report("After model load")
 #' }
 vram_report <- function(label = "") {
     if (!torch::cuda_is_available()) {
@@ -170,8 +167,8 @@ vram_report <- function(label = "") {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' clear_vram()
+#' if (torch::torch_is_installed()) {
+#'   clear_vram()
 #' }
 clear_vram <- function(verbose = FALSE) {
     if (!torch::cuda_is_available()) {

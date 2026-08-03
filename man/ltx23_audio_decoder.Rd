@@ -24,6 +24,10 @@ ltx23_audio_decoder(base_channels = 128L, output_channels = 2L,
 
 \item{mel_bins}{Integer. Output mel bins (crop/pad target).}
 }
+\value{
+Module whose forward(x) returns the decoded mel
+  spectrogram reconstructed from an audio latent.
+}
 \description{
 Latents [B, 8, L, 16] -> mel spectrogram [B, 2, 4L - 3, 64].
 }

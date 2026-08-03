@@ -103,7 +103,8 @@ download_flux1 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
                 local_files_only = TRUE),
                            error = function(e) NULL
         )
-        if (is.null(cached) || !.hub_all_cached(.flux1_repo, .flux1_transformer_files)) {
+        if (is.null(cached) ||
+            !.hub_all_cached(.flux1_repo, .flux1_transformer_files)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
             if (!is.na(free) && free < 45) {
                 warning(sprintf(

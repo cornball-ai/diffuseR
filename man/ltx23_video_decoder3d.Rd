@@ -37,6 +37,11 @@ the mid block after reversal).}
 
 \item{patch_size,patch_size_t}{Integers.}
 }
+\value{
+Module whose forward(hidden_states, causal) returns the
+  decoded pixel tensor [B, 3, F, H, W], with the final patch axes
+  flattened back into height and width.
+}
 \description{
 Latents [B, 128, F, H, W] -> pixel video [B, 3, 8F - 7, 32H, 32W].
 Block channel lists are given encoder-side (as in the config) and

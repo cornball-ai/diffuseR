@@ -167,6 +167,67 @@ NULL
     invisible(module)
 }
 
+# Collect an fp8 transformer's plain-field weight tensors. weight_fp8
+# and weight_scale live outside parameters/buffers, so .pin_component's
+# module walk misses them; this mirrors .flux_fp8_to_device's recursion
+# and returns the tensors so they can be pinned and staged alongside the
+# module. set_data (in .pin_component) mutates each in place, so the
+# field reference stays valid and staged onload/offload covers them -
+# replacing the per-generation .flux_fp8_to_device reassignment.
+.flux_fp8_collect <- function(module, out = list()) {
+    for (name in names(module$children)) {
+        child <- module$children[[name]]
+        if (!is.null(child$weight_fp8)) {
+            out[[length(out) + 1L]] <- child$weight_fp8
+            out[[length(out) + 1L]] <- child$weight_scale
+        }
+        out <- .flux_fp8_collect(child, out)
+    }
+    out
+}
+
+# Pin the phase-swapped components of a flux-family pipeline so the
+# per-generation CPU<->GPU moves run at DMA rate (see staging.R).
+# Returns a named list of staging pairs keyed by component, or NULL when
+# staging does not apply (opted out, no phase offload, or CPU device).
+# Only the listed components are pinned; text encoders resident on the
+# host (text_device == "cpu") are omitted by the caller since they
+# compute in place. Resident-fp8 transformers (flux2/zimage) also pin
+# their plain weight_fp8/weight_scale fields so staged transfer covers
+# them; nf4 packed weights are buffers and ride along automatically.
+.flux_build_staging <- function(pipe, pin, phase_offload, device, components,
+                                verbose = TRUE) {
+    if (!(isTRUE(pin) && isTRUE(phase_offload) &&
+            identical(device, "cuda") && torch::cuda_is_available())) {
+        return(NULL)
+    }
+    if (verbose) {
+        message("Pinning host staging buffers...")
+    }
+    staging <- list()
+    for (nm in components) {
+        module <- pipe[[nm]]
+        if (is.null(module)) {
+            next
+        }
+        extra <- if (identical(nm, "transformer") &&
+            isTRUE(pipe$fp8_resident)) {
+            .flux_fp8_collect(module)
+        } else {
+            NULL
+        }
+        st <- .pin_component(module, extra = extra)
+        if (!is.null(st)) {
+            staging[[nm]] <- st
+        }
+    }
+    if (length(staging)) {
+        staging
+    } else {
+        NULL
+    }
+}
+
 # Family-specific hooks for quantization and loading
 .flux_family_hooks <- function(config) {
     family <- .flux_family(config)
@@ -217,13 +278,15 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
     format <- match.arg(format)
     if (format == "fp8" && !.st_can_write("float8_e4m3fn")) {
         stop("The installed safetensors package cannot write float8 ",
-             "tensors (needs the float8 support pending in ",
-             "mlverse/safetensors#13; until it lands on CRAN, install ",
-             "remotes::install_github(\"cornball-ai/safetensors\") or ",
-             "use format = \"nf4\").", call. = FALSE)
+             "tensors (needs the float8 support from ",
+             "mlverse/safetensors#13, which is merged upstream but not ",
+             "yet on CRAN; install the development version of ",
+             "safetensors from GitHub, or use format = \"nf4\").",
+             call. = FALSE)
     }
     # Residents load into the compute dtype either way; bf16 halves the
-    # artifact but CRAN safetensors (<= 0.2.1) cannot write it yet
+    # artifact but the CRAN build of safetensors 0.2.1 cannot write it
+    # (the fix is merged upstream; the probe decides, not the version)
     resident_dtype <- if (.st_can_write("bfloat16")) {
         torch::torch_bfloat16()
     } else {
@@ -380,9 +443,10 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     format <- ckpt$format %||% "full"
     if (identical(format, "fp8") && !.st_can_write("float8_e4m3fn")) {
         stop("This fp8 artifact needs float8 support the installed ",
-             "safetensors lacks (pending in mlverse/safetensors#13). ",
-             "Install remotes::install_github(\"cornball-ai/safetensors\"), ",
-             "or rebuild the artifact as nf4.", call. = FALSE)
+             "safetensors lacks (mlverse/safetensors#13, merged upstream ",
+             "but not yet on CRAN). Install the development version of ",
+             "safetensors from GitHub, or rebuild the artifact as nf4.",
+             call. = FALSE)
     }
     hooks <- .flux_family_hooks(ckpt$config)
 

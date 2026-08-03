@@ -22,6 +22,12 @@ sequence length must be divisible by it).}
 
 \item{rope_base_seq_len,rope_theta,rope_double_precision,rope_type}{RoPE config.}
 }
+\value{
+Module whose forward(hidden_states, attention_mask,
+  attn_mask_binarize_threshold) returns
+  \code{list(hidden_states, attention_mask)}: the transformed
+  sequence and the (possibly binarized) mask that accompanies it.
+}
 \description{
 Replaces padded positions with learnable registers (valid tokens are
 front-aligned in their original order; the tail is filled with

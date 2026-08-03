@@ -12,9 +12,7 @@ Logical. TRUE if Blackwell GPU detected.
 Blackwell GPUs (RTX 50xx) may need special handling.
 }
 \examples{
-\dontrun{
-if (is_blackwell_gpu()) {
-  message("Using Blackwell-compatible settings")
-}
-}
+# Soft probe: FALSE on any machine without a Blackwell card, and on
+# machines where torch has no lantern binaries.
+is_blackwell_gpu()
 }

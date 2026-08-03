@@ -1,12 +1,13 @@
 % tinyrox says don't edit this manually, but it can't stop you!
-\name{staging_ltx23}
+\name{staging}
+\alias{staging}
 \alias{staging_ltx23}
 \title{Pinned Staging for Phase-Sequential Components}
 \description{
 Phase offloading moves each large component (transformer,
-connectors, VAEs, vocoder) between CPU and GPU every render. From
-pageable memory those copies run through the driver's bounce
-buffer at a fraction of PCIe speed; page-locked (pinned) host
+connectors, VAEs, vocoder, text encoders) between CPU and GPU every
+render. From pageable memory those copies run through the driver's
+bounce buffer at a fraction of PCIe speed; page-locked (pinned) host
 memory transfers by DMA at full rate. Each component's parameters
 and buffers are pinned once at load; onload swaps every tensor to
 a non-blocking GPU copy of its pinned source, and offload simply
@@ -22,8 +23,11 @@ post byte-LUT (768x512x49, NF4, RTX 5060 Ti): ~7s saved per render
 identical, the delta is pure transfer), so pinning breaks even on
 the second render and costs a single-render session ~2s net. On by
 default; page-locking failure falls back silently per component,
-and \code{options(diffuseR.pin_staging = FALSE)} before
-\code{ltx23_load_pipeline} opts out (e.g. under host memory
-pressure, where unswappable pages turn thrashing into OOM).
+and \code{options(diffuseR.pin_staging = FALSE)} before the loader
+opts out (e.g. under host memory pressure, where unswappable pages
+turn thrashing into OOM). The LTX pipeline, the Gemma3 encoder, and
+the FLUX-family image loaders (flux1, flux2, zimage) all stage
+pinned weights; \code{\link{recommend}} computes the RAM-aware
+\code{pin} default per model.
 
 }

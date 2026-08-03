@@ -10,6 +10,11 @@ ltx23_snake_beta(channels, eps = 1e-09)
 
 \item{eps}{Numeric.}
 }
+\value{
+Module whose forward(hidden_states) returns the Snake
+  activation \code{x + sin(alpha * x)^2 / beta}, a tensor of the same
+  shape as the input.
+}
 \description{
 \code{x + (1 / (beta + eps)) * sin(x * alpha)^2} with per-channel
 log-scale alpha/beta parameters.

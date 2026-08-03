@@ -44,14 +44,14 @@
 #' \url{https://arxiv.org/abs/2010.02502}
 #'
 #' @examples
-#' \dontrun{
-#' # Create a DDIM scheduler with custom parameters
-#' scheduler <- ddim_scheduler_create(
-#'   num_train_timesteps = 1000,
-#'   num_inference_steps = 30,
-#'   eta = 0.5,
-#'   beta_schedule = "scaled_linear"
-#' )
+#' if (torch::torch_is_installed()) {
+#'   scheduler <- ddim_scheduler_create(
+#'     num_train_timesteps = 1000,
+#'     num_inference_steps = 5,
+#'     eta = 0.5,
+#'     beta_schedule = "scaled_linear"
+#'   )
+#'   scheduler$timesteps
 #' }
 #' @export
 ddim_scheduler_create <- function(num_train_timesteps = 1000,
@@ -60,7 +60,8 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
                                   beta_start = 0.00085, beta_end = 0.012,
                                   rescale_betas_zero_snr = FALSE,
                                   dtype = torch::torch_float32(),
-                                  device = c(torch::torch_device("cpu"), torch::torch_device("cuda"))) {
+                                  device = torch::torch_device("cpu")) {
+    beta_schedule <- match.arg(beta_schedule)
     betas <- switch(beta_schedule,
                     "linear" = seq(beta_start, beta_end, length.out = num_train_timesteps),
                     "scaled_linear" = seq(sqrt(beta_start), sqrt(beta_end),
@@ -156,14 +157,18 @@ ddim_scheduler_create <- function(num_train_timesteps = 1000,
 #' \url{https://arxiv.org/abs/2202.00512}
 #'
 #' @examples
-#' \dontrun{
-#' # Perform a denoising step
-#' result <- ddim_scheduler_step(
-#'   model_output = model_output,
-#'   timestep = timestep,
-#'   sample = sample,
-#'   eta = 0,  # Deterministic sampling
-#'   prediction_type = "epsilon")
+#' if (torch::torch_is_installed()) {
+#'   scheduler <- ddim_scheduler_create(num_inference_steps = 5)
+#'   sample <- torch::torch_randn(c(1, 4, 8, 8))
+#'   model_output <- torch::torch_randn(c(1, 4, 8, 8))
+#'   result <- ddim_scheduler_step(
+#'     model_output = model_output,
+#'     timestep = scheduler$timesteps[1],
+#'     sample = sample,
+#'     schedule = scheduler,
+#'     eta = 0, # Deterministic sampling
+#'     prediction_type = "epsilon")
+#'   result$shape
 #' }
 #' @export
 ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
@@ -174,6 +179,7 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
                                 prediction_type = c("epsilon", "sample", "v_prediction"),
                                 dtype = torch::torch_float32(),
                                 device = "cpu") {
+    prediction_type <- match.arg(prediction_type)
     # 1. get previous step value (= timestep + 1); i.e. python-indexing
     timestep_index <- torch::torch_tensor(timestep + 1,
         dtype = torch::torch_long(), device = torch::torch_device(device))
@@ -312,14 +318,16 @@ ddim_scheduler_step <- function(model_output, timestep, sample, schedule,
 #' specified timestep, with beta being the noise schedule.
 #'
 #' @examples
-#' \dontrun{
-#' # Assuming we have latents, noise, and a scheduler
-#' noised_latents <- scheduler_add_noise(
-#'   original_latents = latents,
-#'   noise = torch::torch_randn_like(latents),
-#'   timestep = scheduler$timesteps[1],
-#'   scheduler_obj = scheduler
-#' )
+#' if (torch::torch_is_installed()) {
+#'   scheduler <- ddim_scheduler_create(num_inference_steps = 5)
+#'   latents <- torch::torch_randn(c(1, 4, 8, 8))
+#'   noised_latents <- scheduler_add_noise(
+#'     original_latents = latents,
+#'     noise = torch::torch_randn_like(latents),
+#'     timestep = scheduler$timesteps[1],
+#'     scheduler_obj = scheduler
+#'   )
+#'   noised_latents$shape
 #' }
 #'
 #' @export

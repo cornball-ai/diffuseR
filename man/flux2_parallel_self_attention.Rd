@@ -19,6 +19,12 @@ flux2_parallel_self_attention(query_dim, heads, dim_head, mlp_ratio = 3,
 
 \item{bias}{Logical.}
 }
+\value{
+Module whose forward(hidden_states, image_rotary_emb,
+  chunk_size) returns the block output [B, S, query_dim]: attention
+  and MLP branches computed in parallel from one fused projection,
+  concatenated, and projected back by a second fused layer.
+}
 \description{
 ViT-22B-style parallel block internals: one fused projection produces
 QKV and the SwiGLU MLP input; one fused projection consumes

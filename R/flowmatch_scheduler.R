@@ -44,15 +44,15 @@
 #' \url{https://arxiv.org/abs/2210.02747}
 #'
 #' @examples
-#' \dontrun{
-#' # Create a FlowMatch scheduler
-#' scheduler <- flowmatch_scheduler_create(
-#'   num_train_timesteps = 1000,
-#'   shift = 1.0
-#' )
+#' if (torch::torch_is_installed()) {
+#'   scheduler <- flowmatch_scheduler_create(
+#'     num_train_timesteps = 1000,
+#'     shift = 1.0
+#'   )
 #'
-#' # Set timesteps for inference
-#' scheduler <- flowmatch_set_timesteps(scheduler, num_inference_steps = 8)
+#'   # Set timesteps for inference
+#'   scheduler <- flowmatch_set_timesteps(scheduler, num_inference_steps = 8)
+#'   scheduler$timesteps
 #' }
 #' @export
 flowmatch_scheduler_create <- function(num_train_timesteps = 1000L,

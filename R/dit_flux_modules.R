@@ -77,6 +77,10 @@ flux_ada_layer_norm_zero_single <- torch::nn_module(
 #' @param bias Logical. Bias on the projection (TRUE for FLUX.1, FALSE
 #'   for FLUX.2).
 #'
+#' @return Module whose forward(x, cond) returns \code{x} normalized and
+#'   then scaled and shifted by the conditioning embedding, a tensor of
+#'   the same shape as \code{x}.
+#'
 #' @export
 flux_ada_layer_norm_continuous <- torch::nn_module(
     "flux_ada_layer_norm_continuous",
@@ -111,6 +115,12 @@ flux_ada_layer_norm_continuous <- torch::nn_module(
 #' @param eps Numeric. RMS norm epsilon.
 #' @param bias Logical. Bias on the linear projections (TRUE for FLUX.1,
 #'   FALSE for FLUX.2).
+#'
+#' @return Module whose forward(hidden_states, encoder_hidden_states,
+#'   image_rotary_emb, chunk_size) returns the attended image stream
+#'   [B, S, query_dim]. When \code{encoder_hidden_states} is supplied
+#'   (double-stream blocks) it returns \code{list(image, text)} instead,
+#'   each projected by its own output layer.
 #'
 #' @export
 flux_attention <- torch::nn_module(

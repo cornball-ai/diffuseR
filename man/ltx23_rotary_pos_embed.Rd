@@ -38,6 +38,11 @@ coordinates are normalized against.}
 
 \item{sampling_rate,hop_length}{Integers. Audio spectrogram params.}
 }
+\value{
+Module whose forward(coords, device) returns
+  \code{list(cos_freqs, sin_freqs)}, the two rotary tables to apply
+  to queries and keys.
+}
 \description{
 Computes RoPE cos/sin frequency tensors from spatiotemporal patch
 coordinates. Video coordinates are 3D (frames scaled to seconds via

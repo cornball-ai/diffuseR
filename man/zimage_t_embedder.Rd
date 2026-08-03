@@ -12,6 +12,10 @@ zimage_t_embedder(out_size, mid_size = 1024L, freq_size = 256L)
 
 \item{freq_size}{Integer. Sinusoid width. Default 256.}
 }
+\value{
+Module whose forward(t) returns the timestep embedding
+  [B, out_size].
+}
 \description{
 256-dim cos-first sinusoid (computed in float32) through a
 Linear-SiLU-Linear MLP. The model feeds t * t_scale with the

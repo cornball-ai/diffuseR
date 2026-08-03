@@ -405,6 +405,10 @@ gemma3_decoder_layer <- torch::nn_module(
 #' Full Gemma3 text encoder model.
 #'
 #' @param config Model configuration list.
+#' @return Module whose forward(input_ids, ...) returns
+#'   \code{list(last_hidden_state, hidden_states)}: the final hidden
+#'   state [B, S, hidden_size] and the list of per-layer hidden states.
+#'
 #' @export
 gemma3_text_model <- torch::nn_module(
                                       "Gemma3TextModel",
@@ -687,7 +691,7 @@ load_gemma3_text_encoder <- function(model_path, device = "cpu",
     model$to(device = device)
 
     if (pin && device == "cpu") {
-        st <- .ltx23_pin_component(model)
+        st <- .pin_component(model)
         if (!is.null(st)) {
             attr(model, "staging") <- st
             if (verbose) {
@@ -861,8 +865,8 @@ encode_with_gemma3 <- function(prompts, model = NULL, tokenizer = NULL,
     if (!is.null(staging) && device != "cpu") {
         cur <- tryCatch(staging[[1]]$live$device$type, error = function(e) NULL)
         if (!identical(cur, device)) {
-            .ltx23_staged_onload(staging, device)
-            on.exit(.ltx23_staged_offload(staging), add = TRUE)
+            .staged_onload(staging, device)
+            on.exit(.staged_offload(staging), add = TRUE)
         }
     }
 

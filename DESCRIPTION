@@ -1,6 +1,6 @@
 Package: diffuseR
 Title: Functional Interface to Diffusion Models in R
-Version: 0.2.0
+Version: 0.2.1.1
 Authors@R: c(
     person("Troy", "Hernandez", email = "troy@cornball.ai", role = c("aut", "cre"),
            comment = c(ORCID = "0009-0005-4248-604X")),
@@ -9,12 +9,13 @@ Authors@R: c(
            comment = "portions ported from the diffusers library (Apache-2.0); see inst/COPYRIGHTS"),
     person("Lightricks Ltd.", role = "cph",
            comment = "LTX checkpoint layout and pipeline constants; see inst/COPYRIGHTS"))
-Description: A native R implementation of diffusion models providing a functional 
-    interface to state-of-the-art generative AI. Inspired by Hugging Face's Python 
-    'diffusers' library, 'diffuseR' allows users to generate and manipulate images 
-    using text prompts through models like Stable Diffusion without Python dependencies. 
-    The package provides a streamlined, idiomatic R experience with support for multiple 
-    diffusion schedulers and device acceleration.
+Description: A native R implementation of diffusion models providing a
+    functional interface to state-of-the-art generative AI. Inspired by the
+    'Python' library 'diffusers' from 'Hugging Face'
+    <https://huggingface.co/>, 'diffuseR' generates and manipulates images
+    from text prompts using models such as 'Stable Diffusion', with no
+    'Python' dependency. Supports multiple diffusion schedulers and device
+    acceleration.
 License: Apache License (>= 2)
 URL: https://github.com/cornball-ai/diffuseR
 BugReports: https://github.com/cornball-ai/diffuseR/issues
