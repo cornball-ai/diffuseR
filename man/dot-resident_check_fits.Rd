@@ -3,10 +3,16 @@
 \alias{.resident_check_fits}
 \title{Refuse a bulk activation that cannot fit}
 \usage{
-.resident_check_fits(res)
+.resident_check_fits(res, free_gb = NULL)
 }
 \arguments{
 \item{res}{A resident handle.}
+
+\item{free_gb}{Free VRAM in GB. NULL measures it. Pass a value to
+make the decision deterministic: with no GPU the measurement is 0,
+which means "cannot tell" and never refuses, so a test that wants
+the refusal has to state the budget rather than depend on the
+machine having a card.}
 }
 \value{
 Invisibly TRUE, or an error naming both figures.

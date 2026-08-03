@@ -113,11 +113,26 @@ expect_error(resident_generate(mk("broken"), "a cat"), pattern = "broken")
 
 # Named figures beat a libtorch allocator error: FLUX.1's 15.73 GB pinned
 # set does not fit a 15.47 GiB card, and the message should say so.
-huge <- mk("inactive", pinned_bytes = 1e15)
-expect_error(diffuseR:::.resident_check_fits(huge), pattern = "needs")
-expect_error(diffuseR:::.resident_check_fits(huge), pattern = "phase_offload")
+#
+# free_gb is stated rather than measured. Measured, it is 0 on any
+# machine without a GPU -- which means "cannot tell", so the check
+# declines to refuse and these assertions saw no error. That is correct
+# behaviour and a broken test: it passed on the GPU box and failed CI on
+# both ubuntu-latest and macos-latest.
+huge <- mk("inactive", pinned_bytes = 16 * 1024^3)
+expect_error(diffuseR:::.resident_check_fits(huge, free_gb = 15.47),
+             pattern = "needs")
+expect_error(diffuseR:::.resident_check_fits(huge, free_gb = 15.47),
+             pattern = "phase_offload")
+# A set that fits is not refused.
+expect_true(diffuseR:::.resident_check_fits(huge, free_gb = 24))
 # A trivial set is never refused.
-expect_true(diffuseR:::.resident_check_fits(mk("inactive", pinned_bytes = 0)))
+expect_true(diffuseR:::.resident_check_fits(mk("inactive", pinned_bytes = 0),
+                                            free_gb = 15.47))
+# Undetectable VRAM (0, as on a GPU-less machine) must not block: the
+# check refuses only when it can prove the set does not fit.
+expect_true(diffuseR:::.resident_check_fits(huge, free_gb = 0))
+expect_true(diffuseR:::.resident_check_fits(huge, free_gb = NA_real_))
 
 # --- status and print -------------------------------------------------------------
 
