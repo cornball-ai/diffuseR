@@ -47,12 +47,30 @@ expect_equal(diffuseR:::.pinned_set_gb("flux1", "bf16"), 34)
 # --- flux tier text_device: flux1 GPU-encodes only where T5 fits ------------------
 
 # fp8/bf16 tiers (>=14 GB) onload T5; nf4 tiers keep CPU-fp32 encode.
-expect_equal(recommend("flux1", vram_gb = 24)$text_device, "cuda")
-expect_equal(recommend("flux1", vram_gb = 16)$text_device, "cuda")   # fp8 tier
-expect_equal(recommend("flux1", vram_gb = 10)$text_device, "cpu")    # nf4 tier
-expect_equal(recommend("flux1", vram_gb = 0)$text_device, "cpu")     # cpu tier
-# The small flux2/zimage encoder rides the GPU on every GPU tier.
-expect_equal(recommend("flux2", vram_gb = 16)$text_device, "cuda")
+#
+# st_caps is pinned explicitly here. Left NULL, recommend() probes the
+# *installed* safetensors, so the fp8 tier only exists on a machine whose
+# build can read float8 -- which made this block pass on a dev box with
+# the fork and fail on Windows R-devel, and would have failed on CRAN,
+# where flux1 at 16 GB resolves to nf4 and its CPU encode instead.
+st_fork <- list(bfloat16 = TRUE, float8_e4m3fn = TRUE)
+st_cran <- list(bfloat16 = TRUE, float8_e4m3fn = FALSE)
+expect_equal(recommend("flux1", vram_gb = 24, st_caps = st_fork)$text_device,
+             "cuda")
+expect_equal(recommend("flux1", vram_gb = 16, st_caps = st_fork)$text_device,
+             "cuda") # fp8 tier
+expect_equal(recommend("flux1", vram_gb = 16, st_caps = st_cran)$text_device,
+             "cpu") # same card, stock safetensors: nf4 tier
+expect_equal(recommend("flux1", vram_gb = 10, st_caps = st_fork)$text_device,
+             "cpu") # nf4 tier
+expect_equal(recommend("flux1", vram_gb = 0, st_caps = st_fork)$text_device,
+             "cpu") # cpu tier
+# The small flux2/zimage encoder rides the GPU on every GPU tier,
+# whichever safetensors is installed.
+expect_equal(recommend("flux2", vram_gb = 16, st_caps = st_fork)$text_device,
+             "cuda")
+expect_equal(recommend("flux2", vram_gb = 16, st_caps = st_cran)$text_device,
+             "cuda")
 
 # --- .flux_build_staging opt-out paths return NULL (no torch needed) --------------
 

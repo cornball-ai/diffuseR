@@ -87,14 +87,11 @@ ltx23_release_dequant_buffers()
 
 # --- fp8 round trip (needs an F8-capable safetensors build) ---------------------------
 
-f8_ok <- tryCatch({
-  x <- torch::torch_randn(2, 2)$to(dtype = torch::torch_float8_e4m3fn())
-  tmp <- tempfile(fileext = ".safetensors")
-  safetensors::safe_save_file(list(w = x), tmp)
-  y <- safetensors::safe_load_file(tmp, framework = "torch")
-  unlink(tmp)
-  TRUE
-}, error = function(e) FALSE)
+# Ask the same gate flux_quantize() asks, rather than re-probing here: a
+# private probe can disagree with .st_can_write() whenever the
+# diffuseR.st_caps override is set, and then this block runs only to hit
+# the hard error the override was meant to simulate.
+f8_ok <- diffuseR:::.st_can_write("float8_e4m3fn")
 
 if (f8_ok) {
   fp8_dir <- file.path(tempdir(), "flux-tiny-fp8")
