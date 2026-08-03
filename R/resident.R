@@ -310,13 +310,20 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
 #' actual problem, which is that this model does not fit this card.
 #'
 #' @param res A resident handle.
+#' @param free_gb Free VRAM in GB. NULL measures it. Pass a value to
+#'   make the decision deterministic: with no GPU the measurement is 0,
+#'   which means "cannot tell" and never refuses, so a test that wants
+#'   the refusal has to state the budget rather than depend on the
+#'   machine having a card.
 #'
 #' @return Invisibly TRUE, or an error naming both figures.
 #'
 #' @keywords internal
-.resident_check_fits <- function(res) {
-    free_gb <- tryCatch(.detect_vram(use_free = TRUE),
-                        error = function(e) NA_real_)
+.resident_check_fits <- function(res, free_gb = NULL) {
+    if (is.null(free_gb)) {
+        free_gb <- tryCatch(.detect_vram(use_free = TRUE),
+                            error = function(e) NA_real_)
+    }
     need_gb <- res$pinned_bytes / 1024^3
     if (!is.na(free_gb) && free_gb > 0 && need_gb > free_gb) {
         stop(sprintf(paste0("%s needs %.2f GB resident but only %.2f GB of ",
