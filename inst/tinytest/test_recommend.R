@@ -177,3 +177,43 @@ expect_true(recommend("sdxl", vram_gb = 16, st_caps = cran,
 hr <- diffuseR:::.detect_host_ram()
 expect_true(is.na(hr) || (is.numeric(hr) && hr > 0))
 expect_equal(diffuseR:::.pinned_set_gb("ltx", "bf16"), 0)  # unknown tier -> 0
+
+# --- every recommended tier must be reachable -------------------------------------
+
+# recommend() used to return "bf16" for big cards while no loader
+# accepted it and no builder produced it, with note = NULL. bf16 is the
+# unquantized source, so the tier is real; the note has to say so.
+fork <- list(bfloat16 = TRUE, float8_e4m3fn = TRUE)
+b <- recommend("flux2", vram_gb = 24, st_caps = fork)
+expect_equal(b$precision, "bf16")
+expect_true(is.character(b$note))
+expect_true(grepl("download_flux2_klein", b$note))
+expect_true(grepl("quantize = FALSE", b$note))
+expect_false(b$fork_suggested)
+
+# The flux-family loaders must accept it as a precision.
+for (fn in c("flux2_load_pipeline", "zimage_load_pipeline")) {
+  choices <- eval(formals(getExportedValue("diffuseR", fn))$precision)
+  expect_true("bf16" %in% choices)
+}
+
+# A quantized tier still resolves to its artifact directory, and bf16
+# resolves elsewhere (the hub cache), not to a "<prefix>bf16" dir.
+expect_equal(diffuseR:::.flux_model_dir("flux2", "nf4", "/tmp/x-"), "/tmp/x-nf4")
+expect_false(identical(
+  tryCatch(diffuseR:::.flux_model_dir("flux2", "bf16", "/tmp/x-"),
+           error = function(e) "errored"),
+  "/tmp/x-bf16"))
+
+# An unknown model has no bf16 source and must say so rather than
+# silently building a bogus path.
+expect_error(diffuseR:::.flux_source_dir("nosuch"), pattern = "No bf16 source")
+
+# --- LTX's recommended tier must be downloadable ----------------------------------
+
+# recommend("ltx") is nf4 on any card >= 14 GB, so download_ltx2() has
+# to be able to build nf4, not just fp8.
+expect_equal(recommend("ltx", vram_gb = 16)$precision, "nf4")
+expect_true("precision" %in% names(formals(download_ltx2)))
+expect_equal(eval(formals(download_ltx2)$precision), c("nf4", "fp8"))
+

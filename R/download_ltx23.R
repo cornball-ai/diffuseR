@@ -38,39 +38,64 @@ NULL
     isTRUE(utils::askYesNo(paste0("Download ", what, "?")))
 }
 
-#' Download the LTX-2.3 checkpoint and build the fp8 artifact
+#' Download the LTX-2.3 checkpoint and build a quantized artifact
 #'
-#' Skips work that is already done: a valid fp8 manifest short-circuits
+#' Skips work that is already done: a valid manifest short-circuits
 #' everything; a cached 46 GB source skips the download. The source file
 #' may be deleted after quantization (it is never removed automatically).
 #'
-#' @param quantize Logical. Build the fp8 artifact after downloading.
-#' @param output_dir Directory for the fp8 artifact.
+#' Both quantized tiers are buildable here. \code{\link{recommend}}
+#' returns nf4 for LTX on any card with 14 GB or more (it prefers nf4 at
+#' 1280 px over fp8 at 1024 px, since video trades weight precision for
+#' resolution), so nf4 is the tier most users want. fp8 additionally
+#' needs a safetensors that can \emph{write} float8; asking for it
+#' without one warns and builds nf4 instead rather than failing inside
+#' the quantizer.
+#'
+#' @param quantize Logical. Build the quantized artifact after downloading.
+#' @param precision "nf4" (~19 GB, readable by every safetensors) or
+#'   "fp8" (~26 GB, needs float8 write support).
+#' @param output_dir Directory for the artifact. NULL derives it from
+#'   \code{precision}.
 #' @param text_encoder Logical. Also fetch the Gemma3 text encoder and
 #'   tokenizer (~25 GB, shared with LTX-2.0; from the Lightricks/LTX-2
 #'   repo).
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{checkpoint} (source path or NULL),
-#'   \code{fp8_dir}, and \code{text_encoder_dir}.
+#'   \code{artifact_dir}, \code{precision}, \code{text_encoder_dir}, and
+#'   \code{fp8_dir} for back-compatibility -- the artifact directory when
+#'   \code{precision} is "fp8", NULL otherwise, since a field named
+#'   \code{fp8_dir} pointing at an nf4 artifact would be a trap.
 #'
 #' @export
-download_ltx2 <- function(quantize = TRUE,
-                          output_dir = file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.3-fp8"),
+download_ltx2 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
+                          output_dir = NULL,
                           text_encoder = TRUE, verbose = TRUE) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to download model weights.")
     }
-    result <- list(checkpoint = NULL, fp8_dir = output_dir,
+    precision <- match.arg(precision)
+    # Explicit fp8 without float8 write support: warn and build nf4
+    # instead of failing deep inside the quantizer.
+    precision <- .st_graceful_precision(precision, mode = "write")
+    if (is.null(output_dir)) {
+        output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
+                                paste0("ltx2.3-", precision))
+    }
+    art_gb <- if (identical(precision, "fp8")) 26 else 19
+    result <- list(checkpoint = NULL, artifact_dir = output_dir,
+                   precision = precision,
+                   fp8_dir = if (identical(precision, "fp8")) output_dir,
                    text_encoder_dir = NULL)
 
     manifest_path <- file.path(output_dir, "manifest.json")
-    have_fp8 <- file.exists(manifest_path) && {
+    have_artifact <- file.exists(manifest_path) && {
         m <- jsonlite::fromJSON(manifest_path)
         all(file.exists(file.path(output_dir, m$shards)))
     }
 
-    if (!have_fp8 || !quantize) {
+    if (!have_artifact || !quantize) {
         cached <- tryCatch(
                            hfhub::hub_download(.ltx23_checkpoint_repo, .ltx23_checkpoint_file,
                 local_files_only = TRUE),
@@ -78,15 +103,15 @@ download_ltx2 <- function(quantize = TRUE,
         )
         if (is.null(cached)) {
             free <- .ltx23_disk_free_gb(path.expand("~"))
-            if (!is.na(free) && free < 75) {
-                warning(sprintf(
-                                "Only %.0f GB free; the download + fp8 artifact need ~75 GB.", free
-                    ))
+            if (!is.na(free) && free < 46 + art_gb) {
+                warning(sprintf(paste0("Only %.0f GB free; the download + ",
+                                       "%s artifact need ~%d GB."),
+                                free, precision, 46 + art_gb))
             }
-            ok <- .ltx23_consent(paste0(
-                                        "the LTX-2.3 distilled checkpoint (46 GB) plus a ~26 GB local fp8 ",
-                                        "artifact from HuggingFace (weights under the LTX-2 Community License)"
-                ))
+            ok <- .ltx23_consent(sprintf(paste0(
+                                        "the LTX-2.3 distilled checkpoint (46 GB) plus a ~%d GB local %s ",
+                                        "artifact from HuggingFace (weights under the LTX-2 Community License)"),
+                                        art_gb, precision))
             if (!ok) {
                 stop("Download cancelled.", call. = FALSE)
             }
@@ -97,21 +122,26 @@ download_ltx2 <- function(quantize = TRUE,
         }
         result$checkpoint <- cached
 
-        if (quantize && !have_fp8) {
+        if (quantize && !have_artifact) {
             if (verbose) {
-                message("Quantizing transformer linears to fp8 (one-time)...")
+                message("Quantizing transformer linears to ", precision,
+                        " (one-time)...")
             }
-            ltx23_quantize_fp8(cached, output_dir, verbose = verbose)
+            if (identical(precision, "fp8")) {
+                ltx23_quantize_fp8(cached, output_dir, verbose = verbose)
+            } else {
+                ltx23_quantize_nf4(cached, output_dir, verbose = verbose)
+            }
             if (verbose) {
                 message(
-                        "FP8 artifact ready: ", output_dir, "\n",
+                        toupper(precision), " artifact ready: ", output_dir, "\n",
                         "The 46 GB source in the HuggingFace cache may be deleted if ",
                         "you do not need bf16 weights."
                 )
             }
         }
     } else if (verbose) {
-        message("FP8 artifact already present: ", output_dir)
+        message(toupper(precision), " artifact already present: ", output_dir)
     }
 
     if (text_encoder) {

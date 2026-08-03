@@ -1,3 +1,27 @@
+# diffuseR 0.2.1.3
+
+* Every precision `recommend()` can return is now reachable. `bf16` was
+  advertised for flux1 at 24 GB and flux2/zimage at 16-24 GB while no
+  loader accepted it; the flux-family loaders take
+  `precision = "bf16"`, which resolves the unquantized transformer out
+  of the hfhub cache rather than an artifact directory (bf16 is the
+  source the quantizers read, not something built). `recommend()`
+  explains the tier instead of returning a bare string. On a 16 GB
+  card, flux2 at bf16 renders 1024x1024 in 6.4 s against 9.1 s at fp8 -
+  the highest-quality tier is also the fastest, since nothing
+  dequantizes per layer; it costs the 7.8 GB source staying on disk.
+* `download_ltx2()` gains `precision = c("nf4", "fp8")` and defaults to
+  nf4, which is what `recommend("ltx")` returns for any card with 14 GB
+  or more. It previously built only fp8, so the recommended tier had to
+  be built by hand with `ltx23_quantize_nf4()`. Asking for fp8 without
+  float8 write support now warns and builds nf4 instead of failing
+  inside the quantizer.
+* Quantized artifacts stay locally built. Prebuilt weights are not
+  hosted for any model: only flux2 and zimage could be redistributed
+  (Apache-2.0 and ungated), while LTX-2.3 is under the LTX-2 Community
+  License and FLUX.1-schnell is gated, so hosting would cover half the
+  catalog and leave two models on a different workflow.
+
 # diffuseR 0.2.1.2
 
 * Model residency: `resident_load()`, `resident_activate()`,
