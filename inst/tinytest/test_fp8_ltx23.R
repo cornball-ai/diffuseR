@@ -8,14 +8,9 @@ if (!requireNamespace("safetensors", quietly = TRUE)) {
   exit_file("safetensors not installed")
 }
 # fp8 needs the F8-capable safetensors build
-f8_ok <- tryCatch({
-  x <- torch::torch_randn(2, 2)$to(dtype = torch::torch_float8_e4m3fn())
-  tmp <- tempfile(fileext = ".safetensors")
-  safetensors::safe_save_file(list(w = x), tmp)
-  y <- safetensors::safe_load_file(tmp, framework = "torch")
-  unlink(tmp)
-  TRUE
-}, error = function(e) FALSE)
+# Same gate the quantizer uses, so the diffuseR.st_caps override
+# reaches this guard too; a private probe would disagree with it.
+f8_ok <- diffuseR:::.st_can_write("float8_e4m3fn")
 if (!f8_ok) exit_file("safetensors build lacks F8 support")
 
 library(diffuseR)
