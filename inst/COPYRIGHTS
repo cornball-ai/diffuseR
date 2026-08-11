@@ -37,7 +37,8 @@ package are R ports of, or derived from, third-party work:
 
 5. The R Foundation
    https://www.r-project.org/logo/
-   The diffuseR logo (man/figures/logo.png) incorporates the R logo,
+   The diffuseR logo (man/figures/logo.png and its dark-mode variant
+   man/figures/logo-dark.png) incorporates the R logo,
    (c) 2016 The R Foundation, used under CC-BY-SA 4.0
    (https://creativecommons.org/licenses/by-sa/4.0/). The diffuseR logo
    image is accordingly licensed CC-BY-SA 4.0; the package code remains

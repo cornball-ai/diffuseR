@@ -1,5 +1,10 @@
 
-<p align="center"><img src="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo.png" alt="diffuseR" width="520"/></p>
+<p align="center">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo-dark.png">
+<img src="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo.png" alt="diffuseR" width="520"/>
+</picture>
+</p>
 
 [![CRAN status](https://www.r-pkg.org/badges/version/diffuseR)](https://CRAN.R-project.org/package=diffuseR)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
