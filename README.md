@@ -150,10 +150,13 @@ torch::cuda_empty_cache()
 ### FLUX and Z-Image
 
 FLUX.1-schnell (12B), FLUX.2 Klein (4B), and Z-Image-Turbo (6B) are
-step-distilled models: 4-8 denoising steps, no guidance. All are
-quantized locally once at download time and fit comfortably on a 16GB
-GPU (measured 1024x1024 on an RTX 5060 Ti: FLUX.1 ~55s at 9.6GB peak;
-FLUX.2 Klein ~13s at 12.5GB; Z-Image-Turbo ~24s at 13.1GB).
+step-distilled models: 4-8 denoising steps, no guidance. All fit
+comfortably on a 16GB GPU (measured 1024x1024 on an RTX 5060 Ti:
+FLUX.1 ~55s at 9.6GB peak; FLUX.2 Klein ~9s at fp8; Z-Image-Turbo
+~24s at 13.1GB). Klein and Z-Image ship prebuilt NF4 artifacts (2.3
+and 3.6 GB, hosted on the cornball-ai HuggingFace org), so a stock
+CRAN install downloads a few GB and generates right away; FLUX.1
+downloads its gated source and quantizes locally.
 
 ```r
 library(diffuseR)
@@ -165,14 +168,16 @@ download_flux1()
 txt2img_flux("An astronaut riding a horse on Mars, photorealistic",
              seed = 7)
 
-# FLUX.2 Klein 4B: ungated. ~16GB download, one-time fp8 quantize to
-# a 3.9GB artifact.
+# FLUX.2 Klein 4B: ungated. On stock safetensors this fetches the
+# prebuilt NF4 artifact (~2.3GB); a float8-capable safetensors builds
+# fp8 from the 7.8GB source instead.
 download_flux2_klein()
 txt2img_flux2("a red fox sitting in a snowy forest, digital art",
               seed = 42)
 
 # Z-Image-Turbo: ungated, strong at legible text in images (EN + CN).
-# ~33GB download, one-time fp8 quantize to a 5.9GB artifact.
+# Prebuilt NF4 (~3.6GB) on stock safetensors, or fp8 from the 24.6GB
+# float32 source.
 download_zimage_turbo()
 txt2img_zimage(paste("A storefront with a large wooden sign that reads",
                      "\"DIFFUSER\" in bold carved letters"), seed = 42)
@@ -256,7 +261,7 @@ Same prompt, same seed, 1024x1024, measured on an RTX 5060 Ti 16GB:
 | Model | Settings | Load | Warm generation | Peak VRAM |
 |---|---|---|---|---|
 | SDXL | 50 steps, CFG 7.5 | 45 s | 20 s | **12.7 GB** |
-| FLUX.2 Klein 4B | 4 steps, guidance-free | 32 s | **13 s** | 12.5 GB |
+| FLUX.2 Klein 4B | 4 steps, guidance-free, fp8 | 32 s | **9.1 s** | 12.5 GB |
 
 FLUX.2 is now faster per image (since the allocator gc-gate fix), and
 its prompt adherence and coherence are in a different class — SDXL
