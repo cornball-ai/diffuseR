@@ -3,9 +3,14 @@
 \alias{ltx23_audio_encoder}
 \title{LTX-2.3 audio VAE encoder}
 \usage{
-ltx23_audio_encoder(base_channels = 128L, in_channels = 2L,
-                    num_res_blocks = 2L, latent_channels = 8L,
-                    ch_mult = c(1L, 2L, 4L), causality_axis = "height")
+ltx23_audio_encoder(
+  base_channels = 128L,
+  in_channels = 2L,
+  num_res_blocks = 2L,
+  latent_channels = 8L,
+  ch_mult = c(1L, 2L, 4L),
+  causality_axis = "height"
+)
 }
 \arguments{
 \item{in_channels}{Integer. Mel channels (2 = stereo).}

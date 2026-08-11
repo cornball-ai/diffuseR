@@ -132,10 +132,10 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
          host_ram_gb = host_ram_gb,
          fork_suggested = fork,
          note = if (fork) {
-             .st_fork_note(want$precision)
-         } else {
-             .bf16_note(model, chosen$precision)
-         }
+            .st_fork_note(want$precision)
+        } else {
+            .bf16_note(model, chosen$precision)
+        }
     )
 }
 

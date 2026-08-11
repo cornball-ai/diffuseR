@@ -3,8 +3,12 @@
 \alias{recommend}
 \title{Recommend a precision and device configuration for a model}
 \usage{
-recommend(model = c("sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"),
-          vram_gb = NULL, st_caps = NULL, host_ram_gb = NULL)
+recommend(
+  model = c("sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"),
+  vram_gb = NULL,
+  st_caps = NULL,
+  host_ram_gb = NULL
+)
 }
 \arguments{
 \item{model}{"sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".}

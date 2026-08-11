@@ -3,8 +3,14 @@
 \alias{flux_quantize}
 \title{Quantize a FLUX transformer to NF4 or fp8 shards}
 \usage{
-flux_quantize(transformer_dir, output_dir = NULL, format = c("nf4", "fp8"),
-              shard_bytes = 1.9e+09, force = FALSE, verbose = TRUE)
+flux_quantize(
+  transformer_dir,
+  output_dir = NULL,
+  format = c("nf4", "fp8"),
+  shard_bytes = 1.9e+09,
+  force = FALSE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{transformer_dir}{Source diffusers transformer directory.}

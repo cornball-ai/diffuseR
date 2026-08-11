@@ -3,8 +3,14 @@
 \alias{ltx23_prepare_conditioned_latents}
 \title{Build conditioned initial latents and the conditioning mask}
 \usage{
-ltx23_prepare_conditioned_latents(cond_latents, latent_frames, latent_height,
-                                  latent_width, noise, cond_noise_scale = 0)
+ltx23_prepare_conditioned_latents(
+  cond_latents,
+  latent_frames,
+  latent_height,
+  latent_width,
+  noise,
+  cond_noise_scale = 0
+)
 }
 \arguments{
 \item{cond_latents}{Normalized condition latents

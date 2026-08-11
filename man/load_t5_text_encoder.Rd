@@ -3,8 +3,13 @@
 \alias{load_t5_text_encoder}
 \title{Load a T5 encoder from a transformers directory}
 \usage{
-load_t5_text_encoder(model_path, device = "cpu", dtype = "float32",
-                     verbose = TRUE, ...)
+load_t5_text_encoder(
+  model_path,
+  device = "cpu",
+  dtype = "float32",
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{model_path}{Directory with \code{config.json} and

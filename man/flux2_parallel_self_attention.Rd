@@ -3,8 +3,14 @@
 \alias{flux2_parallel_self_attention}
 \title{FLUX.2 parallel self-attention (single-stream)}
 \usage{
-flux2_parallel_self_attention(query_dim, heads, dim_head, mlp_ratio = 3,
-                              eps = 1e-06, bias = FALSE)
+flux2_parallel_self_attention(
+  query_dim,
+  heads,
+  dim_head,
+  mlp_ratio = 3,
+  eps = 1e-06,
+  bias = FALSE
+)
 }
 \arguments{
 \item{query_dim}{Integer. Model dimension.}

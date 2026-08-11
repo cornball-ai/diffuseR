@@ -3,8 +3,11 @@
 \alias{flux2_vae_decoder}
 \title{FLUX.2 VAE decoder}
 \usage{
-flux2_vae_decoder(latent_channels = 32L,
-                  block_channels = c(512L, 512L, 256L, 128L), norm_groups = 32L)
+flux2_vae_decoder(
+  latent_channels = 32L,
+  block_channels = c(512L, 512L, 256L, 128L),
+  norm_groups = 32L
+)
 }
 \arguments{
 \item{latent_channels}{Integer (32 for FLUX.2).}

@@ -3,10 +3,17 @@
 \alias{qwen3_encoder}
 \title{Qwen3 encoder stack}
 \usage{
-qwen3_encoder(vocab_size = 151936L, hidden_size = 2560L,
-              intermediate_size = 9728L, num_hidden_layers = 36L,
-              num_attention_heads = 32L, num_key_value_heads = 8L,
-              head_dim = 128L, rope_theta = 1e+06, rms_norm_eps = 1e-06)
+qwen3_encoder(
+  vocab_size = 151936L,
+  hidden_size = 2560L,
+  intermediate_size = 9728L,
+  num_hidden_layers = 36L,
+  num_attention_heads = 32L,
+  num_key_value_heads = 8L,
+  head_dim = 128L,
+  rope_theta = 1e+06,
+  rms_norm_eps = 1e-06
+)
 }
 \arguments{
 \item{rope_theta}{Numeric.}

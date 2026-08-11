@@ -3,8 +3,12 @@
 \alias{ltx23_video_downsampler3d}
 \title{Pixel-unshuffle 3D downsampler}
 \usage{
-ltx23_video_downsampler3d(in_channels, out_channels, stride = c(1L, 1L, 1L),
-                          spatial_padding_mode = "zeros")
+ltx23_video_downsampler3d(
+  in_channels,
+  out_channels,
+  stride = c(1L, 1L, 1L),
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{stride}{Length-3 integer vector (t, h, w).}

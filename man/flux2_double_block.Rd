@@ -3,8 +3,14 @@
 \alias{flux2_double_block}
 \title{FLUX.2 double-stream (MMDiT) block}
 \usage{
-flux2_double_block(dim, num_attention_heads, attention_head_dim, mlp_ratio = 3,
-                   eps = 1e-06, bias = FALSE)
+flux2_double_block(
+  dim,
+  num_attention_heads,
+  attention_head_dim,
+  mlp_ratio = 3,
+  eps = 1e-06,
+  bias = FALSE
+)
 }
 \arguments{
 \item{dim}{Integer. Model dimension.}

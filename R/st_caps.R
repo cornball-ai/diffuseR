@@ -113,8 +113,7 @@ NULL
     } else {
         sprintf("%s needs", precision)
     }
-    sprintf(paste0(
-                   "%s a safetensors newer than the one on CRAN: %s is ",
+    sprintf(paste0("%s a safetensors newer than the one on CRAN: %s is ",
                    "merged upstream but not yet released. Install the ",
                    "development version from the mlverse/safetensors ",
                    "repository on GitHub, or press on with nf4: same ",

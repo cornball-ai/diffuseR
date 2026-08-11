@@ -70,8 +70,8 @@ NULL
 #'
 #' @export
 download_ltx2 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
-                          output_dir = NULL,
-                          text_encoder = TRUE, verbose = TRUE) {
+                          output_dir = NULL, text_encoder = TRUE,
+                          verbose = TRUE) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to download model weights.")
     }
@@ -83,7 +83,11 @@ download_ltx2 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
         output_dir <- file.path(tools::R_user_dir("diffuseR", "data"),
                                 paste0("ltx2.3-", precision))
     }
-    art_gb <- if (identical(precision, "fp8")) 26 else 19
+    if (identical(precision, "fp8")) {
+        art_gb <- 26
+    } else {
+        art_gb <- 19
+    }
     result <- list(checkpoint = NULL, artifact_dir = output_dir,
                    precision = precision,
                    fp8_dir = if (identical(precision, "fp8")) output_dir,
@@ -109,9 +113,9 @@ download_ltx2 <- function(quantize = TRUE, precision = c("nf4", "fp8"),
                                 free, precision, 46 + art_gb))
             }
             ok <- .ltx23_consent(sprintf(paste0(
-                                        "the LTX-2.3 distilled checkpoint (46 GB) plus a ~%d GB local %s ",
-                                        "artifact from HuggingFace (weights under the LTX-2 Community License)"),
-                                        art_gb, precision))
+                        "the LTX-2.3 distilled checkpoint (46 GB) plus a ~%d GB local %s ",
+                        "artifact from HuggingFace (weights under the LTX-2 Community License)"),
+                    art_gb, precision))
             if (!ok) {
                 stop("Download cancelled.", call. = FALSE)
             }

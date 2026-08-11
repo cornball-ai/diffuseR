@@ -3,12 +3,20 @@
 \alias{flux2_transformer}
 \title{FLUX.2 transformer model}
 \usage{
-flux2_transformer(in_channels = 128L, num_layers = 5L, num_single_layers = 20L,
-                  attention_head_dim = 128L, num_attention_heads = 24L,
-                  joint_attention_dim = 7680L, mlp_ratio = 3,
-                  timestep_guidance_channels = 256L,
-                  axes_dims_rope = c(32L, 32L, 32L, 32L), rope_theta = 2000,
-                  eps = 1e-06, out_channels = NULL)
+flux2_transformer(
+  in_channels = 128L,
+  num_layers = 5L,
+  num_single_layers = 20L,
+  attention_head_dim = 128L,
+  num_attention_heads = 24L,
+  joint_attention_dim = 7680L,
+  mlp_ratio = 3,
+  timestep_guidance_channels = 256L,
+  axes_dims_rope = c(32L, 32L, 32L, 32L),
+  rope_theta = 2000,
+  eps = 1e-06,
+  out_channels = NULL
+)
 }
 \arguments{
 \item{in_channels}{Integer. Packed latent channels (128).}

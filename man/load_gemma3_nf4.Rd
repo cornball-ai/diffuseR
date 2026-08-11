@@ -3,8 +3,13 @@
 \alias{load_gemma3_nf4}
 \title{Load a Gemma3 text encoder from an NF4 artifact}
 \usage{
-load_gemma3_nf4(artifact_dir, device = "cuda", dtype = "bfloat16",
-                pin = getOption("diffuseR.pin_staging", TRUE), verbose = TRUE)
+load_gemma3_nf4(
+  artifact_dir,
+  device = "cuda",
+  dtype = "bfloat16",
+  pin = getOption("diffuseR.pin_staging", TRUE),
+  verbose = TRUE
+)
 }
 \arguments{
 \item{artifact_dir}{Directory produced by

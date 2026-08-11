@@ -3,18 +3,41 @@
 \alias{txt2vid_ltx2}
 \title{Generate video (and audio) with LTX-2.3}
 \usage{
-txt2vid_ltx2(prompt, pipeline, text_encoder = NULL, tokenizer = NULL,
-             prompt_embeds = NULL, connector_embeds = NULL, width = 768L,
-             height = 512L, num_frames = 121L, frame_rate = 24,
-             sigmas = ltx23_distilled_sigmas(), guidance_scale = 1,
-             seed = NULL, device = "cuda", dtype = "bfloat16", filename = NULL,
-             max_sequence_length = 1024L, decode_video = TRUE,
-             decode_audio = TRUE, two_stage = FALSE, upsampler = NULL,
-             adain_factor = 1, tone_map_compression = 0, phase_offload = TRUE,
-             image = NULL, condition_video = NULL, conditioning_frames = 9L,
-             cond_noise_scale = 0, condition_latents = NULL,
-             resident = character(), trim_frames = 0L, audio = NULL,
-             verbose = TRUE)
+txt2vid_ltx2(
+  prompt,
+  pipeline,
+  text_encoder = NULL,
+  tokenizer = NULL,
+  prompt_embeds = NULL,
+  connector_embeds = NULL,
+  width = 768L,
+  height = 512L,
+  num_frames = 121L,
+  frame_rate = 24,
+  sigmas = ltx23_distilled_sigmas(),
+  guidance_scale = 1,
+  seed = NULL,
+  device = "cuda",
+  dtype = "bfloat16",
+  filename = NULL,
+  max_sequence_length = 1024L,
+  decode_video = TRUE,
+  decode_audio = TRUE,
+  two_stage = FALSE,
+  upsampler = NULL,
+  adain_factor = 1,
+  tone_map_compression = 0,
+  phase_offload = TRUE,
+  image = NULL,
+  condition_video = NULL,
+  conditioning_frames = 9L,
+  cond_noise_scale = 0,
+  condition_latents = NULL,
+  resident = character(),
+  trim_frames = 0L,
+  audio = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}

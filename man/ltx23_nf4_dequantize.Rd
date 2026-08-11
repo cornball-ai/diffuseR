@@ -3,8 +3,14 @@
 \alias{ltx23_nf4_dequantize}
 \title{Dequantize NF4 data to a float tensor}
 \usage{
-ltx23_nf4_dequantize(packed, absmax, shape, dtype = torch::torch_bfloat16(),
-                     chunk_elements = 8388608L, out = NULL)
+ltx23_nf4_dequantize(
+  packed,
+  absmax,
+  shape,
+  dtype = torch::torch_bfloat16(),
+  chunk_elements = 8388608L,
+  out = NULL
+)
 }
 \arguments{
 \item{packed}{uint8 tensor of packed index pairs.}

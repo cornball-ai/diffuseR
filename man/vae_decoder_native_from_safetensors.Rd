@@ -3,8 +3,12 @@
 \alias{vae_decoder_native_from_safetensors}
 \title{Build a native VAE decoder from a diffusers safetensors directory}
 \usage{
-vae_decoder_native_from_safetensors(path, latent_channels = 4L, verbose = TRUE,
-                                    ...)
+vae_decoder_native_from_safetensors(
+  path,
+  latent_channels = 4L,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{path}{Path to the VAE directory (containing

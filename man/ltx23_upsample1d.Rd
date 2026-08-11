@@ -3,8 +3,12 @@
 \alias{ltx23_upsample1d}
 \title{Anti-aliasing 1D upsampler (transposed low-pass)}
 \usage{
-ltx23_upsample1d(ratio = 2L, kernel_size = NULL, window_type = "kaiser",
-                 persistent = TRUE)
+ltx23_upsample1d(
+  ratio = 2L,
+  kernel_size = NULL,
+  window_type = "kaiser",
+  persistent = TRUE
+)
 }
 \arguments{
 \item{ratio}{Integer. Upsampling ratio.}

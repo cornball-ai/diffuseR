@@ -3,8 +3,12 @@
 \alias{vae_decoder_native}
 \title{Native VAE Decoder}
 \usage{
-vae_decoder_native(latent_channels = 4, out_channels = 3,
-                   block_channels = c(512, 512, 256, 128), norm_groups = 32)
+vae_decoder_native(
+  latent_channels = 4,
+  out_channels = 3,
+  block_channels = c(512, 512, 256, 128),
+  norm_groups = 32
+)
 }
 \arguments{
 \item{latent_channels}{Number of latent channels (4 for SD/SDXL,

@@ -3,9 +3,13 @@
 \alias{load_flux2_vae_decoder}
 \title{Load the FLUX.2 VAE decoder from safetensors}
 \usage{
-load_flux2_vae_decoder(path, latent_channels = 32L,
-                       block_channels = c(512L, 512L, 256L, 128L),
-                       norm_groups = 32L, verbose = TRUE)
+load_flux2_vae_decoder(
+  path,
+  latent_channels = 32L,
+  block_channels = c(512L, 512L, 256L, 128L),
+  norm_groups = 32L,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{path}{Path to the VAE .safetensors file (or a directory

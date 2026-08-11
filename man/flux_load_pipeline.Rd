@@ -3,9 +3,16 @@
 \alias{flux_load_pipeline}
 \title{Load the FLUX.1-schnell pipeline}
 \usage{
-flux_load_pipeline(model_dir = NULL, device = "cuda", precision = NULL,
-                   text_device = NULL, attn_chunk = NULL, phase_offload = TRUE,
-                   pin = NULL, verbose = TRUE)
+flux_load_pipeline(
+  model_dir = NULL,
+  device = "cuda",
+  precision = NULL,
+  text_device = NULL,
+  attn_chunk = NULL,
+  phase_offload = TRUE,
+  pin = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{model_dir}{Quantized artifact directory (default: the

@@ -3,8 +3,15 @@
 \alias{flux_load_transformer}
 \title{Load a FLUX transformer from any checkpoint format}
 \usage{
-flux_load_transformer(ckpt, device = "cuda", dtype = "bfloat16", pin = TRUE,
-                      fp8_resident = FALSE, verbose = TRUE, ...)
+flux_load_transformer(
+  ckpt,
+  device = "cuda",
+  dtype = "bfloat16",
+  pin = TRUE,
+  fp8_resident = FALSE,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{ckpt}{A checkpoint from \code{\link{flux_open_checkpoint}} or

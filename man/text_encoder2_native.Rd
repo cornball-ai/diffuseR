@@ -3,9 +3,15 @@
 \alias{text_encoder2_native}
 \title{Native CLIP Text Encoder 2 (OpenCLIP ViT-bigG for SDXL)}
 \usage{
-text_encoder2_native(vocab_size = 49408, context_length = 77, embed_dim = 1280,
-                     num_layers = 32, num_heads = 20, mlp_dim = 5120,
-                     return_penultimate = FALSE)
+text_encoder2_native(
+  vocab_size = 49408,
+  context_length = 77,
+  embed_dim = 1280,
+  num_layers = 32,
+  num_heads = 20,
+  mlp_dim = 5120,
+  return_penultimate = FALSE
+)
 }
 \arguments{
 \item{vocab_size}{Vocabulary size (default 49408)}

@@ -3,8 +3,13 @@
 \alias{download_zimage_turbo}
 \title{Download Z-Image-Turbo and build the quantized artifact}
 \usage{
-download_zimage_turbo(quantize = TRUE, precision = c("auto", "fp8", "nf4"),
-                      output_dir = NULL, text_encoders = TRUE, verbose = TRUE)
+download_zimage_turbo(
+  quantize = TRUE,
+  precision = c("auto", "fp8", "nf4"),
+  output_dir = NULL,
+  text_encoders = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact.}

@@ -3,8 +3,13 @@
 \alias{sd_pipeline_from_safetensors}
 \title{Assemble a native SD pipeline from a diffusers safetensors directory}
 \usage{
-sd_pipeline_from_safetensors(diffusers_dir, model_name = "sd21",
-                             devices = NULL, unet_dtype = NULL, verbose = TRUE)
+sd_pipeline_from_safetensors(
+  diffusers_dir,
+  model_name = "sd21",
+  devices = NULL,
+  unet_dtype = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{diffusers_dir}{Directory with \code{unet/}, \code{vae/},

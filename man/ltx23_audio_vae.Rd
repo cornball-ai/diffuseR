@@ -3,10 +3,16 @@
 \alias{ltx23_audio_vae}
 \title{LTX-2.3 audio VAE}
 \usage{
-ltx23_audio_vae(base_channels = 128L, output_channels = 2L,
-                num_res_blocks = 2L, latent_channels = 8L,
-                ch_mult = c(1L, 2L, 4L), causality_axis = "height",
-                mel_bins = 64L, in_channels = 2L)
+ltx23_audio_vae(
+  base_channels = 128L,
+  output_channels = 2L,
+  num_res_blocks = 2L,
+  latent_channels = 8L,
+  ch_mult = c(1L, 2L, 4L),
+  causality_axis = "height",
+  mel_bins = 64L,
+  in_channels = 2L
+)
 }
 \arguments{
 \item{in_channels}{Integer. Mel input channels (2 = stereo).}

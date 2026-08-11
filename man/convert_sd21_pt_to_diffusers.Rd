@@ -3,8 +3,12 @@
 \alias{convert_sd21_pt_to_diffusers}
 \title{Convert cornball SD 2.1 TorchScript weights to a diffusers artifact}
 \usage{
-convert_sd21_pt_to_diffusers(pt_dir = NULL, output_dir = NULL,
-                             dtype = c("float16", "float32"), verbose = TRUE)
+convert_sd21_pt_to_diffusers(
+  pt_dir = NULL,
+  output_dir = NULL,
+  dtype = c("float16", "float32"),
+  verbose = TRUE
+)
 }
 \arguments{
 \item{pt_dir}{Directory holding \code{unet-cpu.pt},

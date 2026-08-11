@@ -3,8 +3,12 @@
 \alias{resident_load}
 \title{Load a diffusion pipeline as a resident handle}
 \usage{
-resident_load(model = c("flux2", "flux1", "zimage", "ltx"), device = "cuda",
-              ..., verbose = TRUE)
+resident_load(
+  model = c("flux2", "flux1", "zimage", "ltx"),
+  device = "cuda",
+  ...,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{model}{One of "flux1", "flux2", "zimage", "ltx".}

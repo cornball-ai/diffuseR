@@ -3,9 +3,14 @@
 \alias{ltx23_audio_mel_frontend}
 \title{Build the 16 kHz log-mel frontend for audio conditioning}
 \usage{
-ltx23_audio_mel_frontend(filter_length = 1024L, hop_length = 160L,
-                         n_mels = 64L, sample_rate = 16000L, fmin = 0,
-                         fmax = 8000)
+ltx23_audio_mel_frontend(
+  filter_length = 1024L,
+  hop_length = 160L,
+  n_mels = 64L,
+  sample_rate = 16000L,
+  fmin = 0,
+  fmax = 8000
+)
 }
 \arguments{
 \item{filter_length,hop_length,n_mels,sample_rate,fmin,fmax}{The

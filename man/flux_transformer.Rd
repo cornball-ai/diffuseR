@@ -3,10 +3,17 @@
 \alias{flux_transformer}
 \title{FLUX transformer model}
 \usage{
-flux_transformer(in_channels = 64L, num_layers = 19L, num_single_layers = 38L,
-                 attention_head_dim = 128L, num_attention_heads = 24L,
-                 joint_attention_dim = 4096L, pooled_projection_dim = 768L,
-                 axes_dims_rope = c(16L, 56L, 56L), out_channels = NULL)
+flux_transformer(
+  in_channels = 64L,
+  num_layers = 19L,
+  num_single_layers = 38L,
+  attention_head_dim = 128L,
+  num_attention_heads = 24L,
+  joint_attention_dim = 4096L,
+  pooled_projection_dim = 768L,
+  axes_dims_rope = c(16L, 56L, 56L),
+  out_channels = NULL
+)
 }
 \arguments{
 \item{in_channels}{Integer. Packed latent channels (64).}

@@ -3,9 +3,15 @@
 \alias{encode_with_gemma3}
 \title{Encode text with Gemma3 for LTX-2}
 \usage{
-encode_with_gemma3(prompts, model = NULL, tokenizer = NULL,
-                   max_sequence_length = 1024L, device = "cuda",
-                   dtype = "float16", verbose = TRUE)
+encode_with_gemma3(
+  prompts,
+  model = NULL,
+  tokenizer = NULL,
+  max_sequence_length = 1024L,
+  device = "cuda",
+  dtype = "float16",
+  verbose = TRUE
+)
 }
 \arguments{
 \item{prompts}{Character vector of prompts.}

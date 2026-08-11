@@ -3,10 +3,21 @@
 \alias{txt2img_flux}
 \title{Generate an image with FLUX.1-schnell}
 \usage{
-txt2img_flux(prompt, pipeline = NULL, width = 1024L, height = 1024L,
-             num_inference_steps = 4L, max_sequence_length = 256L, seed = NULL,
-             prompt_embeds = NULL, pooled_prompt_embeds = NULL,
-             save_file = TRUE, filename = NULL, verbose = TRUE, ...)
+txt2img_flux(
+  prompt,
+  pipeline = NULL,
+  width = 1024L,
+  height = 1024L,
+  num_inference_steps = 4L,
+  max_sequence_length = 256L,
+  seed = NULL,
+  prompt_embeds = NULL,
+  pooled_prompt_embeds = NULL,
+  save_file = TRUE,
+  filename = NULL,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}

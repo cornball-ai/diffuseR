@@ -3,8 +3,12 @@
 \alias{ltx23_video_mid_block3d}
 \title{LTX video mid block}
 \usage{
-ltx23_video_mid_block3d(in_channels, num_layers = 1L, resnet_eps = 1e-06,
-                        spatial_padding_mode = "zeros")
+ltx23_video_mid_block3d(
+  in_channels,
+  num_layers = 1L,
+  resnet_eps = 1e-06,
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{in_channels}{Integer.}

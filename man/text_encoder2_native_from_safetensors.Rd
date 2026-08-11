@@ -3,8 +3,12 @@
 \alias{text_encoder2_native_from_safetensors}
 \title{Build a native SDXL text encoder 2 from a diffusers safetensors directory}
 \usage{
-text_encoder2_native_from_safetensors(path, return_penultimate = TRUE,
-                                      verbose = TRUE, ...)
+text_encoder2_native_from_safetensors(
+  path,
+  return_penultimate = TRUE,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{path}{diffusers text_encoder_2 directory (config.json +

@@ -3,8 +3,14 @@
 \alias{save_video_ltx23}
 \title{Save an LTX video (optionally with audio) to MP4}
 \usage{
-save_video_ltx23(video, filename, fps = 24, audio = NULL, sample_rate = 48000L,
-                 verbose = TRUE)
+save_video_ltx23(
+  video,
+  filename,
+  fps = 24,
+  audio = NULL,
+  sample_rate = 48000L,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{video}{Array [frames, height, width, 3] in [0, 1].}

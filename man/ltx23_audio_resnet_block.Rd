@@ -3,8 +3,11 @@
 \alias{ltx23_audio_resnet_block}
 \title{LTX audio ResNet block}
 \usage{
-ltx23_audio_resnet_block(in_channels, out_channels = NULL,
-                         causality_axis = "height")
+ltx23_audio_resnet_block(
+  in_channels,
+  out_channels = NULL,
+  causality_axis = "height"
+)
 }
 \arguments{
 \item{causality_axis}{Character.}

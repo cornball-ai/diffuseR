@@ -3,11 +3,17 @@
 \alias{ltx23_video_up_block3d}
 \title{LTX video up block}
 \usage{
-ltx23_video_up_block3d(in_channels, out_channels = NULL, num_layers = 1L,
-                       resnet_eps = 1e-06, spatio_temporal_scale = TRUE,
-                       upsample_type = "spatiotemporal",
-                       upsample_residual = FALSE, upscale_factor = 1L,
-                       spatial_padding_mode = "zeros")
+ltx23_video_up_block3d(
+  in_channels,
+  out_channels = NULL,
+  num_layers = 1L,
+  resnet_eps = 1e-06,
+  spatio_temporal_scale = TRUE,
+  upsample_type = "spatiotemporal",
+  upsample_residual = FALSE,
+  upscale_factor = 1L,
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{num_layers}{Integer.}

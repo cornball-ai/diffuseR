@@ -3,14 +3,24 @@
 \alias{ltx23_transformer_block}
 \title{LTX-2 transformer block}
 \usage{
-ltx23_transformer_block(dim, num_attention_heads, attention_head_dim,
-                        cross_attention_dim, audio_dim,
-                        audio_num_attention_heads, audio_attention_head_dim,
-                        audio_cross_attention_dim, video_gated_attn = TRUE,
-                        video_cross_attn_adaln = TRUE, audio_gated_attn = TRUE,
-                        audio_cross_attn_adaln = TRUE, eps = 1e-06,
-                        elementwise_affine = FALSE, rope_type = "split",
-                        perturbed_attn = TRUE)
+ltx23_transformer_block(
+  dim,
+  num_attention_heads,
+  attention_head_dim,
+  cross_attention_dim,
+  audio_dim,
+  audio_num_attention_heads,
+  audio_attention_head_dim,
+  audio_cross_attention_dim,
+  video_gated_attn = TRUE,
+  video_cross_attn_adaln = TRUE,
+  audio_gated_attn = TRUE,
+  audio_cross_attn_adaln = TRUE,
+  eps = 1e-06,
+  elementwise_affine = FALSE,
+  rope_type = "split",
+  perturbed_attn = TRUE
+)
 }
 \arguments{
 \item{cross_attention_dim}{Integer. Text embedding dim for video.}

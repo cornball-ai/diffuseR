@@ -3,8 +3,13 @@
 \alias{download_flux2_klein}
 \title{Download FLUX.2-klein-4B and build the quantized artifact}
 \usage{
-download_flux2_klein(quantize = TRUE, precision = c("auto", "fp8", "nf4"),
-                     output_dir = NULL, text_encoders = TRUE, verbose = TRUE)
+download_flux2_klein(
+  quantize = TRUE,
+  precision = c("auto", "fp8", "nf4"),
+  output_dir = NULL,
+  text_encoders = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact.}
