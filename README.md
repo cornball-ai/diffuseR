@@ -143,8 +143,8 @@ gambling_cat <- img2img(
 pipeline <- NULL
 torch::cuda_empty_cache()
 ```
-![](cat2.png)
-![](gambling_cat.png)
+![](https://raw.githubusercontent.com/cornball-ai/diffuseR/main/cat2.png)
+![](https://raw.githubusercontent.com/cornball-ai/diffuseR/main/gambling_cat.png)
 
 
 ### FLUX and Z-Image
@@ -176,6 +176,7 @@ txt2img_flux2("a red fox sitting in a snowy forest, digital art",
 download_zimage_turbo()
 txt2img_zimage(paste("A storefront with a large wooden sign that reads",
                      "\"DIFFUSER\" in bold carved letters"), seed = 42)
+```
 
 ### Text-to-Video: LTX-2.3
 
@@ -185,10 +186,14 @@ steps. NF4-quantized it renders 768x512x49 in ~44s warm on an RTX
 are supported (see ?txt2vid_ltx2).
 
 ```r
-download_ltx2()       # ~46GB download, one-time fp8 quantize
+paths <- download_ltx2()   # ~46GB download, one-time nf4 quantize
+pipe <- ltx23_load_pipeline(paths$artifact_dir)
+te <- load_gemma3_text_encoder(paths$text_encoder_dir, device = "cpu")
+tok <- gemma3_tokenizer(dirname(hfhub::hub_download("Lightricks/LTX-2",
+                                                    "tokenizer/tokenizer.json")))
 txt2vid_ltx2("A river winding through a misty forest at dawn",
-             pipeline = ltx23_load_pipeline(),
-             filename = "river.mp4")
+             pipeline = pipe, text_encoder = te, tokenizer = tok,
+             num_frames = 73L, seed = 11L, filename = "river.mp4")
 ```
 
 ### Serving over HTTP
@@ -201,6 +206,7 @@ serve(model = "flux2", port = 7812L, token = "my-secret")
 #   http://localhost:7812/v1/images/generations
 ```
 
+```r
 # Or through the common dispatcher
 txt2img("a lighthouse at dusk", model_name = "flux2")
 ```

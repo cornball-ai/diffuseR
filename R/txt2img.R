@@ -14,6 +14,7 @@
 txt2img <- function(prompt,
                     model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage"),
                     ...) {
+    model_name <- match.arg(model_name)
     switch(model_name,
            # "sd15" = txt2img_sd15(prompt, ...),
            "sd21" = txt2img_sd21(prompt, ...),
