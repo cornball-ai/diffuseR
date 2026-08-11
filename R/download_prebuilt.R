@@ -18,8 +18,8 @@ NULL
 # hf_download_pt); the base mirrors the local artifact directory name so
 # a fetched artifact is indistinguishable from a locally built one.
 .prebuilt_nf4_spec <- list(
-    flux2 = list(repo = "cornball-ai/flux2-R", base = "flux2-klein-4b-nf4"),
-    zimage = list(repo = "cornball-ai/zimage-R", base = "zimage-turbo-nf4")
+                           flux2 = list(repo = "cornball-ai/flux2-R", base = "flux2-klein-4b-nf4"),
+                           zimage = list(repo = "cornball-ai/zimage-R", base = "zimage-turbo-nf4")
 )
 
 # Fetch a hosted NF4 artifact into output_dir. Returns TRUE when the
@@ -33,9 +33,9 @@ NULL
         return(FALSE)
     }
     manifest_cache <- tryCatch(
-        hfhub::hub_download(spec$repo, paste0(spec$base, "/manifest.json"),
-                            repo_type = "dataset"),
-        error = function(e) NULL)
+                               hfhub::hub_download(spec$repo, paste0(spec$base, "/manifest.json"),
+            repo_type = "dataset"),
+                               error = function(e) NULL)
     if (is.null(manifest_cache)) {
         if (verbose) {
             message("No hosted NF4 artifact reachable for '", model,

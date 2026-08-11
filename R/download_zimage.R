@@ -81,8 +81,7 @@ download_zimage_turbo <- function(quantize = TRUE,
     }
 
     fetched <- FALSE
-    if (prebuilt && quantize && !have_artifact &&
-        identical(precision, "nf4")) {
+    if (prebuilt && quantize && !have_artifact && identical(precision, "nf4")) {
         fetched <- .flux_fetch_prebuilt("zimage", output_dir, verbose)
         have_artifact <- have_artifact || fetched
     }

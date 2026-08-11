@@ -8,6 +8,7 @@ download_flux2_klein(
   precision = c("auto", "fp8", "nf4"),
   output_dir = NULL,
   text_encoders = TRUE,
+  prebuilt = TRUE,
   verbose = TRUE
 )
 }
@@ -16,12 +17,18 @@ download_flux2_klein(
 
 \item{precision}{"auto" (default: fp8 when safetensors supports
 float8, else nf4), "fp8" (~4 GB, GPU-resident; near-bf16 quality),
-or "nf4" (~2.3 GB).}
+or "nf4" (~2.3 GB, fetched prebuilt from the cornball-ai
+HuggingFace dataset when available).}
 
 \item{output_dir}{Directory for the quantized artifact.}
 
 \item{text_encoders}{Logical. Also fetch the Qwen3 text encoder,
 tokenizer, VAE, and scheduler config (~8.3 GB).}
+
+\item{prebuilt}{Logical. When the resolved precision is nf4, fetch
+the hosted prebuilt artifact (~2.3 GB) instead of downloading the
+7.8 GB bf16 source and quantizing locally. \code{FALSE} forces a
+local build.}
 
 \item{verbose}{Logical.}
 }

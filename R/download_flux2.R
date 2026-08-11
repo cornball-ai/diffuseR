@@ -76,8 +76,7 @@ download_flux2_klein <- function(quantize = TRUE,
     }
 
     fetched <- FALSE
-    if (prebuilt && quantize && !have_artifact &&
-        identical(precision, "nf4")) {
+    if (prebuilt && quantize && !have_artifact && identical(precision, "nf4")) {
         fetched <- .flux_fetch_prebuilt("flux2", output_dir, verbose)
         have_artifact <- have_artifact || fetched
     }
