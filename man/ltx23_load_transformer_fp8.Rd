@@ -3,8 +3,13 @@
 \alias{ltx23_load_transformer_fp8}
 \title{Load the LTX-2.3 transformer with FP8 weights}
 \usage{
-ltx23_load_transformer_fp8(ckpt, device = "cuda", pin = TRUE, verbose = TRUE,
-                           ...)
+ltx23_load_transformer_fp8(
+  ckpt,
+  device = "cuda",
+  pin = TRUE,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{ckpt}{An fp8 \code{ltx23_checkpoint}

@@ -3,8 +3,15 @@
 \alias{flux_attention}
 \title{FLUX joint attention}
 \usage{
-flux_attention(query_dim, heads, dim_head, added_kv = FALSE, pre_only = FALSE,
-               eps = 1e-06, bias = TRUE)
+flux_attention(
+  query_dim,
+  heads,
+  dim_head,
+  added_kv = FALSE,
+  pre_only = FALSE,
+  eps = 1e-06,
+  bias = TRUE
+)
 }
 \arguments{
 \item{query_dim}{Integer. Model dimension.}

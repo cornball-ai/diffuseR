@@ -3,8 +3,11 @@
 \alias{ltx23_latent_upsampler}
 \title{LTX-2.3 latent upsampler model}
 \usage{
-ltx23_latent_upsampler(in_channels = 128L, mid_channels = 1024L,
-                       num_blocks_per_stage = 4L)
+ltx23_latent_upsampler(
+  in_channels = 128L,
+  mid_channels = 1024L,
+  num_blocks_per_stage = 4L
+)
 }
 \arguments{
 \item{in_channels}{Integer. Latent channels.}

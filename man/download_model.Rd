@@ -3,10 +3,14 @@
 \alias{download_model}
 \title{Download TorchScript model files for Stable Diffusion}
 \usage{
-download_model(model_name = "sd21",
-               devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
-               unet_dtype_str = NULL, overwrite = FALSE, show_progress = TRUE,
-               download_models = FALSE)
+download_model(
+  model_name = "sd21",
+  devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
+  unet_dtype_str = NULL,
+  overwrite = FALSE,
+  show_progress = TRUE,
+  download_models = FALSE
+)
 }
 \arguments{
 \item{model_name}{Name of the model (e.g., "sd21" for stable-diffusion-2-1)}

@@ -3,13 +3,23 @@
 \alias{ltx23_rotary_pos_embed}
 \title{LTX-2.3 audio/video rotary position embedder}
 \usage{
-ltx23_rotary_pos_embed(dim, patch_size = 1L, patch_size_t = 1L,
-                       base_num_frames = 20L, base_height = 2048L,
-                       base_width = 2048L, sampling_rate = 16000L,
-                       hop_length = 160L, scale_factors = c(8L, 32L, 32L),
-                       theta = 10000, causal_offset = 1L, modality = "video",
-                       double_precision = TRUE, rope_type = "split",
-                       num_attention_heads = 32L)
+ltx23_rotary_pos_embed(
+  dim,
+  patch_size = 1L,
+  patch_size_t = 1L,
+  base_num_frames = 20L,
+  base_height = 2048L,
+  base_width = 2048L,
+  sampling_rate = 16000L,
+  hop_length = 160L,
+  scale_factors = c(8L, 32L, 32L),
+  theta = 10000,
+  causal_offset = 1L,
+  modality = "video",
+  double_precision = TRUE,
+  rope_type = "split",
+  num_attention_heads = 32L
+)
 }
 \arguments{
 \item{dim}{Integer. Rotary dimension (attention head dim x heads for

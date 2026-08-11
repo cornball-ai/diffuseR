@@ -3,8 +3,13 @@
 \alias{gemma3_quantize_nf4}
 \title{Quantize a Gemma3 text encoder to NF4 shards}
 \usage{
-gemma3_quantize_nf4(model_path, output_dir = NULL, shard_bytes = 1.9e+09,
-                    force = FALSE, verbose = TRUE)
+gemma3_quantize_nf4(
+  model_path,
+  output_dir = NULL,
+  shard_bytes = 1.9e+09,
+  force = FALSE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{model_path}{HuggingFace snapshot directory (config.json +

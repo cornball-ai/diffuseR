@@ -3,10 +3,19 @@
 \alias{ltx23_attention}
 \title{LTX-2 attention layer}
 \usage{
-ltx23_attention(query_dim, heads = 8L, kv_heads = NULL, dim_head = 64L,
-                bias = TRUE, cross_attention_dim = NULL, out_bias = TRUE,
-                norm_eps = 1e-06, norm_elementwise_affine = TRUE,
-                rope_type = "split", apply_gated_attention = FALSE)
+ltx23_attention(
+  query_dim,
+  heads = 8L,
+  kv_heads = NULL,
+  dim_head = 64L,
+  bias = TRUE,
+  cross_attention_dim = NULL,
+  out_bias = TRUE,
+  norm_eps = 1e-06,
+  norm_elementwise_affine = TRUE,
+  rope_type = "split",
+  apply_gated_attention = FALSE
+)
 }
 \arguments{
 \item{query_dim}{Integer. Query feature dimension.}

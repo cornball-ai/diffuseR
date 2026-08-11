@@ -3,10 +3,20 @@
 \alias{txt2img_flux2}
 \title{Generate an image with FLUX.2 klein}
 \usage{
-txt2img_flux2(prompt, pipeline = NULL, width = 1024L, height = 1024L,
-              num_inference_steps = 4L, max_sequence_length = 512L,
-              seed = NULL, prompt_embeds = NULL, save_file = TRUE,
-              filename = NULL, verbose = TRUE, ...)
+txt2img_flux2(
+  prompt,
+  pipeline = NULL,
+  width = 1024L,
+  height = 1024L,
+  num_inference_steps = 4L,
+  max_sequence_length = 512L,
+  seed = NULL,
+  prompt_embeds = NULL,
+  save_file = TRUE,
+  filename = NULL,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}

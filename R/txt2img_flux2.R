@@ -67,8 +67,7 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     if (is.null(model_dir)) {
         model_dir <- .flux_model_dir("flux2", precision,
-            file.path(tools::R_user_dir("diffuseR", "data"),
-                      "flux2-klein-4b-"))
+                                     file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-"))
     }
 
     ckpt <- if (file.exists(file.path(model_dir, "manifest.json"))) {

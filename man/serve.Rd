@@ -3,10 +3,20 @@
 \alias{serve}
 \title{Serve diffuseR over HTTP}
 \usage{
-serve(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
-      device = "cuda", token = NULL, max_pixels = 1024L^2, max_frames = 161L,
-      max_steps = 50L, max_pixel_frames = NULL, max_prompts = 32L,
-      timeout = 300L, max_body = 1024L^2, warmup = TRUE)
+serve(
+  port = 7812L,
+  model = c("flux2", "zimage", "flux1", "ltx"),
+  device = "cuda",
+  token = NULL,
+  max_pixels = 1024L^2,
+  max_frames = 161L,
+  max_steps = 50L,
+  max_pixel_frames = NULL,
+  max_prompts = 32L,
+  timeout = 300L,
+  max_body = 1024L^2,
+  warmup = TRUE
+)
 }
 \arguments{
 \item{port}{Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).}

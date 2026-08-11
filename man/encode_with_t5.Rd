@@ -3,8 +3,13 @@
 \alias{encode_with_t5}
 \title{Encode prompts with the T5 encoder}
 \usage{
-encode_with_t5(prompts, model, tokenizer, max_sequence_length = 256L,
-               device = NULL)
+encode_with_t5(
+  prompts,
+  model,
+  tokenizer,
+  max_sequence_length = 256L,
+  device = NULL
+)
 }
 \arguments{
 \item{prompts}{Character vector.}

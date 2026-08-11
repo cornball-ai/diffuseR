@@ -126,16 +126,18 @@
 # as.character() on a torch_dtype returns ("Float", "Half", "Byte",
 # "Long", ...), NOT the R constructor alias. Unknown dtypes fall back to
 # 4, which only affects a reported number.
-.dtype_widths <- c(double = 8, long = 8, complexfloat = 8,
-                   float = 4, int = 4,
-                   half = 2, bfloat16 = 2, short = 2,
-                   byte = 1, char = 1, bool = 1,
-                   float8_e4m3fn = 1, float8_e5m2 = 1)
+.dtype_widths <- c(double = 8, long = 8, complexfloat = 8, float = 4,
+                   int = 4, half = 2, bfloat16 = 2, short = 2, byte = 1,
+                   char = 1, bool = 1, float8_e4m3fn = 1, float8_e5m2 = 1)
 
 .dtype_bytes <- function(dtype) {
     nm <- tolower(tryCatch(as.character(dtype), error = function(e) ""))
     w <- .dtype_widths[[nm, exact = TRUE]]
-    if (is.null(w)) 4 else w
+    if (is.null(w)) {
+        4
+    } else {
+        w
+    }
 }
 
 #' TRUE when every staged tensor sits on the expected device type
@@ -149,7 +151,8 @@
 .resident_all_on <- function(staging, type) {
     for (st in staging) {
         for (pair in st) {
-            dev <- tryCatch(pair$live$device$type, error = function(e) NA_character_)
+            dev <- tryCatch(pair$live$device$type,
+                            error = function(e) NA_character_)
             if (!identical(dev, type)) {
                 return(FALSE)
             }
@@ -192,8 +195,9 @@
         stop("cannot ", verb, ": this handle is unloaded", call. = FALSE)
     }
     if (identical(res$state, "broken")) {
-        stop("cannot ", verb, ": this handle is broken (", res$last_error %||%
-                 "no detail recorded", "). Only resident_status() and ",
+        stop("cannot ", verb, ": this handle is broken (",
+             res$last_error %||% "no detail recorded",
+             "). Only resident_status() and ",
              "resident_unload() work from here.", call. = FALSE)
     }
     invisible(TRUE)
@@ -324,7 +328,7 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
         free_gb <- tryCatch(.detect_vram(use_free = TRUE),
                             error = function(e) NA_real_)
     }
-    need_gb <- res$pinned_bytes / 1024^3
+    need_gb <- res$pinned_bytes / 1024 ^ 3
     if (!is.na(free_gb) && free_gb > 0 && need_gb > free_gb) {
         stop(sprintf(paste0("%s needs %.2f GB resident but only %.2f GB of ",
                             "VRAM is free. Load the pipeline with ",
@@ -532,15 +536,11 @@ resident_generate <- function(res, prompt, ...) {
 resident_status <- function(res) {
     stopifnot(inherits(res, "diffuseR_resident"))
     mem <- .cuda_bytes()
-    list(model = res$model,
-         state = res$state,
-         device = res$device,
+    list(model = res$model, state = res$state, device = res$device,
          components = names(res$staging),
          components_on_gpu = .resident_on_gpu_count(res$staging),
-         pinned_bytes = res$pinned_bytes,
-         gpu_allocated = mem$allocated,
-         gpu_reserved = mem$reserved,
-         loaded_at = res$loaded_at,
+         pinned_bytes = res$pinned_bytes, gpu_allocated = mem$allocated,
+         gpu_reserved = mem$reserved, loaded_at = res$loaded_at,
          last_error = res$last_error)
 }
 
@@ -623,5 +623,5 @@ print.diffuseR_resident <- function(x, ...) {
     if (is.null(b) || is.na(b) || b <= 0) {
         return("0 GB")
     }
-    sprintf("%.2f GB", b / 1024^3)
+    sprintf("%.2f GB", b / 1024 ^ 3)
 }

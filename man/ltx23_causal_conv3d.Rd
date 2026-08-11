@@ -3,8 +3,13 @@
 \alias{ltx23_causal_conv3d}
 \title{Causal 3D convolution}
 \usage{
-ltx23_causal_conv3d(in_channels, out_channels, kernel_size = 3L, stride = 1L,
-                    spatial_padding_mode = "zeros")
+ltx23_causal_conv3d(
+  in_channels,
+  out_channels,
+  kernel_size = 3L,
+  stride = 1L,
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{kernel_size}{Integer or length-3 vector (t, h, w).}

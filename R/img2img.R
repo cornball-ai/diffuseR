@@ -39,6 +39,7 @@ img2img <- function(input_image, prompt, negative_prompt = NULL,
                     use_native_decoder = FALSE,
                     use_native_text_encoder = FALSE, use_native_unet = FALSE,
                     ...) {
+    model_name <- match.arg(model_name)
     if (model_name %in% c("sd21", "sdxl")) {
         num_train_timesteps <- 1000
     } else {

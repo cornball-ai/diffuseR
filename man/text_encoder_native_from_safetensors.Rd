@@ -3,8 +3,12 @@
 \alias{text_encoder_native_from_safetensors}
 \title{Build a native CLIP text encoder from a diffusers safetensors directory}
 \usage{
-text_encoder_native_from_safetensors(path, apply_final_ln = TRUE,
-                                     verbose = TRUE, ...)
+text_encoder_native_from_safetensors(
+  path,
+  apply_final_ln = TRUE,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{path}{diffusers text_encoder directory (config.json +

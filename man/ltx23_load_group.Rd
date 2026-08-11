@@ -3,8 +3,14 @@
 \alias{ltx23_load_group}
 \title{Stream a checkpoint key group into a module}
 \usage{
-ltx23_load_group(ckpt, keys, module, map_key = identity, verbose = TRUE,
-                 gc_every = 50L)
+ltx23_load_group(
+  ckpt,
+  keys,
+  module,
+  map_key = identity,
+  verbose = TRUE,
+  gc_every = 50L
+)
 }
 \arguments{
 \item{ckpt}{An \code{ltx23_checkpoint}.}

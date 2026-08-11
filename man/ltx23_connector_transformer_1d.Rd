@@ -3,12 +3,18 @@
 \alias{ltx23_connector_transformer_1d}
 \title{1D connector transformer}
 \usage{
-ltx23_connector_transformer_1d(num_attention_heads = 32L,
-                               attention_head_dim = 128L, num_layers = 8L,
-                               num_learnable_registers = 128L,
-                               rope_base_seq_len = 4096L, rope_theta = 10000,
-                               rope_double_precision = TRUE, eps = 1e-06,
-                               rope_type = "split", gated_attention = TRUE)
+ltx23_connector_transformer_1d(
+  num_attention_heads = 32L,
+  attention_head_dim = 128L,
+  num_layers = 8L,
+  num_learnable_registers = 128L,
+  rope_base_seq_len = 4096L,
+  rope_theta = 10000,
+  rope_double_precision = TRUE,
+  eps = 1e-06,
+  rope_type = "split",
+  gated_attention = TRUE
+)
 }
 \arguments{
 \item{num_learnable_registers}{Integer or NULL. Register count (the

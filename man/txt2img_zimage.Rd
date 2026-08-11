@@ -3,10 +3,20 @@
 \alias{txt2img_zimage}
 \title{Generate an image with Z-Image-Turbo}
 \usage{
-txt2img_zimage(prompt, pipeline = NULL, width = 1024L, height = 1024L,
-               num_inference_steps = 8L, max_sequence_length = 512L,
-               seed = NULL, prompt_embeds = NULL, save_file = TRUE,
-               filename = NULL, verbose = TRUE, ...)
+txt2img_zimage(
+  prompt,
+  pipeline = NULL,
+  width = 1024L,
+  height = 1024L,
+  num_inference_steps = 8L,
+  max_sequence_length = 512L,
+  seed = NULL,
+  prompt_embeds = NULL,
+  save_file = TRUE,
+  filename = NULL,
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{prompt}{Character. The prompt.}

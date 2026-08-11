@@ -1,3 +1,13 @@
+# diffuseR 0.2.2.1
+
+* `txt2img()` and `img2img()` now `match.arg()` their `model_name`, so
+  the bare calls work (defaulting to sd21) instead of erroring on the
+  choices vector.
+* README fixes for the CRAN-rendered page: closed the unclosed fence
+  that swallowed the LTX section, replaced the LTX example with the
+  working call shape, and pointed the example images at GitHub URLs
+  (the files are .Rbuildignore'd).
+
 # diffuseR 0.2.2
 
 * Every precision `recommend()` can return is now reachable. `bf16` was

@@ -3,8 +3,14 @@
 \alias{encode_with_qwen3}
 \title{Encode prompts with the Qwen3 encoder for FLUX.2}
 \usage{
-encode_with_qwen3(prompts, model, tokenizer, max_sequence_length = 512L,
-                  out_layers = c(9L, 18L, 27L), device = NULL)
+encode_with_qwen3(
+  prompts,
+  model,
+  tokenizer,
+  max_sequence_length = 512L,
+  out_layers = c(9L, 18L, 27L),
+  device = NULL
+)
 }
 \arguments{
 \item{prompts}{Character vector.}

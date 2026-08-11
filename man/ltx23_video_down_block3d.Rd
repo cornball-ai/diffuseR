@@ -3,10 +3,15 @@
 \alias{ltx23_video_down_block3d}
 \title{LTX video down block}
 \usage{
-ltx23_video_down_block3d(in_channels, out_channels = NULL, num_layers = 1L,
-                         resnet_eps = 1e-06, spatio_temporal_scale = TRUE,
-                         downsample_type = "spatiotemporal",
-                         spatial_padding_mode = "zeros")
+ltx23_video_down_block3d(
+  in_channels,
+  out_channels = NULL,
+  num_layers = 1L,
+  resnet_eps = 1e-06,
+  spatio_temporal_scale = TRUE,
+  downsample_type = "spatiotemporal",
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{num_layers}{Integer. ResNet count.}

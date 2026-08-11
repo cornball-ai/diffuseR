@@ -3,8 +3,13 @@
 \alias{zimage_unpatchify}
 \title{Unpatchify Z-Image tokens back to a latent image}
 \usage{
-zimage_unpatchify(tokens, size, patch_size = 2L, f_patch_size = 1L,
-                  out_channels = 16L)
+zimage_unpatchify(
+  tokens,
+  size,
+  patch_size = 2L,
+  f_patch_size = 1L,
+  out_channels = 16L
+)
 }
 \arguments{
 \item{tokens}{Tensor of shape [S, pF * p * p * C] with the image

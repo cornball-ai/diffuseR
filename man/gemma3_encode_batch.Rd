@@ -3,9 +3,16 @@
 \alias{gemma3_encode_batch}
 \title{Batch-encode prompts with Gemma3, cached to disk}
 \usage{
-gemma3_encode_batch(prompts, model = NULL, tokenizer = NULL, batch_size = 4L,
-                    cache_dir = NULL, max_sequence_length = 1024L,
-                    device = "cuda", verbose = TRUE)
+gemma3_encode_batch(
+  prompts,
+  model = NULL,
+  tokenizer = NULL,
+  batch_size = 4L,
+  cache_dir = NULL,
+  max_sequence_length = 1024L,
+  device = "cuda",
+  verbose = TRUE
+)
 }
 \arguments{
 \item{prompts}{Character vector.}

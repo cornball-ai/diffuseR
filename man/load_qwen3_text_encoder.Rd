@@ -3,8 +3,13 @@
 \alias{load_qwen3_text_encoder}
 \title{Load a Qwen3 encoder from a transformers directory}
 \usage{
-load_qwen3_text_encoder(model_path, device = "cpu", dtype = "float32",
-                        verbose = TRUE, ...)
+load_qwen3_text_encoder(
+  model_path,
+  device = "cpu",
+  dtype = "float32",
+  verbose = TRUE,
+  ...
+)
 }
 \arguments{
 \item{model_path}{Directory with \code{config.json} and

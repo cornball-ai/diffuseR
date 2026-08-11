@@ -3,8 +3,13 @@
 \alias{reshard_safetensors}
 \title{Re-shard a large safetensors file into sub-2 GB shards}
 \usage{
-reshard_safetensors(input, output_dir, base = "diffusion_pytorch_model",
-                    shard_bytes = 1.9e+09, verbose = TRUE)
+reshard_safetensors(
+  input,
+  output_dir,
+  base = "diffusion_pytorch_model",
+  shard_bytes = 1.9e+09,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{input}{Path to the source \code{.safetensors} file, or a

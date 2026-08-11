@@ -68,8 +68,7 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     if (is.null(model_dir)) {
         model_dir <- .flux_model_dir("zimage", precision,
-            file.path(tools::R_user_dir("diffuseR", "data"),
-                      "zimage-turbo-"))
+                                     file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
     }
 
     ckpt <- if (file.exists(file.path(model_dir, "manifest.json"))) {

@@ -3,9 +3,14 @@
 \alias{ltx23_rotary_pos_embed_1d}
 \title{1D rotary embeddings for the text connectors}
 \usage{
-ltx23_rotary_pos_embed_1d(dim, base_seq_len = 4096L, theta = 10000,
-                          double_precision = TRUE, rope_type = "split",
-                          num_attention_heads = 32L)
+ltx23_rotary_pos_embed_1d(
+  dim,
+  base_seq_len = 4096L,
+  theta = 10000,
+  double_precision = TRUE,
+  rope_type = "split",
+  num_attention_heads = 32L
+)
 }
 \arguments{
 \item{dim}{Integer. Rotary dimension (connector inner dim).}

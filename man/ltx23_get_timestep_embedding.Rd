@@ -3,8 +3,13 @@
 \alias{ltx23_get_timestep_embedding}
 \title{Sinusoidal timestep embedding}
 \usage{
-ltx23_get_timestep_embedding(timesteps, embedding_dim, flip_sin_to_cos = TRUE,
-                             downscale_freq_shift = 0, max_period = 10000)
+ltx23_get_timestep_embedding(
+  timesteps,
+  embedding_dim,
+  flip_sin_to_cos = TRUE,
+  downscale_freq_shift = 0,
+  max_period = 10000
+)
 }
 \arguments{
 \item{timesteps}{1D tensor of timestep values.}

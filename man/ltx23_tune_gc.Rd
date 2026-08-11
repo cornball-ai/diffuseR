@@ -18,7 +18,7 @@ Invisibly, the applied reserved rate (NULL if skipped).
 Stops the allocator GC storm (cf. ~/skills/torch
 torch-jit-gc-performance.md): lantern proactively calls R's gc()
 whenever reserved memory exceeds \code{torch.cuda_allocator_reserved_rate}
-(default 0.20) of the card. With ~75\\% of VRAM occupied by resident
+(default 0.20) of the card. With ~75\% of VRAM occupied by resident
 weights that fires on nearly every allocation. Raising the rate to the
 actual footprint is safe here because the LTX hot loops compute into
 persistent scratch buffers (near-zero per-step garbage). Also raises

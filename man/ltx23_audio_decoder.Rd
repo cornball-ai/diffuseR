@@ -3,10 +3,15 @@
 \alias{ltx23_audio_decoder}
 \title{LTX-2.3 audio VAE decoder}
 \usage{
-ltx23_audio_decoder(base_channels = 128L, output_channels = 2L,
-                    num_res_blocks = 2L, latent_channels = 8L,
-                    ch_mult = c(1L, 2L, 4L), causality_axis = "height",
-                    mel_bins = 64L)
+ltx23_audio_decoder(
+  base_channels = 128L,
+  output_channels = 2L,
+  num_res_blocks = 2L,
+  latent_channels = 8L,
+  ch_mult = c(1L, 2L, 4L),
+  causality_axis = "height",
+  mel_bins = 64L
+)
 }
 \arguments{
 \item{base_channels}{Integer.}

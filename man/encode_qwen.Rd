@@ -3,8 +3,13 @@
 \alias{encode_qwen}
 \title{Encode prompts with the Qwen tokenizer}
 \usage{
-encode_qwen(tokenizer, texts, max_length = 512L, chat_template = TRUE,
-            enable_thinking = FALSE)
+encode_qwen(
+  tokenizer,
+  texts,
+  max_length = 512L,
+  chat_template = TRUE,
+  enable_thinking = FALSE
+)
 }
 \arguments{
 \item{tokenizer}{A \code{\link{qwen_bpe_tokenizer}}.}

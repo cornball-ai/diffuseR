@@ -97,8 +97,7 @@ NULL
                    zimage = list(repo = .zimage_repo,
                                  files = .zimage_transformer_files,
                                  fn = "download_zimage_turbo"),
-                   stop("No bf16 source known for model '", model, "'",
-                        call. = FALSE))
+                   stop("No bf16 source known for model '", model, "'", call. = FALSE))
     paths <- lapply(spec$files, function(f) {
         tryCatch(hfhub::hub_download(spec$repo, f, local_files_only = TRUE),
                  error = function(e) NULL)

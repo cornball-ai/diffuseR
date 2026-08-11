@@ -3,20 +3,28 @@
 \alias{ltx23_video_vae}
 \title{LTX-2.3 video VAE}
 \usage{
-ltx23_video_vae(in_channels = 3L, out_channels = 3L, latent_channels = 128L,
-                block_out_channels = c(256L, 512L, 1024L, 1024L),
-                decoder_block_out_channels = c(256L, 512L, 512L, 1024L),
-                layers_per_block = c(4L, 6L, 4L, 2L, 2L),
-                decoder_layers_per_block = c(4L, 6L, 4L, 2L, 2L),
-                spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
-                decoder_spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
-                downsample_type = NULL, upsample_type = NULL,
-                upsample_residual = c(FALSE, FALSE, FALSE, FALSE),
-                upsample_factor = c(2L, 2L, 1L, 2L), patch_size = 4L,
-                patch_size_t = 1L, resnet_norm_eps = 1e-06,
-                encoder_causal = TRUE, decoder_causal = FALSE,
-                encoder_spatial_padding_mode = "zeros",
-                decoder_spatial_padding_mode = "zeros")
+ltx23_video_vae(
+  in_channels = 3L,
+  out_channels = 3L,
+  latent_channels = 128L,
+  block_out_channels = c(256L, 512L, 1024L, 1024L),
+  decoder_block_out_channels = c(256L, 512L, 512L, 1024L),
+  layers_per_block = c(4L, 6L, 4L, 2L, 2L),
+  decoder_layers_per_block = c(4L, 6L, 4L, 2L, 2L),
+  spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
+  decoder_spatio_temporal_scaling = c(TRUE, TRUE, TRUE, TRUE),
+  downsample_type = NULL,
+  upsample_type = NULL,
+  upsample_residual = c(FALSE, FALSE, FALSE, FALSE),
+  upsample_factor = c(2L, 2L, 1L, 2L),
+  patch_size = 4L,
+  patch_size_t = 1L,
+  resnet_norm_eps = 1e-06,
+  encoder_causal = TRUE,
+  decoder_causal = FALSE,
+  encoder_spatial_padding_mode = "zeros",
+  decoder_spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{latent_channels}{Integer.}

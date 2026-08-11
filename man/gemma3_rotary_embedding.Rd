@@ -3,8 +3,12 @@
 \alias{gemma3_rotary_embedding}
 \title{Gemma3 Rotary Position Embeddings}
 \usage{
-gemma3_rotary_embedding(dim, max_position_embeddings = 8192L, base = 10000,
-                        scaling_factor = 1)
+gemma3_rotary_embedding(
+  dim,
+  max_position_embeddings = 8192L,
+  base = 10000,
+  scaling_factor = 1
+)
 }
 \arguments{
 \item{dim}{Integer. Head dimension.}

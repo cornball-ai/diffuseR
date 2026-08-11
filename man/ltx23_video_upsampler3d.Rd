@@ -3,8 +3,13 @@
 \alias{ltx23_video_upsampler3d}
 \title{Pixel-shuffle 3D upsampler}
 \usage{
-ltx23_video_upsampler3d(in_channels, stride = c(1L, 1L, 1L), residual = FALSE,
-                        upscale_factor = 1L, spatial_padding_mode = "zeros")
+ltx23_video_upsampler3d(
+  in_channels,
+  stride = c(1L, 1L, 1L),
+  residual = FALSE,
+  upscale_factor = 1L,
+  spatial_padding_mode = "zeros"
+)
 }
 \arguments{
 \item{in_channels}{Integer.}

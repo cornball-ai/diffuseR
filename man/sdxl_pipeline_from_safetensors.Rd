@@ -3,8 +3,12 @@
 \alias{sdxl_pipeline_from_safetensors}
 \title{Assemble a native SDXL pipeline from a diffusers safetensors directory}
 \usage{
-sdxl_pipeline_from_safetensors(diffusers_dir, devices = NULL,
-                               unet_dtype = NULL, verbose = TRUE)
+sdxl_pipeline_from_safetensors(
+  diffusers_dir,
+  devices = NULL,
+  unet_dtype = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{diffusers_dir}{Directory with \code{unet/}, \code{vae/},

@@ -3,8 +3,13 @@
 \alias{download_ltx2}
 \title{Download the LTX-2.3 checkpoint and build a quantized artifact}
 \usage{
-download_ltx2(quantize = TRUE, precision = c("nf4", "fp8"), output_dir = NULL,
-              text_encoder = TRUE, verbose = TRUE)
+download_ltx2(
+  quantize = TRUE,
+  precision = c("nf4", "fp8"),
+  output_dir = NULL,
+  text_encoder = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact after downloading.}

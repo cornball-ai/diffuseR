@@ -3,13 +3,18 @@
 \alias{ltx23_vocoder}
 \title{LTX-2.3 vocoder stage}
 \usage{
-ltx23_vocoder(in_channels = 128L, hidden_channels = 1536L, out_channels = 2L,
-              upsample_kernel_sizes = c(11L, 4L, 4L, 4L, 4L, 4L),
-              upsample_factors = c(5L, 2L, 2L, 2L, 2L, 2L),
-              resnet_kernel_sizes = c(3L, 7L, 11L),
-              resnet_dilations = list(c(1L, 3L, 5L), c(1L, 3L, 5L), c(1L, 3L, 5L)),
-              antialias_ratio = 2L, antialias_kernel_size = 12L,
-              final_bias = FALSE)
+ltx23_vocoder(
+  in_channels = 128L,
+  hidden_channels = 1536L,
+  out_channels = 2L,
+  upsample_kernel_sizes = c(11L, 4L, 4L, 4L, 4L, 4L),
+  upsample_factors = c(5L, 2L, 2L, 2L, 2L, 2L),
+  resnet_kernel_sizes = c(3L, 7L, 11L),
+  resnet_dilations = list(c(1L, 3L, 5L), c(1L, 3L, 5L), c(1L, 3L, 5L)),
+  antialias_ratio = 2L,
+  antialias_kernel_size = 12L,
+  final_bias = FALSE
+)
 }
 \arguments{
 \item{in_channels}{Integer. Flattened input channels (C * mel bins / 1).}

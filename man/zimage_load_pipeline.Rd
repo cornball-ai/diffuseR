@@ -3,10 +3,16 @@
 \alias{zimage_load_pipeline}
 \title{Load the Z-Image-Turbo pipeline}
 \usage{
-zimage_load_pipeline(model_dir = NULL, device = "cuda",
-                     precision = c("auto", "fp8", "nf4", "bf16"),
-                     text_device = NULL, attn_chunk = NULL,
-                     phase_offload = TRUE, pin = NULL, verbose = TRUE)
+zimage_load_pipeline(
+  model_dir = NULL,
+  device = "cuda",
+  precision = c("auto", "fp8", "nf4", "bf16"),
+  text_device = NULL,
+  attn_chunk = NULL,
+  phase_offload = TRUE,
+  pin = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{model_dir}{Quantized artifact directory (default: the

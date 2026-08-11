@@ -3,8 +3,13 @@
 \alias{download_flux1}
 \title{Download FLUX.1-schnell and build the quantized artifact}
 \usage{
-download_flux1(quantize = TRUE, precision = c("nf4", "fp8"), output_dir = NULL,
-               text_encoders = TRUE, verbose = TRUE)
+download_flux1(
+  quantize = TRUE,
+  precision = c("nf4", "fp8"),
+  output_dir = NULL,
+  text_encoders = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{quantize}{Logical. Build the quantized artifact after

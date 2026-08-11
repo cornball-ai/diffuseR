@@ -3,11 +3,17 @@
 \alias{ltx23_load_pipeline}
 \title{Load the LTX-2.3 generation components from a single-file checkpoint}
 \usage{
-ltx23_load_pipeline(checkpoint_path, device = "cuda", dtype = "bfloat16",
-                    transformer_device = "cpu",
-                    components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
-                    pin = TRUE, attn_chunk = NULL, phase_offload = TRUE,
-                    verbose = TRUE)
+ltx23_load_pipeline(
+  checkpoint_path,
+  device = "cuda",
+  dtype = "bfloat16",
+  transformer_device = "cpu",
+  components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
+  pin = TRUE,
+  attn_chunk = NULL,
+  phase_offload = TRUE,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{checkpoint_path}{Path to the single-file checkpoint (e.g.

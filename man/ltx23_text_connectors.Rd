@@ -3,21 +3,27 @@
 \alias{ltx23_text_connectors}
 \title{LTX-2.3 text connectors}
 \usage{
-ltx23_text_connectors(caption_channels = 3840L, text_proj_in_factor = 49L,
-                      video_connector_num_attention_heads = 32L,
-                      video_connector_attention_head_dim = 128L,
-                      video_connector_num_layers = 8L,
-                      video_connector_num_learnable_registers = 128L,
-                      video_gated_attn = TRUE,
-                      audio_connector_num_attention_heads = 32L,
-                      audio_connector_attention_head_dim = 64L,
-                      audio_connector_num_layers = 8L,
-                      audio_connector_num_learnable_registers = 128L,
-                      audio_gated_attn = TRUE,
-                      connector_rope_base_seq_len = 4096L, rope_theta = 10000,
-                      rope_double_precision = TRUE, rope_type = "split",
-                      video_hidden_dim = 4096L, audio_hidden_dim = 2048L,
-                      proj_bias = TRUE)
+ltx23_text_connectors(
+  caption_channels = 3840L,
+  text_proj_in_factor = 49L,
+  video_connector_num_attention_heads = 32L,
+  video_connector_attention_head_dim = 128L,
+  video_connector_num_layers = 8L,
+  video_connector_num_learnable_registers = 128L,
+  video_gated_attn = TRUE,
+  audio_connector_num_attention_heads = 32L,
+  audio_connector_attention_head_dim = 64L,
+  audio_connector_num_layers = 8L,
+  audio_connector_num_learnable_registers = 128L,
+  audio_gated_attn = TRUE,
+  connector_rope_base_seq_len = 4096L,
+  rope_theta = 10000,
+  rope_double_precision = TRUE,
+  rope_type = "split",
+  video_hidden_dim = 4096L,
+  audio_hidden_dim = 2048L,
+  proj_bias = TRUE
+)
 }
 \arguments{
 \item{caption_channels}{Integer. Text encoder hidden size (3840 for
