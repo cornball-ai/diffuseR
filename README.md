@@ -1,5 +1,5 @@
 
-# diffuseR
+<p align="center"><img src="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo.png" alt="diffuseR" width="520"/></p>
 
 [![CRAN status](https://www.r-pkg.org/badges/version/diffuseR)](https://CRAN.R-project.org/package=diffuseR)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
