@@ -93,7 +93,12 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     chosen <- NULL
     want <- NULL # first VRAM-eligible tier blocked by a missing read cap
     for (tier in tiers) {
-        if (vram_gb < tier$min_vram) {
+        # min_vram values are nameplate card sizes (8, 12, 16...), but
+        # vram_gb is FREE VRAM, and no card reports its nameplate as
+        # free (an 8 GB card shows ~7.5-7.9). Without the 0.5 GB
+        # tolerance every nameplate-valued tier is unreachable on
+        # exactly the card it targets (#56).
+        if (vram_gb < tier$min_vram - 0.5) {
             next
         }
         need <- tier$needs

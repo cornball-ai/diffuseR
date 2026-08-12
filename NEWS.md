@@ -1,3 +1,12 @@
+# diffuseR 0.2.2.2
+
+* `recommend()` tier selection now applies a 0.5 GB tolerance to the
+  `min_vram` thresholds (#56). The thresholds are nameplate card sizes,
+  but detection reports free VRAM and no card reports its nameplate as
+  free, so every nameplate-valued tier (the flux-family 8 GB tiers, the
+  SDXL 12 GB tier, the flux2 bf16 16 GB tier) was unreachable on
+  exactly the card it targets and silently dropped to the CPU tier.
+
 # diffuseR 0.2.2.1
 
 * `txt2img()` and `img2img()` now `match.arg()` their `model_name`, so
