@@ -18,9 +18,29 @@ NULL
 # hf_download_pt); the base mirrors the local artifact directory name so
 # a fetched artifact is indistinguishable from a locally built one.
 .prebuilt_nf4_spec <- list(
-                           flux2 = list(repo = "cornball-ai/flux2-R", base = "flux2-klein-4b-nf4"),
-                           zimage = list(repo = "cornball-ai/zimage-R", base = "zimage-turbo-nf4")
+                           flux2 = list(repo = "cornball-ai/flux2-R", base = "flux2-klein-4b-nf4",
+                                        size = "~2.1 GB"),
+                           zimage = list(repo = "cornball-ai/zimage-R", base = "zimage-turbo-nf4",
+                                         size = "~3.5 GB")
 )
+
+# TRUE when the hosted artifact is already fully in the hfhub cache, so
+# fetching it needs no network and therefore no consent.
+.prebuilt_all_cached <- function(spec) {
+    cached <- function(f) {
+        !is.null(tryCatch(
+                          hfhub::hub_download(spec$repo, paste0(spec$base, "/", f),
+                repo_type = "dataset", local_files_only = TRUE),
+                          error = function(e) NULL))
+    }
+    if (!cached("manifest.json")) {
+        return(FALSE)
+    }
+    m <- jsonlite::fromJSON(hfhub::hub_download(spec$repo,
+        paste0(spec$base, "/manifest.json"), repo_type = "dataset",
+        local_files_only = TRUE))
+    all(vapply(m$shards, cached, logical(1)))
+}
 
 # Fetch a hosted NF4 artifact into output_dir. Returns TRUE when the
 # artifact is complete there, FALSE when the model has no hosted
@@ -30,6 +50,14 @@ NULL
 .flux_fetch_prebuilt <- function(model, output_dir, verbose = TRUE) {
     spec <- .prebuilt_nf4_spec[[model]]
     if (is.null(spec)) {
+        return(FALSE)
+    }
+    # Every model download is consent-gated (see download_ltx2). A
+    # declined fetch returns FALSE so the caller falls through to the
+    # source + quantize path, which carries its own (larger) consent ask.
+    if (!.prebuilt_all_cached(spec) &&
+        !.ltx23_consent(sprintf("the prebuilt NF4 artifact (%s, %s)",
+                                spec$size, spec$repo))) {
         return(FALSE)
     }
     manifest_cache <- tryCatch(

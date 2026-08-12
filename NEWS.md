@@ -1,6 +1,6 @@
 # diffuseR 0.2.2.3
 
-* Prebuilt NF4 artifacts for flux2 (2.3 GB) and zimage (3.6 GB) are now
+* Prebuilt NF4 artifacts for flux2 (2.1 GB) and zimage (3.5 GB) are now
   hosted on the cornball-ai HuggingFace org, and
   `download_flux2_klein()` / `download_zimage_turbo()` fetch them by
   default when the resolved precision is nf4 (`prebuilt = FALSE` forces
