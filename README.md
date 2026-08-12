@@ -1,5 +1,10 @@
 
-# diffuseR
+<p align="center">
+<picture>
+<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo-dark.png">
+<img src="https://raw.githubusercontent.com/cornball-ai/diffuseR/main/man/figures/logo.png" alt="diffuseR" width="520"/>
+</picture>
+</p>
 
 [![CRAN status](https://www.r-pkg.org/badges/version/diffuseR)](https://CRAN.R-project.org/package=diffuseR)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
@@ -326,3 +331,5 @@ This project is licensed under the Apache 2. License - see the LICENSE file for 
 - Hugging Face for the original diffusers library
 - Stability AI for Stable Diffusion
 - The R and torch communities for their excellent tooling
+
+The corn kernel in the logo is tiny™, the cornball.ai mascot.
