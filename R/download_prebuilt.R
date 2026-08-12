@@ -21,7 +21,7 @@ NULL
                            flux2 = list(repo = "cornball-ai/flux2-R", base = "flux2-klein-4b-nf4",
                                         size = "~2.1 GB"),
                            zimage = list(repo = "cornball-ai/zimage-R", base = "zimage-turbo-nf4",
-                                         size = "~3.5 GB")
+        size = "~3.5 GB")
 )
 
 # TRUE when the hosted artifact is already fully in the hfhub cache, so
@@ -30,15 +30,16 @@ NULL
     cached <- function(f) {
         !is.null(tryCatch(
                           hfhub::hub_download(spec$repo, paste0(spec$base, "/", f),
-                repo_type = "dataset", local_files_only = TRUE),
+                    repo_type = "dataset",
+                    local_files_only = TRUE),
                           error = function(e) NULL))
     }
     if (!cached("manifest.json")) {
         return(FALSE)
     }
     m <- jsonlite::fromJSON(hfhub::hub_download(spec$repo,
-        paste0(spec$base, "/manifest.json"), repo_type = "dataset",
-        local_files_only = TRUE))
+            paste0(spec$base, "/manifest.json"), repo_type = "dataset",
+            local_files_only = TRUE))
     all(vapply(m$shards, cached, logical(1)))
 }
 
