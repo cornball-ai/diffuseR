@@ -35,5 +35,18 @@ package are R ports of, or derived from, third-party work:
    licenses (CreativeML Open RAIL++-M and similar) and are not part of,
    nor redistributed with, this package.
 
+5. The R Foundation
+   https://www.r-project.org/logo/
+   The diffuseR logo (man/figures/logo.png and its dark-mode variant
+   man/figures/logo-dark.png) incorporates the R logo,
+   (c) 2016 The R Foundation, used under CC-BY-SA 4.0
+   (https://creativecommons.org/licenses/by-sa/4.0/). The diffuseR logo
+   image is accordingly licensed CC-BY-SA 4.0; the package code remains
+   Apache License (>= 2).
+
+   tiny, the corn-kernel mascot appearing in the logo, is a trademark
+   of cornball.ai. The CC-BY-SA license on the logo image does not
+   grant trademark rights (CC-BY-SA 4.0, sec. 2(b)(2)).
+
 See inst/REFERENCES.md for a technique-by-technique account of where
 each implementation idea comes from.

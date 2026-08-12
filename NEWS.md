@@ -1,4 +1,4 @@
-# diffuseR 0.2.2.2
+# diffuseR 0.2.2.3
 
 * Prebuilt NF4 artifacts for flux2 (2.3 GB) and zimage (3.6 GB) are now
   hosted on the cornball-ai HuggingFace org, and
@@ -12,6 +12,15 @@
   ungated) gives a plain `install.packages("diffuseR")` setup something
   to generate with right away. FLUX.1-schnell (gated repo) and LTX-2.3
   (LTX-2 Community License) still download sources and build locally.
+
+# diffuseR 0.2.2.2
+
+* `recommend()` tier selection now applies a 0.5 GB tolerance to the
+  `min_vram` thresholds (#56). The thresholds are nameplate card sizes,
+  but detection reports free VRAM and no card reports its nameplate as
+  free, so every nameplate-valued tier (the flux-family 8 GB tiers, the
+  SDXL 12 GB tier, the flux2 bf16 16 GB tier) was unreachable on
+  exactly the card it targets and silently dropped to the CPU tier.
 
 # diffuseR 0.2.2.1
 

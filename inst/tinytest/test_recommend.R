@@ -19,6 +19,17 @@ expect_true(all(c("precision", "devices", "offload", "max_pixels",
   names(r)))
 expect_true(is.integer(r$max_pixels) || is.numeric(r$max_pixels))
 
+# --- nameplate tiers reachable on their own cards (#56) --------------------------
+
+# min_vram thresholds are nameplate sizes, but detection reports free
+# VRAM: a real 8 GB card shows ~7.5-7.9 free. The 0.5 GB tolerance keeps
+# the 8 GB tier selectable there; below the tolerance drops to CPU.
+r8 <- recommend("flux2", vram_gb = 7.6, st_caps = cran)
+expect_equal(r8$devices$transformer, "cuda")
+expect_equal(r8$precision, "nf4")
+r7 <- recommend("flux2", vram_gb = 7.4, st_caps = cran)
+expect_true(all(unlist(r7$devices) == "cpu"))
+
 # --- floors: nf4 for the quantized families, fp16 for SD -------------------------
 
 # No GPU: everything runs on CPU at its floor precision, no fork nag.
