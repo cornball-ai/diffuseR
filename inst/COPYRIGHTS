@@ -44,5 +44,9 @@ package are R ports of, or derived from, third-party work:
    image is accordingly licensed CC-BY-SA 4.0; the package code remains
    Apache License (>= 2).
 
+   tiny, the corn-kernel mascot appearing in the logo, is a trademark
+   of cornball.ai. The CC-BY-SA license on the logo image does not
+   grant trademark rights (CC-BY-SA 4.0, sec. 2(b)(2)).
+
 See inst/REFERENCES.md for a technique-by-technique account of where
 each implementation idea comes from.

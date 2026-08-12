@@ -331,3 +331,5 @@ This project is licensed under the Apache 2. License - see the LICENSE file for 
 - Hugging Face for the original diffusers library
 - Stability AI for Stable Diffusion
 - The R and torch communities for their excellent tooling
+
+The corn kernel in the logo is tiny™, the cornball.ai mascot.
