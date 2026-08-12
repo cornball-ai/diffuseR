@@ -5,5 +5,6 @@
 \description{
 Downloads FLUX.2-klein-4B from HuggingFace (Apache-2.0, ungated) and
 quantizes the 4B transformer to a local fp8 (~4 GB) or NF4 (~2.3 GB)
-artifact.
+artifact. For nf4 the prebuilt hosted artifact is fetched instead of
+building, when reachable (see \link{download_prebuilt}).
 }

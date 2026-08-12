@@ -1,3 +1,18 @@
+# diffuseR 0.2.2.3
+
+* Prebuilt NF4 artifacts for flux2 (2.1 GB) and zimage (3.5 GB) are now
+  hosted on the cornball-ai HuggingFace org, and
+  `download_flux2_klein()` / `download_zimage_turbo()` fetch them by
+  default when the resolved precision is nf4 (`prebuilt = FALSE` forces
+  a local build). This narrowly reverses 0.2.2's no-hosting decision:
+  the CRAN safetensors cannot read any of the multi-GB upstream sources
+  (the fix is merged upstream, mlverse/safetensors#14, but unreleased),
+  which left a stock CRAN install unable to build a quantized artifact
+  at all. Hosting the two redistributable models (both Apache-2.0,
+  ungated) gives a plain `install.packages("diffuseR")` setup something
+  to generate with right away. FLUX.1-schnell (gated repo) and LTX-2.3
+  (LTX-2 Community License) still download sources and build locally.
+
 # diffuseR 0.2.2.2
 
 * `recommend()` tier selection now applies a 0.5 GB tolerance to the

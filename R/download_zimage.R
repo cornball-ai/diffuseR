@@ -40,10 +40,15 @@ NULL
 #' @param quantize Logical. Build the quantized artifact.
 #' @param precision "auto" (default: fp8 when safetensors supports
 #'   float8, else nf4), "fp8" (~6.3 GB, GPU-resident; near-bf16
-#'   quality), or "nf4" (~3.6 GB).
+#'   quality), or "nf4" (~3.6 GB, fetched prebuilt from the cornball-ai
+#'   HuggingFace dataset when available).
 #' @param output_dir Directory for the quantized artifact.
 #' @param text_encoders Logical. Also fetch the Qwen3-4B text encoder,
 #'   tokenizer, VAE, and scheduler config (~8.2 GB).
+#' @param prebuilt Logical. When the resolved precision is nf4, fetch
+#'   the hosted prebuilt artifact (~3.6 GB) instead of downloading the
+#'   24.6 GB float32 source and quantizing locally. \code{FALSE} forces
+#'   a local build.
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{transformer_dir},
@@ -53,7 +58,7 @@ NULL
 download_zimage_turbo <- function(quantize = TRUE,
                                   precision = c("auto", "fp8", "nf4"),
                                   output_dir = NULL, text_encoders = TRUE,
-                                  verbose = TRUE) {
+                                  prebuilt = TRUE, verbose = TRUE) {
     precision <- match.arg(precision)
     precision <- .flux_resolve_precision(precision,
         file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
@@ -73,6 +78,12 @@ download_zimage_turbo <- function(quantize = TRUE,
     have_artifact <- file.exists(manifest_path) && {
         m <- jsonlite::fromJSON(manifest_path)
         all(file.exists(file.path(output_dir, m$shards)))
+    }
+
+    fetched <- FALSE
+    if (prebuilt && quantize && !have_artifact && identical(precision, "nf4")) {
+        fetched <- .flux_fetch_prebuilt("zimage", output_dir, verbose)
+        have_artifact <- have_artifact || fetched
     }
 
     if (!have_artifact || !quantize) {
@@ -121,7 +132,7 @@ download_zimage_turbo <- function(quantize = TRUE,
                 )
             }
         }
-    } else if (verbose) {
+    } else if (verbose && !fetched) {
         message(toupper(precision), " artifact already present: ", output_dir)
     }
 

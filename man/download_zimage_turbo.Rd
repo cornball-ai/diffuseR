@@ -8,6 +8,7 @@ download_zimage_turbo(
   precision = c("auto", "fp8", "nf4"),
   output_dir = NULL,
   text_encoders = TRUE,
+  prebuilt = TRUE,
   verbose = TRUE
 )
 }
@@ -16,12 +17,18 @@ download_zimage_turbo(
 
 \item{precision}{"auto" (default: fp8 when safetensors supports
 float8, else nf4), "fp8" (~6.3 GB, GPU-resident; near-bf16
-quality), or "nf4" (~3.6 GB).}
+quality), or "nf4" (~3.6 GB, fetched prebuilt from the cornball-ai
+HuggingFace dataset when available).}
 
 \item{output_dir}{Directory for the quantized artifact.}
 
 \item{text_encoders}{Logical. Also fetch the Qwen3-4B text encoder,
 tokenizer, VAE, and scheduler config (~8.2 GB).}
+
+\item{prebuilt}{Logical. When the resolved precision is nf4, fetch
+the hosted prebuilt artifact (~3.6 GB) instead of downloading the
+24.6 GB float32 source and quantizing locally. \code{FALSE} forces
+a local build.}
 
 \item{verbose}{Logical.}
 }
