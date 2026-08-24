@@ -1,3 +1,29 @@
+# diffuseR 0.2.2.4
+
+* `resident_load()` accepts `"sdxl"`, making it the fifth resident family.
+  `sdxl_load_pipeline()` is the new adapter: it defaults to the
+  `download_sdxl()` cache, fixes the UNet at float16 before the weights are
+  pinned, and marks the pipeline so that only the UNet is placed on the
+  card. Onloading all four components fits the 8.0 GB of weights and then
+  OOMs in the VAE decode, which runs 1024x1024 in float32 while the UNet is
+  still resident; the text encode and decode therefore run on the host from
+  the same pinned copies. `resident_generate()` supplies the matching
+  `devices` so `txt2img_sdxl()` does not re-decide the placement with
+  `auto_devices()`, and an explicit `devices` from the caller still wins.
+
+* `resident_deactivate()` now releases the NF4 dequantisation buffers for
+  `ltx`. They live in a package-level environment rather than in the module,
+  so offloading the weights did not free them and `gc()` could not reclaim
+  them, leaving scratch on the card after every deactivation.
+
+* A bulk activation pre-warms the CUDA caching allocator. Growing the pool
+  one allocation per tensor dominated the first activation: 24.16 s against
+  0.32 s once warm.
+
+* `txt2img_sdxl()` no longer requires the legacy TorchScript `.pt` files
+  when it is handed a pipeline it did not build, and `setup_dtype()` accepts
+  an ordinal-qualified device such as `"cuda:0"`.
+
 # diffuseR 0.2.2.3
 
 * Prebuilt NF4 artifacts for flux2 (2.1 GB) and zimage (3.5 GB) are now
