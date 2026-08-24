@@ -635,13 +635,19 @@ resident_deactivate <- function(res, release = TRUE) {
 #'   \code{sdxl} the handle supplies \code{devices} matching its own
 #'   placement unless the caller names it.
 #'
-#' @return Whatever the family generator returns, and the families do not
-#'   agree: an image array for \code{flux1}, \code{flux2} and
-#'   \code{zimage}, a video array for \code{ltx}, and for \code{sdxl} a
-#'   list of \code{image} and \code{metadata}, because
-#'   \code{\link{txt2img_sdxl}} has always returned that pair and changing
-#'   it would break every existing caller. A broker that wants one shape
-#'   should normalise in its own wrapper.
+#' @return Whatever the family generator returns, which is always a list.
+#'
+#'   The five image families (\code{flux1}, \code{flux2}, \code{zimage},
+#'   \code{sdxl}, \code{sd21}) return \code{list(image, metadata)}, where
+#'   \code{image} is an [H, W, 3] array in [0, 1]. \code{ltx} returns a
+#'   richer list: \code{video}, \code{audio}, \code{sample_rate}, the raw
+#'   \code{latents} and \code{audio_latents}, and \code{latent_shape}.
+#'
+#'   So a caller unwraps \code{$image} uniformly across the image families
+#'   and \code{$video} for \code{ltx}. The only inconsistency is how the
+#'   list is handed back -- \code{\link{txt2img_sdxl}} uses \code{return()}
+#'   and the rest use \code{invisible()} -- which affects auto-printing at
+#'   the console and nothing else.
 #'
 #' @export
 resident_generate <- function(res, prompt, ...) {
