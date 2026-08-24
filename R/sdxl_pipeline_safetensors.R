@@ -201,8 +201,8 @@ sdxl_load_pipeline <- function(model_dir = NULL, device = "cuda",
     # device copy that pinning immediately evicts.
     pipeline <- sdxl_pipeline_from_safetensors(
         model_dir,
-        devices = list(unet = "cpu", decoder = "cpu",
-                       text_encoder = "cpu", text_encoder2 = "cpu"),
+        devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu",
+                       text_encoder2 = "cpu"),
         unet_dtype = unet_dtype, verbose = verbose)
     pipeline$phase_offload <- isTRUE(phase_offload)
     # Only the UNet goes to the card. All four are pinned and the text

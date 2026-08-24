@@ -17,8 +17,13 @@ resident_generate(res, prompt, ...)
 placement unless the caller names it.}
 }
 \value{
-Whatever the family generator returns: an image array for the
-  image families, a video array for \code{ltx}.
+Whatever the family generator returns, and the families do not
+  agree: an image array for \code{flux1}, \code{flux2} and
+  \code{zimage}, a video array for \code{ltx}, and for \code{sdxl} a
+  list of \code{image} and \code{metadata}, because
+  \code{\link{txt2img_sdxl}} has always returned that pair and changing
+  it would break every existing caller. A broker that wants one shape
+  should normalise in its own wrapper.
 }
 \description{
 Dispatches to the family's generator with the resident pipeline

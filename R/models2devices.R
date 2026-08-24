@@ -24,8 +24,7 @@
 #' @keywords internal
 .devices_for_pipeline <- function(model_name, devices, unet_dtype_str = NULL) {
     dv <- standardize_devices(devices, get_required_components(model_name))
-    list(devices = dv,
-         unet_dtype = setup_dtype(dv, unet_dtype_str),
+    list(devices = dv, unet_dtype = setup_dtype(dv, unet_dtype_str),
          device_cpu = torch::torch_device("cpu"),
          device_cuda = torch::torch_device("cuda"))
 }

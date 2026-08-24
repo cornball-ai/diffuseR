@@ -653,10 +653,13 @@ resident_generate <- function(res, prompt, ...) {
     if (identical(res$model, "sdxl") && is.null(args$devices)) {
         on_gpu <- .resident_gpu_set(res)
         place <- function(nm) {
-            if (nm %in% on_gpu) res$device else "cpu"
+            if (nm %in% on_gpu) {
+                res$device
+            } else {
+                "cpu"
+            }
         }
-        args$devices <- list(unet = place("unet"),
-                             decoder = place("decoder"),
+        args$devices <- list(unet = place("unet"), decoder = place("decoder"),
                              text_encoder = place("text_encoder"),
                              text_encoder2 = place("text_encoder2"))
     }
