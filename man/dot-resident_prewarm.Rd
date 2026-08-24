@@ -7,16 +7,19 @@
 }
 \arguments{
 \item{bytes}{Numeric. Host bytes about to be transferred; the pool is
-warmed to this plus a small margin for allocator slack.}
+warmed toward this plus a small margin for allocator slack.}
 
-\item{device}{Target CUDA device.}
+\item{device}{Target CUDA device, e.g. "cuda" or "cuda:1". Also selects
+which device's allocator is measured.}
 
-\item{held}{Bytes the caching allocator already holds. NULL measures it.
-Pass a value to make the decision deterministic: without CUDA the
-measurement is 0, which would always warm, so a test that wants the
-skip has to state what the pool holds rather than depend on the
-machine having a card. Same reason \code{\link{.resident_check_fits}}
-takes \code{free_gb}.}
+\item{held}{Free cached bytes the allocator already holds on that
+device, i.e. reserved minus allocated -- bytes that are reserved but
+live belong to something else and cannot serve this transfer. NULL
+measures it. Pass a value to make the decision deterministic: without
+CUDA the measurement is 0, which would always warm, so a test that
+wants the skip has to state what the pool holds rather than depend on
+the machine having a card. Same reason
+\code{\link{.resident_check_fits}} takes \code{free_gb}.}
 }
 \value{
 Invisibly, the bytes requested from the allocator: 0 when the

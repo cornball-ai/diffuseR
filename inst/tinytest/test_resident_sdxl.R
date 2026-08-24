@@ -228,10 +228,11 @@ expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 5 * gb), 0)
 # Exactly equal still counts as covered.
 expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb), 0)
 
-# Pool short: ask for the SHORTFALL, not the whole need. Requesting the
-# whole need here is precisely the bug.
+# Pool short: grow toward bytes * 1.05, so the 5% margin lands on the
+# FINAL pool. (bytes - held) * 1.05 would ask for 5% of the gap instead
+# and undershoot the target whenever held > 0.
 expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 3 * gb),
-             1 * gb * 1.05)
+             4 * gb * 1.05 - 3 * gb)
 
 # Cold pool: byte-identical to the original behaviour, so the 74x
 # cold-start win is untouched.
@@ -243,3 +244,19 @@ expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = NA_real_),
              4 * gb * 1.05)
 expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = -1),
              4 * gb * 1.05)
+
+# --- the allocator is read on the handle's own device -------------------------------
+
+# cuda_memory_stats() defaults to cuda_current_device(), so reading it
+# without an argument reports whichever device is current rather than the
+# one the handle bound. resident_load() binds an explicit "cuda:N" so
+# transitions cannot drift; a cuda:1 handle deciding from cuda:0's pool
+# would skip a pre-warm it needs or repeat one it does not.
+expect_equal(diffuseR:::.cuda_index("cuda:0"), 0L)
+expect_equal(diffuseR:::.cuda_index("cuda:1"), 1L)
+expect_equal(diffuseR:::.cuda_index("cuda:7"), 7L)
+# Unqualified falls back to the current device, whatever that is.
+expect_true(is.numeric(diffuseR:::.cuda_index("cuda")))
+# A malformed ordinal must not become NA and poison the stats lookup.
+expect_true(is.numeric(diffuseR:::.cuda_index("cuda:x")))
+expect_false(is.na(diffuseR:::.cuda_index("cuda:x")))

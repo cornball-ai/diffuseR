@@ -334,12 +334,28 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
 #' @param bytes Numeric. Host bytes about to be transferred; the pool is
 #'   warmed to this plus a small margin for allocator slack.
 #' @param device Target CUDA device.
-#' @param held Bytes the caching allocator already holds. NULL measures it.
-#'   Pass a value to make the decision deterministic: without CUDA the
-#'   measurement is 0, which would always warm, so a test that wants the
-#'   skip has to state what the pool holds rather than depend on the
-#'   machine having a card. Same reason \code{\link{.resident_check_fits}}
-#'   takes \code{free_gb}.
+#' Growing the pool is best-effort in the partial case. A request smaller
+#' than a free block already in the cache is served from that block and
+#' grows nothing, so when the pool is short by less than it already holds
+#' the pre-warm may be absorbed rather than add capacity. That is bounded
+#' and harmless -- the onload then falls back to the per-tensor path for
+#' the remainder, which is the old behaviour -- and the alternative, asking
+#' for the whole figure to force a new segment, is the accumulation bug
+#' this function exists to avoid. The cold pool, which is the case worth
+#' optimising and the one a broker's first request hits, is unaffected.
+#'
+#' @param bytes Numeric. Host bytes about to be transferred; the pool is
+#'   warmed toward this plus a small margin for allocator slack.
+#' @param device Target CUDA device, e.g. "cuda" or "cuda:1". Also selects
+#'   which device's allocator is measured.
+#' @param held Free cached bytes the allocator already holds on that
+#'   device, i.e. reserved minus allocated -- bytes that are reserved but
+#'   live belong to something else and cannot serve this transfer. NULL
+#'   measures it. Pass a value to make the decision deterministic: without
+#'   CUDA the measurement is 0, which would always warm, so a test that
+#'   wants the skip has to state what the pool holds rather than depend on
+#'   the machine having a card. Same reason
+#'   \code{\link{.resident_check_fits}} takes \code{free_gb}.
 #'
 #' @return Invisibly, the bytes requested from the allocator: 0 when the
 #'   pool already covers the transfer and nothing was asked for.
@@ -371,16 +387,22 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     # generation in between, which is why one cycle is not a test.
     if (is.null(held)) {
         held <- tryCatch({
-            as.numeric(torch::cuda_memory_stats()$reserved_bytes$all$current)
+            s <- torch::cuda_memory_stats(device = .cuda_index(device))
+            as.numeric(s$reserved_bytes$all$current) -
+                as.numeric(s$allocated_bytes$all$current)
         }, error = function(e) 0)
     }
     if (!isTRUE(is.finite(held)) || held < 0) {
         held <- 0
     }
+    # Enough cached to serve the transfer: nothing to grow.
     if (held >= bytes) {
         return(invisible(0))
     }
-    want <- (as.numeric(bytes) - held) * 1.05
+    # Grow toward bytes * 1.05, so the margin is on the FINAL pool rather
+    # than on the shortfall. (bytes - held) * 1.05 asks for 5% of the gap
+    # instead, which undershoots the target whenever held > 0.
+    want <- as.numeric(bytes) * 1.05 - held
     tryCatch({
         warm <- torch::torch_empty(want, dtype = torch::torch_uint8(),
                                    device = device)
@@ -388,6 +410,32 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         gc(verbose = FALSE)
     }, error = function(e) invisible(NULL))
     invisible(want)
+}
+
+#' Device ordinal for a torch device string
+#'
+#' \code{torch::cuda_memory_stats()} defaults to
+#' \code{cuda_current_device()}, so reading it without an argument reports
+#' whichever device happens to be current rather than the one a handle is
+#' bound to. \code{resident_load()} binds an explicit \code{"cuda:N"}
+#' precisely so transitions cannot drift, and a handle on \code{cuda:1}
+#' deciding from \code{cuda:0}'s pool would either skip a pre-warm it needs
+#' or repeat one it does not.
+#'
+#' @param device Character, e.g. "cuda", "cuda:0", "cuda:1".
+#'
+#' @return Integer ordinal. An unqualified device gives the current one.
+#'
+#' @keywords internal
+.cuda_index <- function(device) {
+    d <- as.character(device)[[1]]
+    if (grepl(":", d, fixed = TRUE)) {
+        n <- suppressWarnings(as.integer(sub("^.*:", "", d)))
+        if (!is.na(n)) {
+            return(n)
+        }
+    }
+    tryCatch(torch::cuda_current_device(), error = function(e) 0L)
 }
 
 #' Which components a bulk activation puts on the card
@@ -639,15 +687,21 @@ resident_deactivate <- function(res, release = TRUE) {
 #'
 #'   The five image families (\code{flux1}, \code{flux2}, \code{zimage},
 #'   \code{sdxl}, \code{sd21}) return \code{list(image, metadata)}, where
-#'   \code{image} is an [H, W, 3] array in [0, 1]. \code{ltx} returns a
-#'   richer list: \code{video}, \code{audio}, \code{sample_rate}, the raw
-#'   \code{latents} and \code{audio_latents}, and \code{latent_shape}.
+#'   \code{image} is an [H, W, 3] array in [0, 1], so a caller unwraps
+#'   \code{$image} uniformly across all five.
 #'
-#'   So a caller unwraps \code{$image} uniformly across the image families
-#'   and \code{$video} for \code{ltx}. The only inconsistency is how the
-#'   list is handed back -- \code{\link{txt2img_sdxl}} uses \code{return()}
-#'   and the rest use \code{invisible()} -- which affects auto-printing at
-#'   the console and nothing else.
+#'   \code{ltx} returns \code{latents}, \code{audio_latents},
+#'   \code{latent_shape} and \code{sample_rate}, plus \code{video} and
+#'   \code{audio} -- but those two are produced only when
+#'   \code{decode_video} and \code{decode_audio} are TRUE, which they are
+#'   by default. A caller that turns either off gets a list without that
+#'   field rather than a NULL one, so index it with \code{[[ ]]} and check,
+#'   the way \code{\link{txt2vid_ltx2}} does internally.
+#'
+#'   Only the visibility differs: \code{\link{txt2img_sdxl}} and
+#'   \code{\link{txt2img_sd21}} use \code{return()} while the other three
+#'   image families and \code{ltx} use \code{invisible()}, which affects
+#'   auto-printing at the console and nothing else.
 #'
 #' @export
 resident_generate <- function(res, prompt, ...) {

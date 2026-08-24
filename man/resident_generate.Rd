@@ -21,15 +21,21 @@ Whatever the family generator returns, which is always a list.
 
   The five image families (\code{flux1}, \code{flux2}, \code{zimage},
   \code{sdxl}, \code{sd21}) return \code{list(image, metadata)}, where
-  \code{image} is an [H, W, 3] array in [0, 1]. \code{ltx} returns a
-  richer list: \code{video}, \code{audio}, \code{sample_rate}, the raw
-  \code{latents} and \code{audio_latents}, and \code{latent_shape}.
+  \code{image} is an [H, W, 3] array in [0, 1], so a caller unwraps
+  \code{$image} uniformly across all five.
 
-  So a caller unwraps \code{$image} uniformly across the image families
-  and \code{$video} for \code{ltx}. The only inconsistency is how the
-  list is handed back -- \code{\link{txt2img_sdxl}} uses \code{return()}
-  and the rest use \code{invisible()} -- which affects auto-printing at
-  the console and nothing else.
+  \code{ltx} returns \code{latents}, \code{audio_latents},
+  \code{latent_shape} and \code{sample_rate}, plus \code{video} and
+  \code{audio} -- but those two are produced only when
+  \code{decode_video} and \code{decode_audio} are TRUE, which they are
+  by default. A caller that turns either off gets a list without that
+  field rather than a NULL one, so index it with \code{[[ ]]} and check,
+  the way \code{\link{txt2vid_ltx2}} does internally.
+
+  Only the visibility differs: \code{\link{txt2img_sdxl}} and
+  \code{\link{txt2img_sd21}} use \code{return()} while the other three
+  image families and \code{ltx} use \code{invisible()}, which affects
+  auto-printing at the console and nothing else.
 }
 \description{
 Dispatches to the family's generator with the resident pipeline
