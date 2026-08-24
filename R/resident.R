@@ -331,9 +331,6 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
 #' the per-tensor path, which is the current behaviour and merely slow, so
 #' the failure is swallowed rather than raised.
 #'
-#' @param bytes Numeric. Host bytes about to be transferred; the pool is
-#'   warmed to this plus a small margin for allocator slack.
-#' @param device Target CUDA device.
 #' Growing the pool is best-effort in the partial case. A request smaller
 #' than a free block already in the cache is served from that block and
 #' grows nothing, so when the pool is short by less than it already holds
@@ -395,14 +392,15 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     if (!isTRUE(is.finite(held)) || held < 0) {
         held <- 0
     }
-    # Enough cached to serve the transfer: nothing to grow.
-    if (held >= bytes) {
+    # One target, used for both the skip and the size, so the two cannot
+    # disagree. Skipping at `held >= bytes` while growing toward
+    # `bytes * 1.05` put a step in the middle: 3.999 GiB held asked for
+    # 0.201 GiB and 4.000 GiB held asked for nothing.
+    target <- as.numeric(bytes) * 1.05
+    if (held >= target) {
         return(invisible(0))
     }
-    # Grow toward bytes * 1.05, so the margin is on the FINAL pool rather
-    # than on the shortfall. (bytes - held) * 1.05 asks for 5% of the gap
-    # instead, which undershoots the target whenever held > 0.
-    want <- as.numeric(bytes) * 1.05 - held
+    want <- target - held
     tryCatch({
         warm <- torch::torch_empty(want, dtype = torch::torch_uint8(),
                                    device = device)

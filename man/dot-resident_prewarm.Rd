@@ -42,5 +42,15 @@ Best-effort. A card that cannot seat the block in one piece falls back to
 the per-tensor path, which is the current behaviour and merely slow, so
 the failure is swallowed rather than raised.
 
+Growing the pool is best-effort in the partial case. A request smaller
+than a free block already in the cache is served from that block and
+grows nothing, so when the pool is short by less than it already holds
+the pre-warm may be absorbed rather than add capacity. That is bounded
+and harmless -- the onload then falls back to the per-tensor path for
+the remainder, which is the old behaviour -- and the alternative, asking
+for the whole figure to force a new segment, is the accumulation bug
+this function exists to avoid. The cold pool, which is the case worth
+optimising and the one a broker's first request hits, is unaffected.
+
 }
 \keyword{internal}

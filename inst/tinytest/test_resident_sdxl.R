@@ -223,16 +223,27 @@ expect_equal(diffuseR:::.resident_prewarm(0, "cuda"), 0)
 # SDXL went 5.299 -> 10.322 GiB and the third activation was refused.
 gb <- 1024^3
 
-# Pool already covers the transfer: ask for nothing at all.
+# One target governs both the skip and the size. Skipping at held >= bytes
+# while growing toward bytes * 1.05 put a step in the middle, so the
+# threshold is the target itself.
 expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 5 * gb), 0)
-# Exactly equal still counts as covered.
-expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb), 0)
+# Exactly at the target still counts as covered.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb * 1.05),
+             0)
 
 # Pool short: grow toward bytes * 1.05, so the 5% margin lands on the
 # FINAL pool. (bytes - held) * 1.05 would ask for 5% of the gap instead
 # and undershoot the target whenever held > 0.
 expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 3 * gb),
              4 * gb * 1.05 - 3 * gb)
+
+# No discontinuity around `bytes`: holding a hair under and a hair over the
+# raw need must differ by a hair, not by the whole margin. This is the case
+# the old threshold got wrong.
+lo <- diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb - 1)
+hi <- diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb + 1)
+expect_true(abs(lo - hi) < 10)
+expect_true(lo > 0 && hi > 0)
 
 # Cold pool: byte-identical to the original behaviour, so the 74x
 # cold-start win is untouched.

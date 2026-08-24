@@ -7,10 +7,13 @@
   request cannot be served from it and takes a fresh allocation beside the
   old one. Under `resident_deactivate(release = FALSE)` nothing empties
   the cache, so SDXL went 5.299 GiB after one cycle to 10.322 after two
-  and refused the third. It now grows only the shortfall, and skips
-  entirely when the pool already covers the transfer; a cold pool is
-  unchanged. Measured flat at 5.396 / 5.498 / 5.498 GiB across three
-  cycles.
+  and refused the third. It now measures the free cache on the handle's
+  own device and grows only the shortfall, skipping entirely when the pool
+  already covers the transfer; a cold pool is unchanged, and the
+  cold-start win is intact (2.48 s against 2.51 s before). Measured flat
+  at 5.396 / 5.398 / 5.398 / 5.398 / 5.398 GiB across five cycles, with a
+  phase-offloading family (flux2) untouched because it never takes the
+  bulk branch.
 
   This also corrected the budget independently of the refusal: both
   release modes doubled between the first and second cycle, so any peak
