@@ -233,10 +233,10 @@ can also read larger shards.
 Higher-quality tiers behave as follows:
 
 - **bf16** (24 GB+ cards) is also CRAN-readable.
-- **fp8** (the 12-16 GB sweet spot) needs safetensors 0.3.0 or newer,
-  which added float8 support (mlverse/safetensors#13). Older versions
-  still read nf4, so a stale safetensors costs you a tier rather than
-  the model.
+- **fp8** (the 12-16 GB sweet spot) needs float8 support
+  (mlverse/safetensors#13), which reached CRAN in safetensors 0.3.0. A
+  safetensors without it still reads nf4, so a stale install costs you a
+  tier rather than the model.
 
 `recommend(model)` picks the right tier for your VRAM and the
 safetensors you have installed, and asking for a tier your safetensors

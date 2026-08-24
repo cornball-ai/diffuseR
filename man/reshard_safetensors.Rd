@@ -31,9 +31,9 @@ Invisibly, the path to the written index.json.
 \description{
 Splits a single \code{.safetensors} file into diffusers-style shards
 (\code{<base>-00001-of-000NN.safetensors} plus a
-\code{<base>.safetensors.index.json} weight map) so it loads on
-safetensors older than 0.3.0, which overflows a 32-bit offset on any
-file at or above 2^31 bytes. Used to host large fp16 diffusers weights
+\code{<base>.safetensors.index.json} weight map) so it loads on a
+safetensors without the overflow fix, which trips a 32-bit offset on
+any file at or above 2^31 bytes. Used to host large fp16 diffusers weights
 (e.g. the 5 GB SDXL UNet) unchanged, without quantization.
 }
 \details{

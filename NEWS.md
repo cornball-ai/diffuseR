@@ -1,5 +1,20 @@
 # diffuseR 0.2.2.7
 
+* `recommend()` diagnosed the wrong safetensors capability for bf16. The
+  tier gate consults `.st_can_read()`, but the note it produced cited
+  mlverse/safetensors#11, which is the bfloat16 *write* fix. bfloat16
+  read worked on CRAN 0.2.1, so a reader that lacks it is not waiting on
+  #11, and the message sent users to an unrelated issue. `.st_update_note()`
+  now takes `mode`, and both call sites pass the capability they actually
+  gated on. float8 is unchanged: 0.2.1 had neither read nor write, so #13
+  is correct from both sides.
+
+  The suite had been holding this in place. Its read-mode assertion
+  matched `"safetensors#11"`, so the wrong reference was pinned by the
+  test rather than caught by it. The remedy-only guards added earlier in
+  this release could not catch it either: the message named the right
+  package to install while blaming the wrong missing feature.
+
 * safetensors 0.3.0 reached CRAN on 2026-08-21 with all four fixes
   diffuseR had been routing users around: float8 support
   (mlverse/safetensors#13), bfloat16 write (#11), the >2 GB offset
@@ -19,6 +34,13 @@
   `vignette("performance-levers")`, and the `unet_safetensors`,
   `download_prebuilt` and `convert_sd21_pt_to_diffusers` help pages got
   the same treatment.
+
+  That prose now names the fix rather than the version: "needs the
+  overflow fix (mlverse/safetensors#14, which reached CRAN in 0.3.0)"
+  instead of "requires safetensors 0.3.0 or newer". Making the version
+  the requirement contradicted the probe-don't-pin rationale documented
+  two paragraphs down, which turns on capable builds having existed while
+  still reporting 0.2.1.
 
   The capability probes are unchanged, and deliberately so. They were
   written as runtime probes rather than a version floor precisely so this

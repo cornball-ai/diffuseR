@@ -103,23 +103,45 @@ NULL
 }
 
 # The standard "update safetensors, or press on with nf4" message. Shared
-# by the recommender (read side, fit = TRUE: "best fit for your card")
-# and the download graceful-fallback path (write side, fit = FALSE, since
-# the user asked for it outright) so the wording stays identical
-# everywhere. No em dashes (house style).
-.st_update_note <- function(precision, fit = TRUE) {
+# by the recommender (fit = TRUE: "best fit for your card") and the
+# download graceful-fallback path (fit = FALSE, since the user asked for
+# it outright) so the wording stays identical everywhere. No em dashes
+# (house style).
+#
+# `mode` names the capability actually being diagnosed, and it is not
+# cosmetic. bfloat16 READ worked on CRAN 0.2.1, so a build that cannot
+# read bf16 is not waiting on mlverse/safetensors#11: that is the WRITE
+# fix, and citing it on the read path sends the user to an issue that
+# has nothing to do with their failure. The recommender gates on read
+# (.st_can_read), so it was doing exactly that. float8 is unaffected
+# either way, since 0.2.1 had neither read nor write for it.
+.st_update_note <- function(precision, fit = TRUE, mode = c("read", "write")) {
+    mode <- match.arg(mode)
     precision <- as.character(precision)
+    lead <- if (fit) {
+        sprintf("%s is the best fit for your card but needs", precision)
+    } else {
+        sprintf("%s needs", precision)
+    }
+    is_bf16 <- precision %in% c("bf16", "bfloat16")
+    # No release "added" bfloat16 read, so there is no fix to point at
+    # and no version that makes it appear: a reader lacking it predates
+    # the capability rather than trailing a patch.
+    if (is_bf16 && mode == "read") {
+        return(sprintf(paste0("%s a safetensors that can read bfloat16, ",
+                              "which the installed one cannot. Run ",
+                              "install.packages(\"safetensors\") to ",
+                              "update, or press on with nf4: same weights, ",
+                              "slightly lower precision, and it just ",
+                              "works."),
+                       lead))
+    }
     detail <- switch(precision,
                      fp8 = "float8 support (mlverse/safetensors#13)",
                      float8_e4m3fn = "float8 support (mlverse/safetensors#13)",
                      bf16 = "bfloat16 write support (mlverse/safetensors#11)",
                      bfloat16 = "bfloat16 write support (mlverse/safetensors#11)",
                      paste0(precision, " support (mlverse/safetensors)"))
-    lead <- if (fit) {
-        sprintf("%s is the best fit for your card but needs", precision)
-    } else {
-        sprintf("%s needs", precision)
-    }
     sprintf(paste0("%s a newer safetensors than the one installed: %s ",
                    "reached CRAN in safetensors 0.3.0. Run ",
                    "install.packages(\"safetensors\") to update, or press ",
@@ -151,7 +173,7 @@ NULL
         return(precision)
     }
     if (verbose) {
-        message(.st_update_note(precision, fit = FALSE),
+        message(.st_update_note(precision, fit = FALSE, mode = mode),
                 "\nFalling back to nf4 for now.")
     }
     "nf4"

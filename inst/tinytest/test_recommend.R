@@ -137,9 +137,11 @@ expect_equal(rr, "nf4")
 options(diffuseR.st_caps = list(float8_e4m3fn = TRUE))
 expect_equal(grc("fp8", "write"), "fp8")   # present -> passes through
 options(diffuseR.st_caps = NULL)
-# bf16 gate goes through the READ probe in read mode
+# bf16 gate goes through the READ probe in read mode. The marker is the
+# read wording, not "safetensors#11": this assertion used to match the
+# write fix and so held the wrong diagnosis in place.
 options(diffuseR.st_read_caps = list(bfloat16 = FALSE))
-expect_message(rr2 <- grc("bf16", "read"), pattern = "safetensors#11")
+expect_message(rr2 <- grc("bf16", "read"), pattern = "read bfloat16")
 expect_equal(rr2, "nf4")
 options(diffuseR.st_read_caps = NULL)
 
@@ -161,6 +163,37 @@ for (v in list(fn("fp8"), fn("bf16", fit = FALSE))) {
     expect_false(grepl("development version", v, fixed = TRUE))
     expect_false(grepl("GitHub", v, fixed = TRUE))
 }
+
+# --- the note must diagnose the capability that actually failed -------------------
+
+# Asserting the remedy is not enough: a message can name the right fix to
+# install and still blame the wrong missing feature. bfloat16 READ worked
+# on CRAN 0.2.1, so mlverse/safetensors#11 (the WRITE fix) cannot be what
+# a failed read gate is waiting on. recommend() gates on .st_can_read and
+# was citing #11 anyway, which is a correct-looking sentence pointing at
+# an unrelated issue.
+expect_true(grepl("safetensors#11", fn("bf16", mode = "write"), fixed = TRUE))
+expect_false(grepl("safetensors#11", fn("bf16", mode = "read"), fixed = TRUE))
+expect_true(grepl("read bfloat16", fn("bf16", mode = "read"), fixed = TRUE))
+
+# float8 is unaffected: 0.2.1 had neither read nor write, so #13 is the
+# right reference from both sides.
+expect_true(grepl("safetensors#13", fn("fp8", mode = "read"), fixed = TRUE))
+expect_true(grepl("safetensors#13", fn("fp8", mode = "write"), fixed = TRUE))
+
+# Both modes still carry the remedy and the house style.
+for (v in list(fn("bf16", mode = "read"), fn("bf16", mode = "write"))) {
+    expect_true(grepl('install.packages("safetensors")', v, fixed = TRUE))
+    expect_false(grepl("GitHub", v, fixed = TRUE))
+    expect_false(grepl("—", v))
+}
+
+# End to end: the recommender's read-gated bf16 note must not send the
+# user to the write fix.
+nob_note <- recommend("flux1", 24,
+  list(bfloat16 = FALSE, float8_e4m3fn = FALSE))$note
+expect_false(grepl("safetensors#11", nob_note, fixed = TRUE))
+expect_true(grepl("read bfloat16", nob_note, fixed = TRUE))
 
 # --- multi-GB read breadcrumb -----------------------------------------------------
 

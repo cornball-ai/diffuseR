@@ -141,7 +141,8 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
          host_ram_gb = host_ram_gb,
          fork_suggested = fork,
          note = if (fork) {
-            .st_update_note(want$precision)
+            # The tier was blocked by .st_can_read, so diagnose read.
+            .st_update_note(want$precision, mode = "read")
         } else {
             .bf16_note(model, chosen$precision)
         }

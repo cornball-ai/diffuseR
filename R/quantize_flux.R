@@ -310,10 +310,11 @@ NULL
 #'   the per-format location under \code{tools::R_user_dir}).
 #' @param format "nf4" or "fp8".
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
-#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling in
-#'   safetensors older than 0.3.0, so the artifact remains readable there.
-#'   Larger values (e.g. 4e9) require safetensors 0.3.0 or newer and are
-#'   best kept for local artifacts; use the default for redistribution.
+#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) offset
+#'   ceiling, so the artifact reads on a safetensors that lacks the
+#'   overflow fix (mlverse/safetensors#14, which reached CRAN in 0.3.0).
+#'   Larger values (e.g. 4e9) need that fix present, so keep them for
+#'   local artifacts and use the default for anything redistributed.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
 #' @param verbose Logical.
 #'
