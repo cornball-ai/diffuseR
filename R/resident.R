@@ -254,8 +254,8 @@
 #' }
 #'
 #' @export
-resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx", "sdxl",
-                                    "sd21"),
+resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
+                                    "sdxl", "sd21"),
                           device = "cuda", ..., verbose = TRUE) {
     model <- match.arg(model)
     if (!torch::cuda_is_available()) {

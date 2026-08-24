@@ -239,8 +239,7 @@ sd21_load_pipeline <- function(model_dir = NULL, device = "cuda",
         # silent all-NaN, not an error.
         unet_dtype <- torch::torch_float32()
     }
-    pipeline <- sd_pipeline_from_safetensors(
-        model_dir, model_name = "sd21",
+    pipeline <- sd_pipeline_from_safetensors(model_dir, model_name = "sd21",
         devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
         unet_dtype = unet_dtype, verbose = verbose)
     pipeline$phase_offload <- isTRUE(phase_offload)
