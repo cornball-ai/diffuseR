@@ -13,7 +13,7 @@
 #'     bf16) AND the installed safetensors can \emph{read} that dtype
 #'     (\code{\link{.st_can_read}}), that tier is recommended instead.
 #'   \item When the card has room but safetensors cannot read the tier,
-#'     nf4 is recommended and the fork suggestion is surfaced in
+#'     nf4 is recommended and the upgrade suggestion is surfaced in
 #'     \code{note} (never an error).
 #' }
 #'
@@ -53,8 +53,12 @@
 #'   logical), \code{max_pixels}, \code{text_device}, \code{attn_chunk},
 #'   \code{vram_gb}, \code{pin} (page-lock the phase-swapped host
 #'   copies), \code{pinned_set_gb} (estimated pinned bytes),
-#'   \code{host_ram_gb}, \code{fork_suggested} (logical), and
-#'   \code{note} (the fork suggestion string, or NULL).
+#'   \code{host_ram_gb}, \code{fork_suggested} (logical: the installed
+#'   safetensors cannot read the tier the card could otherwise run), and
+#'   \code{note} (the suggestion string, or NULL). The field name is
+#'   historical -- the remedy used to be the cornball-ai fork and is now
+#'   \code{install.packages("safetensors")}, since the fixes reached CRAN
+#'   in 0.3.0 -- and is kept because it is part of the returned contract.
 #'
 #' @export
 #'
@@ -137,7 +141,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
          host_ram_gb = host_ram_gb,
          fork_suggested = fork,
          note = if (fork) {
-            .st_fork_note(want$precision)
+            .st_update_note(want$precision)
         } else {
             .bf16_note(model, chosen$precision)
         }

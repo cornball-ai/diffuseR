@@ -232,9 +232,10 @@ shard size, not the dtype, is what gates readability.
 Higher-quality tiers behave as follows:
 
 - **bf16** (24 GB+ cards) is also CRAN-readable.
-- **fp8** (the 12-16 GB sweet spot) needs the
-  [`cornball-ai/safetensors`](https://github.com/cornball-ai/safetensors)
-  fork until float8 support lands on CRAN (mlverse/safetensors#13).
+- **fp8** (the 12-16 GB sweet spot) needs safetensors 0.3.0 or newer,
+  which added float8 support (mlverse/safetensors#13). Older versions
+  still read nf4, so a stale safetensors costs you a tier rather than
+  the model.
 
 `recommend(model)` picks the right tier for your VRAM and the
 safetensors you have installed, and asking for a tier your safetensors

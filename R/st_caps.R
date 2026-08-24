@@ -1,11 +1,17 @@
-#' safetensors read-capability probes and fork messaging
+#' safetensors read-capability probes and upgrade messaging
 #'
-#' The CRAN build of safetensors 0.2.1 reads bfloat16 but cannot write
-#' it, and has no float8 support at all. Both fixes merged upstream on
-#' 2026-07-31 (mlverse/safetensors#11 for bfloat16 write, #13 for
-#' float8) without a version bump, so the installed version number
-#' cannot tell you which build you have. That is why every gate here is
-#' a runtime probe: write a tiny tensor, read it back, cache the answer.
+#' safetensors 0.2.1 reads bfloat16 but cannot write it, and has no
+#' float8 support at all. Both fixes (mlverse/safetensors#11 for bfloat16
+#' write, #13 for float8) merged upstream on 2026-07-31 and reached CRAN
+#' in safetensors 0.3.0 on 2026-08-21, along with #14 for the >2 GB
+#' offset overflow and #10 for empty tensor names.
+#'
+#' The gates here stayed runtime probes rather than a version floor, and
+#' that decision is what let the fork requirement retire itself the day
+#' the release landed: nothing had to change for a 0.3.0 user to get the
+#' higher tiers. It also still covers the case a version test cannot --
+#' the fixes existed for three weeks in builds that reported 0.2.1, so
+#' the version number never distinguished them. Probe, do not pin.
 #' Two capabilities matter and they differ:
 #'
 #' \itemize{
@@ -20,8 +26,9 @@
 #'     load.
 #' }
 #'
-#' Both are capability-probed, never version-pinned, so the fork
-#' requirement self-heals the day the fixes reach CRAN.
+#' Both are capability-probed, never version-pinned. That is why the fork
+#' requirement healed itself when 0.3.0 shipped, and why it will do the
+#' same for whatever lands next.
 #'
 #' @name st_caps
 NULL
@@ -95,12 +102,12 @@ NULL
     ok
 }
 
-# The standard "install the fork, or press on with nf4" message. Shared
+# The standard "update safetensors, or press on with nf4" message. Shared
 # by the recommender (read side, fit = TRUE: "best fit for your card")
 # and the download graceful-fallback path (write side, fit = FALSE, since
 # the user asked for it outright) so the wording stays identical
 # everywhere. No em dashes (house style).
-.st_fork_note <- function(precision, fit = TRUE) {
+.st_update_note <- function(precision, fit = TRUE) {
     precision <- as.character(precision)
     detail <- switch(precision,
                      fp8 = "float8 support (mlverse/safetensors#13)",
@@ -113,16 +120,16 @@ NULL
     } else {
         sprintf("%s needs", precision)
     }
-    sprintf(paste0("%s a safetensors newer than the one on CRAN: %s is ",
-                   "merged upstream but not yet released. Install the ",
-                   "development version from the mlverse/safetensors ",
-                   "repository on GitHub, or press on with nf4: same ",
-                   "weights, slightly lower precision, and it just works."),
+    sprintf(paste0("%s a newer safetensors than the one installed: %s ",
+                   "reached CRAN in safetensors 0.3.0. Run ",
+                   "install.packages(\"safetensors\") to update, or press ",
+                   "on with nf4: same weights, slightly lower precision, ",
+                   "and it just works."),
             lead, detail)
 }
 
 # When a user explicitly asks for fp8/bf16 but the needed safetensors
-# capability is missing, print the fork suggestion and fall back to nf4
+# capability is missing, print the upgrade suggestion and fall back to nf4
 # instead of letting a downstream builder or loader fail. nf4, fp16,
 # fp32 and anything unrecognized pass through untouched. `mode` selects
 # the capability that matters: "write" when about to BUILD an artifact,
@@ -144,7 +151,7 @@ NULL
         return(precision)
     }
     if (verbose) {
-        message(.st_fork_note(precision, fit = FALSE),
+        message(.st_update_note(precision, fit = FALSE),
                 "\nFalling back to nf4 for now.")
     }
     "nf4"
@@ -154,21 +161,21 @@ NULL
 # .st_read_or_breadcrumb so it can be unit-tested without a real 2 GB
 # file.
 .st_overflow_message <- function(file_path, size_bytes, underlying) {
-    sprintf(paste0("Could not read %s (%.1f GB). Stock CRAN safetensors ",
-                   "overflows a 32-bit offset on files at or above 2^31 ",
-                   "bytes (~2.15 GB). Rebuild the artifact with smaller ",
-                   "shards (the quantizers now default to ",
-                   "shard_bytes = 1.9e9), or install the development ",
-                   "version of safetensors from the mlverse/safetensors ",
-                   "repository on GitHub, where the fix is merged. ",
+    sprintf(paste0("Could not read %s (%.1f GB). safetensors before ",
+                   "0.3.0 overflows a 32-bit offset on files at or above ",
+                   "2^31 bytes (~2.15 GB). Run ",
+                   "install.packages(\"safetensors\") to update, or ",
+                   "rebuild the artifact with smaller shards (the ",
+                   "quantizers default to shard_bytes = 1.9e9). ",
                    "Underlying error: %s"),
             basename(file_path), size_bytes / 1e9, underlying)
 }
 
 # Run a safetensors read; if it fails AND the backing shard is at/above
 # the 2^31-byte ceiling, translate the cryptic overflow into the
-# fork-or-smaller-shards breadcrumb. A read that succeeds (fork, or a
-# sub-2 GB shard) is untouched; a failure on a small shard rethrows
+# update-or-smaller-shards breadcrumb. A read that succeeds (safetensors
+# 0.3.0+, or a sub-2 GB shard) is untouched; a failure on a small shard
+# rethrows
 # verbatim. Reactive by design, so it never false-alarms on a machine
 # that can read large files.
 .st_read_or_breadcrumb <- function(read_fn, file_path = NULL) {

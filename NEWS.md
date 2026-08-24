@@ -1,3 +1,33 @@
+# diffuseR 0.2.2.7
+
+* safetensors 0.3.0 reached CRAN on 2026-08-21 with all four fixes
+  diffuseR had been routing users around: float8 support
+  (mlverse/safetensors#13), bfloat16 write (#11), the >2 GB offset
+  overflow (#14), and empty tensor names (#10). Every message that told
+  users to install a development build from GitHub now tells them to run
+  `install.packages("safetensors")`. That covers `recommend()`'s tier
+  note, the graceful fp8/bf16 fallback, both `flux_quantize()` errors, and
+  the >2 GB read breadcrumb.
+
+  The capability probes are unchanged, and deliberately so. They were
+  written as runtime probes rather than a version floor precisely so this
+  day would need no code change, and they still cover what a version test
+  cannot: the fixes existed for three weeks in builds that reported 0.2.1.
+  No version floor has been added to `Suggests` for the same reason — nf4
+  works on older safetensors, so a stale install costs a tier rather than
+  the model.
+
+  `recommend()`'s returned `fork_suggested` field keeps its name, which is
+  now historical: it means the installed safetensors cannot read a tier
+  the card could otherwise run. Renaming it would break the returned
+  contract for a cosmetic gain.
+
+* `reshard_safetensors()` is no longer required to make a large artifact
+  readable, since 0.3.0 fixed the overflow it worked around. It stays
+  useful for publishing: the shards it writes load on every safetensors
+  including the older ones, which is what makes a hosted artifact safe to
+  redistribute.
+
 # diffuseR 0.2.2.6
 
 * Fixed an allocator pre-warm accumulation introduced in 0.2.2.4.

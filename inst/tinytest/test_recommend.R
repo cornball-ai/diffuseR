@@ -143,12 +143,24 @@ expect_message(rr2 <- grc("bf16", "read"), pattern = "safetensors#11")
 expect_equal(rr2, "nf4")
 options(diffuseR.st_read_caps = NULL)
 
-# --- fork note fit parameter ------------------------------------------------------
+# --- upgrade note fit parameter ---------------------------------------------------
 
-fn <- diffuseR:::.st_fork_note
+fn <- diffuseR:::.st_update_note
 expect_true(grepl("best fit for your card", fn("fp8", fit = TRUE)))
 expect_false(grepl("best fit for your card", fn("fp8", fit = FALSE)))
 expect_false(grepl("—", fn("fp8")))   # no em dash, either variant
+
+# The REMEDY, not just the phrasing. Nothing here asserted what the
+# message tells a user to DO, which is how it went on recommending a
+# GitHub development build for three days after safetensors 0.3.0 shipped
+# the fix to CRAN. A message can be well-formed and still wrong.
+for (v in list(fn("fp8"), fn("bf16", fit = FALSE))) {
+    expect_true(grepl("install.packages", v, fixed = TRUE))
+    # Regression guard: if this ever points back at a development build,
+    # the advice has gone stale again.
+    expect_false(grepl("development version", v, fixed = TRUE))
+    expect_false(grepl("GitHub", v, fixed = TRUE))
+}
 
 # --- multi-GB read breadcrumb -----------------------------------------------------
 
@@ -156,6 +168,11 @@ msg <- diffuseR:::.st_overflow_message("shard-00001.safetensors", 3.4e9, "boom")
 expect_true(grepl("3.4 GB", msg))
 expect_true(grepl("2\\^31", msg))
 expect_true(grepl("shard-00001", msg))
+# Same guard as above: the overflow breadcrumb carried the same stale
+# GitHub advice, and nothing caught it.
+expect_true(grepl("install.packages", msg, fixed = TRUE))
+expect_false(grepl("development version", msg, fixed = TRUE))
+expect_false(grepl("GitHub", msg, fixed = TRUE))
 
 brc <- diffuseR:::.st_read_or_breadcrumb
 # a read that succeeds is returned untouched
