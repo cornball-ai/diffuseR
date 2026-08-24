@@ -1,3 +1,28 @@
+# diffuseR 0.2.2.6
+
+* Fixed an allocator pre-warm accumulation introduced in 0.2.2.4.
+  `.resident_prewarm()` requested the full onload need on every
+  activation, which doubled the CUDA caching allocator's pool after each
+  render: a generation fragments the cache, so the next single large
+  request cannot be served from it and takes a fresh allocation beside the
+  old one. Under `resident_deactivate(release = FALSE)` nothing empties
+  the cache, so SDXL went 5.299 GiB after one cycle to 10.322 after two
+  and refused the third. It now grows only the shortfall, and skips
+  entirely when the pool already covers the transfer; a cold pool is
+  unchanged. Measured flat at 5.396 / 5.498 / 5.498 GiB across three
+  cycles.
+
+  This also corrected the budget independently of the refusal: both
+  release modes doubled between the first and second cycle, so any peak
+  measured on a single activation understated steady state roughly 2x.
+
+* `resident_generate()`'s documented return value was wrong. It claimed
+  `flux1`, `flux2` and `zimage` return bare image arrays and `sdxl` was
+  the exception. Every family returns a list: the five image families
+  return `list(image, metadata)` and `ltx` returns `video`, `audio`,
+  `sample_rate`, `latents`, `audio_latents` and `latent_shape`. Unwrap
+  `$image` across the image families and `$video` for `ltx`.
+
 # diffuseR 0.2.2.5
 
 * `resident_load()` accepts `"sd21"`, the sixth resident family.
