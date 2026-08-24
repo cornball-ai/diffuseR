@@ -19,9 +19,13 @@
 * `resident_generate()`'s documented return value was wrong. It claimed
   `flux1`, `flux2` and `zimage` return bare image arrays and `sdxl` was
   the exception. Every family returns a list: the five image families
-  return `list(image, metadata)` and `ltx` returns `video`, `audio`,
-  `sample_rate`, `latents`, `audio_latents` and `latent_shape`. Unwrap
-  `$image` across the image families and `$video` for `ltx`.
+  return `list(image, metadata)`, so `$image` unwraps uniformly across all
+  five. `ltx` returns `latents`, `audio_latents`, `latent_shape` and
+  `sample_rate`, plus `video` and `audio` when `decode_video` /
+  `decode_audio` are TRUE — a caller that turns either off gets a list
+  without that field rather than a NULL one. Only visibility differs:
+  `txt2img_sdxl()` and `txt2img_sd21()` use `return()`, the rest
+  `invisible()`.
 
 # diffuseR 0.2.2.5
 
