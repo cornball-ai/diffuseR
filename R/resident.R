@@ -42,7 +42,7 @@
 
 # Families that ship a pinned/staged loader. Keyed by the `model` name
 # used everywhere else in the package (see recommend()).
-.resident_families <- c("flux1", "flux2", "zimage", "ltx")
+.resident_families <- c("flux1", "flux2", "zimage", "ltx", "sdxl")
 
 #' Every nn_module field of a pipeline, by name
 #'
@@ -226,12 +226,14 @@
 #' The pipeline is left \emph{inactive} (weights pinned on the host, no
 #' VRAM held). Call \code{\link{resident_activate}} before generating.
 #'
-#' @param model One of "flux1", "flux2", "zimage", "ltx".
+#' @param model One of "flux1", "flux2", "zimage", "ltx", "sdxl".
 #' @param device Target CUDA device, e.g. "cuda" or "cuda:1".
 #' @param ... Passed to the family loader (\code{\link{flux_load_pipeline}},
-#'   \code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}}
-#'   or \code{\link{ltx23_load_pipeline}}). \code{ltx} requires
-#'   \code{checkpoint_path}.
+#'   \code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}},
+#'   \code{\link{ltx23_load_pipeline}} or
+#'   \code{\link{sdxl_load_pipeline}}). \code{ltx} requires
+#'   \code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
+#'   \code{\link{download_sdxl}} cache).
 #' @param verbose Print progress messages.
 #'
 #' @return A \code{diffuseR_resident} handle (an environment). Inspect it
@@ -252,7 +254,7 @@
 #' }
 #'
 #' @export
-resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
+resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx", "sdxl"),
                           device = "cuda", ..., verbose = TRUE) {
     model <- match.arg(model)
     if (!torch::cuda_is_available()) {
@@ -273,7 +275,8 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
                      flux1 = flux_load_pipeline,
                      flux2 = flux2_load_pipeline,
                      zimage = zimage_load_pipeline,
-                     ltx = ltx23_load_pipeline)
+                     ltx = ltx23_load_pipeline,
+                     sdxl = sdxl_load_pipeline)
     # Capture the phase-offload choice here rather than reading it back
     # off the pipeline: the FLUX family stores it as a field, LTX takes
     # it again at generate time and stores nothing, so the field is
@@ -298,12 +301,87 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
     res$pipeline <- pipeline
     res$phase_offload <- phase_offload
     res$staging <- staging
+    # A family may want only part of its set on the card (see
+    # .resident_gpu_set). NULL means all of it.
+    res$gpu_components <- pipeline$gpu_components
     res$components <- names(.resident_components(pipeline))
     res$pinned_bytes <- .resident_pinned_bytes(staging)
     res$state <- "inactive"
     res$last_error <- NULL
     res$loaded_at <- Sys.time()
     structure(res, class = "diffuseR_resident")
+}
+
+#' Grow the caching allocator's pool in one allocation before a bulk onload
+#'
+#' A cold bulk onload grows the pool one \code{cudaMalloc} per tensor, and
+#' the syscalls dominate: SDXL's 8.0 GB pinned set measured 24.16 s on the
+#' first activation against 0.32 s on the second, a 74x ratio, on an
+#' otherwise idle RTX 5060 Ti. One large allocation freed straight back into
+#' the pool lets the transfers carve from cached blocks instead. Same
+#' technique the NF4 LTX loader already uses for its first transformer
+#' onload (83.5 s -> 4.6 s there).
+#'
+#' It matters beyond the wall clock: a residency broker with a startup
+#' deadline reads 24 s inside a first activate as a wedged worker.
+#'
+#' Best-effort. A card that cannot seat the block in one piece falls back to
+#' the per-tensor path, which is the current behaviour and merely slow, so
+#' the failure is swallowed rather than raised.
+#'
+#' @param bytes Numeric. Host bytes about to be transferred; the pool is
+#'   warmed to this plus a small margin for allocator slack.
+#' @param device Target CUDA device.
+#'
+#' @return Invisibly NULL.
+#'
+#' @keywords internal
+.resident_prewarm <- function(bytes, device) {
+    # isTRUE() rather than a bare is.finite(): a NULL pinned_bytes gives
+    # logical(0), and `||` on a zero-length value is an error in R >= 4.3,
+    # so the guard meant to skip the pre-warm would instead fail the
+    # activation it exists to speed up.
+    if (!isTRUE(is.finite(bytes)) || bytes <= 0) {
+        return(invisible(NULL))
+    }
+    tryCatch({
+        warm <- torch::torch_empty(as.numeric(bytes) * 1.05,
+                                   dtype = torch::torch_uint8(),
+                                   device = device)
+        rm(warm)
+        gc(verbose = FALSE)
+    }, error = function(e) invisible(NULL))
+    invisible(NULL)
+}
+
+#' Which components a bulk activation puts on the card
+#'
+#' All of them, unless the family says otherwise.
+#'
+#' SDXL says otherwise. Its four components are only 8.0 GB pinned, so
+#' bulk-onloading the set looks affordable on a 16 GB card -- and then the
+#' VAE decode OOMs, because SDXL decodes 1024x1024 in float32 and that peak
+#' arrives while the UNet is still resident. Measured: 8.0 GB of weights
+#' plus the decode phase reached 14.38 GiB of 15.47 GiB and died asking for
+#' another 512 MiB. A 12 GB card never had a chance.
+#'
+#' So SDXL puts only the UNet on the card and computes the text encode and
+#' the decode on the host from the same pinned copies. That is the placement
+#' \code{\link{auto_devices}} already recommends for this model at this tier;
+#' residency's contribution is that the 5 GB UNet stops being re-read from
+#' disk between models.
+#'
+#' @param res A resident handle.
+#'
+#' @return Character vector of \code{res$staging} names.
+#'
+#' @keywords internal
+.resident_gpu_set <- function(res) {
+    want <- res$gpu_components
+    if (is.null(want)) {
+        return(names(res$staging))
+    }
+    intersect(want, names(res$staging))
 }
 
 #' Refuse a bulk activation that cannot fit
@@ -319,16 +397,24 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx"),
 #'   which means "cannot tell" and never refuses, so a test that wants
 #'   the refusal has to state the budget rather than depend on the
 #'   machine having a card.
+#' @param need_bytes Bytes actually headed for the card. NULL means the
+#'   whole pinned set, which is right for a family that onloads everything
+#'   and wrong for one that onloads a subset -- SDXL pins 8.0 GB and sends
+#'   5.1 GB of it, so charging it the full figure would refuse activations
+#'   that fit.
 #'
 #' @return Invisibly TRUE, or an error naming both figures.
 #'
 #' @keywords internal
-.resident_check_fits <- function(res, free_gb = NULL) {
+.resident_check_fits <- function(res, free_gb = NULL, need_bytes = NULL) {
     if (is.null(free_gb)) {
         free_gb <- tryCatch(.detect_vram(use_free = TRUE),
                             error = function(e) NA_real_)
     }
-    need_gb <- res$pinned_bytes / 1024 ^ 3
+    if (is.null(need_bytes)) {
+        need_bytes <- res$pinned_bytes
+    }
+    need_gb <- need_bytes / 1024 ^ 3
     if (!is.na(free_gb) && free_gb > 0 && need_gb > free_gb) {
         stop(sprintf(paste0("%s needs %.2f GB resident but only %.2f GB of ",
                             "VRAM is free. Load the pipeline with ",
@@ -402,8 +488,11 @@ resident_activate <- function(res) {
     bulk <- !isTRUE(res$pipeline$phase_offload %||% res$phase_offload)
     ok <- tryCatch({
         if (bulk) {
-            .resident_check_fits(res)
-            for (nm in names(res$staging)) {
+            onto <- .resident_gpu_set(res)
+            need <- .resident_pinned_bytes(res$staging[onto])
+            .resident_check_fits(res, need_bytes = need)
+            .resident_prewarm(need, res$device)
+            for (nm in onto) {
                 .staged_onload(res$staging[[nm]], res$device)
             }
         }
@@ -463,6 +552,22 @@ resident_deactivate <- function(res, release = TRUE) {
         for (nm in names(res$staging)) {
             .staged_offload(res$staging[[nm]])
         }
+        # NF4 linears dequantize into a package-level scratch environment,
+        # not into the module, so offloading the weights does not free it.
+        # txt2vid_ltx2() deliberately SKIPS its own release when the
+        # transformer is resident (the next chunk reuses the buffers), which
+        # is right within a render and leaves the scratch on the card once
+        # the render is over. Nothing else reclaims it: gc() and
+        # cuda_empty_cache() cannot touch a block the environment still
+        # references. Deactivation is the moment the handle stops owning the
+        # card, so it is the moment to drop them. Unconditional on `release`
+        # -- a broker that passes release = FALSE to keep the pool warm for
+        # the next tenant is exactly the caller that must not be handed a
+        # budget short by this scratch. The image families already release
+        # it at the end of every generate.
+        if (identical(res$model, "ltx")) {
+            ltx23_release_dequant_buffers()
+        }
         if (isTRUE(release)) {
             .resident_release_vram()
         }
@@ -489,11 +594,18 @@ resident_deactivate <- function(res, release = TRUE) {
 #' @param res A \code{diffuseR_resident} handle.
 #' @param prompt Character. The text prompt.
 #' @param ... Passed to \code{\link{txt2img_flux}},
-#'   \code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}} or
-#'   \code{\link{txt2vid_ltx2}}.
+#'   \code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}},
+#'   \code{\link{txt2vid_ltx2}} or \code{\link{txt2img_sdxl}}. For
+#'   \code{sdxl} the handle supplies \code{devices} matching its own
+#'   placement unless the caller names it.
 #'
-#' @return Whatever the family generator returns: an image array for the
-#'   image families, a video array for \code{ltx}.
+#' @return Whatever the family generator returns, and the families do not
+#'   agree: an image array for \code{flux1}, \code{flux2} and
+#'   \code{zimage}, a video array for \code{ltx}, and for \code{sdxl} a
+#'   list of \code{image} and \code{metadata}, because
+#'   \code{\link{txt2img_sdxl}} has always returned that pair and changing
+#'   it would break every existing caller. A broker that wants one shape
+#'   should normalise in its own wrapper.
 #'
 #' @export
 resident_generate <- function(res, prompt, ...) {
@@ -507,8 +619,48 @@ resident_generate <- function(res, prompt, ...) {
                   flux1 = txt2img_flux,
                   flux2 = txt2img_flux2,
                   zimage = txt2img_zimage,
-                  ltx = txt2vid_ltx2)
-    gen(prompt, pipeline = res$pipeline, ...)
+                  ltx = txt2vid_ltx2,
+                  sdxl = txt2img_sdxl)
+    do.call(gen, c(list(prompt, pipeline = res$pipeline),
+                   .resident_gen_args(res, list(...))))
+}
+
+#' Family fixups for a resident generate call
+#'
+#' Split out so the SDXL device injection can be asserted without running a
+#' multi-gigabyte generation.
+#'
+#' \code{\link{txt2img_sdxl}} does not read the pipeline's placement. With
+#' its default \code{devices = "auto"} it calls \code{\link{auto_devices}}
+#' afresh and moves the prompt embeds to whatever THAT returns. On a 12 GB
+#' card auto can answer "unet on cuda, encoders on cpu", which contradicts a
+#' bulk-activated handle whose encoders are on the card, and the text
+#' encoder call then dies on a device mismatch. The handle knows where its
+#' components actually are, so it says so instead of letting the generator
+#' re-decide.
+#'
+#' Only SDXL needs this: the other families phase-offload from their own
+#' pinned copies and place each component themselves as its phase begins.
+#'
+#' @param res A resident handle.
+#' @param args The caller's \code{...}, as a list. An explicit
+#'   \code{devices} wins -- this fills a gap, it does not override.
+#'
+#' @return \code{args}, possibly with \code{devices} added.
+#'
+#' @keywords internal
+.resident_gen_args <- function(res, args) {
+    if (identical(res$model, "sdxl") && is.null(args$devices)) {
+        on_gpu <- .resident_gpu_set(res)
+        place <- function(nm) {
+            if (nm %in% on_gpu) res$device else "cpu"
+        }
+        args$devices <- list(unet = place("unet"),
+                             decoder = place("decoder"),
+                             text_encoder = place("text_encoder"),
+                             text_encoder2 = place("text_encoder2"))
+    }
+    args
 }
 
 #' Status of a resident handle

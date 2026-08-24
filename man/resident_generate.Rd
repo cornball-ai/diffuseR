@@ -11,8 +11,10 @@ resident_generate(res, prompt, ...)
 \item{prompt}{Character. The text prompt.}
 
 \item{...}{Passed to \code{\link{txt2img_flux}},
-\code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}} or
-\code{\link{txt2vid_ltx2}}.}
+\code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}},
+\code{\link{txt2vid_ltx2}} or \code{\link{txt2img_sdxl}}. For
+\code{sdxl} the handle supplies \code{devices} matching its own
+placement unless the caller names it.}
 }
 \value{
 Whatever the family generator returns: an image array for the
