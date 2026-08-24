@@ -4,21 +4,23 @@
 \title{Load a diffusion pipeline as a resident handle}
 \usage{
 resident_load(
-  model = c("flux2", "flux1", "zimage", "ltx"),
+  model = c("flux2", "flux1", "zimage", "ltx", "sdxl"),
   device = "cuda",
   ...,
   verbose = TRUE
 )
 }
 \arguments{
-\item{model}{One of "flux1", "flux2", "zimage", "ltx".}
+\item{model}{One of "flux1", "flux2", "zimage", "ltx", "sdxl".}
 
 \item{device}{Target CUDA device, e.g. "cuda" or "cuda:1".}
 
 \item{...}{Passed to the family loader (\code{\link{flux_load_pipeline}},
-\code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}}
-or \code{\link{ltx23_load_pipeline}}). \code{ltx} requires
-\code{checkpoint_path}.}
+\code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}},
+\code{\link{ltx23_load_pipeline}} or
+\code{\link{sdxl_load_pipeline}}). \code{ltx} requires
+\code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
+\code{\link{download_sdxl}} cache).}
 
 \item{verbose}{Print progress messages.}
 }

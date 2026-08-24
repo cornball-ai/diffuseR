@@ -1,3 +1,34 @@
+#' Device configuration for an already-built pipeline
+#'
+#' The half of \code{\link{models2devices}} that does not touch the disk.
+#'
+#' \code{models2devices()} ends by calling \code{download_model()}, which
+#' resolves the TorchScript \code{.pt} files for the model and stops with
+#' "Missing model files" when they are absent. That is correct when it is
+#' about to load them, and wrong when the caller already holds a pipeline:
+#' a native safetensors pipeline never reads a \code{.pt}, so verifying them
+#' makes a working generation depend on files it does not use. Passing
+#' \code{download_models = FALSE} does not avoid it -- the check runs either
+#' way and only the downloading is suppressed.
+#'
+#' So callers with a pipeline in hand take this path and get the same four
+#' fields without the file check.
+#'
+#' @param model_name A character string naming the model, e.g. "sdxl".
+#' @param devices A device string or named list of component devices.
+#' @param unet_dtype_str A character string naming the UNet dtype, or NULL.
+#'
+#' @return The same shape \code{\link{models2devices}} returns:
+#'   \code{devices}, \code{unet_dtype}, \code{device_cpu}, \code{device_cuda}.
+#'
+#' @keywords internal
+.devices_for_pipeline <- function(model_name, devices, unet_dtype_str = NULL) {
+    dv <- standardize_devices(devices, get_required_components(model_name))
+    list(devices = dv, unet_dtype = setup_dtype(dv, unet_dtype_str),
+         device_cpu = torch::torch_device("cpu"),
+         device_cuda = torch::torch_device("cuda"))
+}
+
 #' models2devices
 #' @description This function sets up the model directory, device configuration, and data types for diffusion models.
 #' It checks the validity of the model name and devices, detects model type, and downloads the model if necessary.
@@ -129,6 +160,12 @@ setup_dtype <- function(devices, unet_dtype_str) {
     } else {
         stop("No main computation component found")
     }
+    # An ordinal-qualified device picks the same dtype as the bare one.
+    # resident_load() binds to an explicit "cuda:N" so later transitions
+    # cannot drift, and passes that through as the component device; without
+    # this, "cuda:0" matches neither branch below and falls to the "Invalid
+    # device" stop.
+    main_device <- sub(":.*$", "", main_device)
 
     if (main_device == "cpu") {
         return(torch::torch_float32())

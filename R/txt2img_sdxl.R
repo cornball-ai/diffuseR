@@ -99,8 +99,16 @@ txt2img_sdxl <- function(prompt, negative_prompt = NULL, img_dim = 1024,
         devices <- auto_devices(model_name)
     }
 
-    m2d <- models2devices(model_name = model_name, devices = devices,
-                          unet_dtype_str = unet_dtype_str)
+    # A supplied pipeline needs the device/dtype resolution but not the
+    # TorchScript file check models2devices() ends with: a native pipeline
+    # reads no .pt, and verifying them makes an otherwise working call fail
+    # on files it never opens.
+    m2d <- if (is.null(pipeline)) {
+        models2devices(model_name = model_name, devices = devices,
+                       unet_dtype_str = unet_dtype_str)
+    } else {
+        .devices_for_pipeline(model_name, devices, unet_dtype_str)
+    }
     devices <- m2d$devices
     unet_dtype <- m2d$unet_dtype
     device_cpu <- m2d$device_cpu
