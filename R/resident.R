@@ -331,29 +331,109 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
 #' the per-tensor path, which is the current behaviour and merely slow, so
 #' the failure is swallowed rather than raised.
 #'
-#' @param bytes Numeric. Host bytes about to be transferred; the pool is
-#'   warmed to this plus a small margin for allocator slack.
-#' @param device Target CUDA device.
+#' Growing the pool is best-effort in the partial case. A request smaller
+#' than a free block already in the cache is served from that block and
+#' grows nothing, so when the pool is short by less than it already holds
+#' the pre-warm may be absorbed rather than add capacity. That is bounded
+#' and harmless -- the onload then falls back to the per-tensor path for
+#' the remainder, which is the old behaviour -- and the alternative, asking
+#' for the whole figure to force a new segment, is the accumulation bug
+#' this function exists to avoid. The cold pool, which is the case worth
+#' optimising and the one a broker's first request hits, is unaffected.
 #'
-#' @return Invisibly NULL.
+#' @param bytes Numeric. Host bytes about to be transferred; the pool is
+#'   warmed toward this plus a small margin for allocator slack.
+#' @param device Target CUDA device, e.g. "cuda" or "cuda:1". Also selects
+#'   which device's allocator is measured.
+#' @param held Free cached bytes the allocator already holds on that
+#'   device, i.e. reserved minus allocated -- bytes that are reserved but
+#'   live belong to something else and cannot serve this transfer. NULL
+#'   measures it. Pass a value to make the decision deterministic: without
+#'   CUDA the measurement is 0, which would always warm, so a test that
+#'   wants the skip has to state what the pool holds rather than depend on
+#'   the machine having a card. Same reason
+#'   \code{\link{.resident_check_fits}} takes \code{free_gb}.
+#'
+#' @return Invisibly, the bytes requested from the allocator: 0 when the
+#'   pool already covers the transfer and nothing was asked for.
 #'
 #' @keywords internal
-.resident_prewarm <- function(bytes, device) {
+.resident_prewarm <- function(bytes, device, held = NULL) {
     # isTRUE() rather than a bare is.finite(): a NULL pinned_bytes gives
     # logical(0), and `||` on a zero-length value is an error in R >= 4.3,
     # so the guard meant to skip the pre-warm would instead fail the
     # activation it exists to speed up.
     if (!isTRUE(is.finite(bytes)) || bytes <= 0) {
-        return(invisible(NULL))
+        return(invisible(0))
     }
+    # Only grow what is missing, and only when something IS missing.
+    #
+    # Asking for the full figure unconditionally doubles the pool on every
+    # activation after the first. A render fragments the cache into its
+    # activation blocks, so the next single large request cannot be served
+    # from it and takes a fresh cudaMalloc alongside the old block. With
+    # release = FALSE -- which a residency broker passes deliberately, to
+    # keep an exclusive grant's blocks off other tenants -- nothing ever
+    # empties the cache, so it grows by one block per cycle until
+    # activation is refused. Measured on SDXL: 5.299 GiB after cycle 1,
+    # 10.322 after cycle 2, refused on cycle 3, with the step (5.023 GiB)
+    # matching the pre-warm block (5.021 GiB) to two thousandths.
+    #
+    # Bare activate/deactivate cycles never showed it: without a render the
+    # block is reused cleanly and the pool holds flat. It takes a
+    # generation in between, which is why one cycle is not a test.
+    if (is.null(held)) {
+        held <- tryCatch({
+            s <- torch::cuda_memory_stats(device = .cuda_index(device))
+            as.numeric(s$reserved_bytes$all$current) -
+                as.numeric(s$allocated_bytes$all$current)
+        }, error = function(e) 0)
+    }
+    if (!isTRUE(is.finite(held)) || held < 0) {
+        held <- 0
+    }
+    # One target, used for both the skip and the size, so the two cannot
+    # disagree. Skipping at `held >= bytes` while growing toward
+    # `bytes * 1.05` put a step in the middle: 3.999 GiB held asked for
+    # 0.201 GiB and 4.000 GiB held asked for nothing.
+    target <- as.numeric(bytes) * 1.05
+    if (held >= target) {
+        return(invisible(0))
+    }
+    want <- target - held
     tryCatch({
-        warm <- torch::torch_empty(as.numeric(bytes) * 1.05,
-                                   dtype = torch::torch_uint8(),
+        warm <- torch::torch_empty(want, dtype = torch::torch_uint8(),
                                    device = device)
         rm(warm)
         gc(verbose = FALSE)
     }, error = function(e) invisible(NULL))
-    invisible(NULL)
+    invisible(want)
+}
+
+#' Device ordinal for a torch device string
+#'
+#' \code{torch::cuda_memory_stats()} defaults to
+#' \code{cuda_current_device()}, so reading it without an argument reports
+#' whichever device happens to be current rather than the one a handle is
+#' bound to. \code{resident_load()} binds an explicit \code{"cuda:N"}
+#' precisely so transitions cannot drift, and a handle on \code{cuda:1}
+#' deciding from \code{cuda:0}'s pool would either skip a pre-warm it needs
+#' or repeat one it does not.
+#'
+#' @param device Character, e.g. "cuda", "cuda:0", "cuda:1".
+#'
+#' @return Integer ordinal. An unqualified device gives the current one.
+#'
+#' @keywords internal
+.cuda_index <- function(device) {
+    d <- as.character(device)[[1]]
+    if (grepl(":", d, fixed = TRUE)) {
+        n <- suppressWarnings(as.integer(sub("^.*:", "", d)))
+        if (!is.na(n)) {
+            return(n)
+        }
+    }
+    tryCatch(torch::cuda_current_device(), error = function(e) 0L)
 }
 
 #' Which components a bulk activation puts on the card
@@ -601,13 +681,25 @@ resident_deactivate <- function(res, release = TRUE) {
 #'   \code{sdxl} the handle supplies \code{devices} matching its own
 #'   placement unless the caller names it.
 #'
-#' @return Whatever the family generator returns, and the families do not
-#'   agree: an image array for \code{flux1}, \code{flux2} and
-#'   \code{zimage}, a video array for \code{ltx}, and for \code{sdxl} a
-#'   list of \code{image} and \code{metadata}, because
-#'   \code{\link{txt2img_sdxl}} has always returned that pair and changing
-#'   it would break every existing caller. A broker that wants one shape
-#'   should normalise in its own wrapper.
+#' @return Whatever the family generator returns, which is always a list.
+#'
+#'   The five image families (\code{flux1}, \code{flux2}, \code{zimage},
+#'   \code{sdxl}, \code{sd21}) return \code{list(image, metadata)}, where
+#'   \code{image} is an [H, W, 3] array in [0, 1], so a caller unwraps
+#'   \code{$image} uniformly across all five.
+#'
+#'   \code{ltx} returns \code{latents}, \code{audio_latents},
+#'   \code{latent_shape} and \code{sample_rate}, plus \code{video} and
+#'   \code{audio} -- but those two are produced only when
+#'   \code{decode_video} and \code{decode_audio} are TRUE, which they are
+#'   by default. A caller that turns either off gets a list without that
+#'   field rather than a NULL one, so index it with \code{[[ ]]} and check,
+#'   the way \code{\link{txt2vid_ltx2}} does internally.
+#'
+#'   Only the visibility differs: \code{\link{txt2img_sdxl}} and
+#'   \code{\link{txt2img_sd21}} use \code{return()} while the other three
+#'   image families and \code{ltx} use \code{invisible()}, which affects
+#'   auto-printing at the console and nothing else.
 #'
 #' @export
 resident_generate <- function(res, prompt, ...) {

@@ -3,16 +3,27 @@
 \alias{.resident_prewarm}
 \title{Grow the caching allocator's pool in one allocation before a bulk onload}
 \usage{
-.resident_prewarm(bytes, device)
+.resident_prewarm(bytes, device, held = NULL)
 }
 \arguments{
 \item{bytes}{Numeric. Host bytes about to be transferred; the pool is
-warmed to this plus a small margin for allocator slack.}
+warmed toward this plus a small margin for allocator slack.}
 
-\item{device}{Target CUDA device.}
+\item{device}{Target CUDA device, e.g. "cuda" or "cuda:1". Also selects
+which device's allocator is measured.}
+
+\item{held}{Free cached bytes the allocator already holds on that
+device, i.e. reserved minus allocated -- bytes that are reserved but
+live belong to something else and cannot serve this transfer. NULL
+measures it. Pass a value to make the decision deterministic: without
+CUDA the measurement is 0, which would always warm, so a test that
+wants the skip has to state what the pool holds rather than depend on
+the machine having a card. Same reason
+\code{\link{.resident_check_fits}} takes \code{free_gb}.}
 }
 \value{
-Invisibly NULL.
+Invisibly, the bytes requested from the allocator: 0 when the
+  pool already covers the transfer and nothing was asked for.
 }
 \description{
 A cold bulk onload grows the pool one \code{cudaMalloc} per tensor, and
@@ -30,6 +41,16 @@ deadline reads 24 s inside a first activate as a wedged worker.
 Best-effort. A card that cannot seat the block in one piece falls back to
 the per-tensor path, which is the current behaviour and merely slow, so
 the failure is swallowed rather than raised.
+
+Growing the pool is best-effort in the partial case. A request smaller
+than a free block already in the cache is served from that block and
+grows nothing, so when the pool is short by less than it already holds
+the pre-warm may be absorbed rather than add capacity. That is bounded
+and harmless -- the onload then falls back to the per-tensor path for
+the remainder, which is the old behaviour -- and the alternative, asking
+for the whole figure to force a new segment, is the accumulation bug
+this function exists to avoid. The cold pool, which is the case worth
+optimising and the one a broker's first request hits, is unaffected.
 
 }
 \keyword{internal}

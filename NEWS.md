@@ -1,3 +1,35 @@
+# diffuseR 0.2.2.6
+
+* Fixed an allocator pre-warm accumulation introduced in 0.2.2.4.
+  `.resident_prewarm()` requested the full onload need on every
+  activation, which doubled the CUDA caching allocator's pool after each
+  render: a generation fragments the cache, so the next single large
+  request cannot be served from it and takes a fresh allocation beside the
+  old one. Under `resident_deactivate(release = FALSE)` nothing empties
+  the cache, so SDXL went 5.299 GiB after one cycle to 10.322 after two
+  and refused the third. It now measures the free cache on the handle's
+  own device and grows only the shortfall, skipping entirely when the pool
+  already covers the transfer; a cold pool is unchanged, and the
+  cold-start win is intact (2.48 s against 2.51 s before). Measured flat
+  at 5.396 / 5.398 / 5.398 / 5.398 / 5.398 GiB across five cycles, with a
+  phase-offloading family (flux2) untouched because it never takes the
+  bulk branch.
+
+  This also corrected the budget independently of the refusal: both
+  release modes doubled between the first and second cycle, so any peak
+  measured on a single activation understated steady state roughly 2x.
+
+* `resident_generate()`'s documented return value was wrong. It claimed
+  `flux1`, `flux2` and `zimage` return bare image arrays and `sdxl` was
+  the exception. Every family returns a list: the five image families
+  return `list(image, metadata)`, so `$image` unwraps uniformly across all
+  five. `ltx` returns `latents`, `audio_latents`, `latent_shape` and
+  `sample_rate`, plus `video` and `audio` when `decode_video` /
+  `decode_audio` are TRUE — a caller that turns either off gets a list
+  without that field rather than a NULL one. Only visibility differs:
+  `txt2img_sdxl()` and `txt2img_sd21()` use `return()`, the rest
+  `invisible()`.
+
 # diffuseR 0.2.2.5
 
 * `resident_load()` accepts `"sd21"`, the sixth resident family.

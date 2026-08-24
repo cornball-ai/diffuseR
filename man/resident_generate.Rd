@@ -17,13 +17,25 @@ resident_generate(res, prompt, ...)
 placement unless the caller names it.}
 }
 \value{
-Whatever the family generator returns, and the families do not
-  agree: an image array for \code{flux1}, \code{flux2} and
-  \code{zimage}, a video array for \code{ltx}, and for \code{sdxl} a
-  list of \code{image} and \code{metadata}, because
-  \code{\link{txt2img_sdxl}} has always returned that pair and changing
-  it would break every existing caller. A broker that wants one shape
-  should normalise in its own wrapper.
+Whatever the family generator returns, which is always a list.
+
+  The five image families (\code{flux1}, \code{flux2}, \code{zimage},
+  \code{sdxl}, \code{sd21}) return \code{list(image, metadata)}, where
+  \code{image} is an [H, W, 3] array in [0, 1], so a caller unwraps
+  \code{$image} uniformly across all five.
+
+  \code{ltx} returns \code{latents}, \code{audio_latents},
+  \code{latent_shape} and \code{sample_rate}, plus \code{video} and
+  \code{audio} -- but those two are produced only when
+  \code{decode_video} and \code{decode_audio} are TRUE, which they are
+  by default. A caller that turns either off gets a list without that
+  field rather than a NULL one, so index it with \code{[[ ]]} and check,
+  the way \code{\link{txt2vid_ltx2}} does internally.
+
+  Only the visibility differs: \code{\link{txt2img_sdxl}} and
+  \code{\link{txt2img_sd21}} use \code{return()} while the other three
+  image families and \code{ltx} use \code{invisible()}, which affects
+  auto-printing at the console and nothing else.
 }
 \description{
 Dispatches to the family's generator with the resident pipeline
