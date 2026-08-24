@@ -56,9 +56,13 @@ txt2img_sd21 <- function(prompt, negative_prompt = NULL, img_dim = 768,
 
     device_cpu <- torch::torch_device("cpu")
     device_cuda <- torch::torch_device("cuda")
-    if (!is.null(diffusers_dir)) {
+    if (!is.null(diffusers_dir) || !is.null(pipeline)) {
         # Native safetensors path: resolve devices/dtype with the pure
         # helpers, skipping the .pt model verification models2devices runs.
+        # A supplied pipeline takes this branch too -- it was built without
+        # a .pt and never reads one, so verifying them would fail a working
+        # call on files it does not open. That is how a resident handle
+        # arrives here.
         # SD 2.1 attention overflows in float16 (all-NaN output), so
         # default this path to float32 unless float16 is asked for.
         devices <- standardize_devices(devices,
