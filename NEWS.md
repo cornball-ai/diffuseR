@@ -1,3 +1,22 @@
+# diffuseR 0.2.2.5
+
+* `resident_load()` accepts `"sd21"`, the sixth resident family.
+  `sd21_load_pipeline()` defaults to the `download_sd21()` cache and pins
+  the UNet at **float32**: SD 2.1's attention overflows in float16 and the
+  pipeline returns all-NaN rather than raising, so a float16 resident would
+  generate blank images with nothing to catch it. Only the UNet is placed
+  on the card, matching what `auto_devices("sd21")` already recommends.
+
+* `txt2img_sd21()` no longer requires the legacy TorchScript `.pt` files
+  when it is handed a pipeline it did not build, matching the same fix made
+  for `txt2img_sdxl()` in 0.2.2.4.
+
+* Known limitation, unchanged by this release but now measured: SD 2.1's
+  native float32 path does not fit its own 768x768 default on a 15.47 GiB
+  card. The denoise wants 11.35 GB with a further 3.1 GB of allocator
+  slack, with or without residency (a plain `txt2img_sd21()` OOMs at
+  11.494 GB). 512x512 uses 6.807 GB and is comfortable.
+
 # diffuseR 0.2.2.4
 
 * `resident_load()` accepts `"sdxl"`, making it the fifth resident family.

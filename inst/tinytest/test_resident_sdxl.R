@@ -120,8 +120,13 @@ expect_equal(diffuseR:::.resident_gpu_set(mk_h("sdxl", gpu = c("unet", "nope")))
 
 inj <- diffuseR:::.resident_gen_args(mk_h("sdxl"), list())
 expect_true(!is.null(inj$devices))
+# The list is keyed by what standardize_devices() requires, not by what the
+# pipeline builds: SDXL's required set also names an `encoder` (the VAE
+# encoder img2img uses) that the text-to-image pipeline never constructs.
 expect_equal(sort(names(inj$devices)),
-             c("decoder", "text_encoder", "text_encoder2", "unet"))
+             sort(diffuseR:::get_required_components("sdxl")))
+expect_true(all(c("unet", "decoder", "text_encoder", "text_encoder2") %in%
+                names(inj$devices)))
 
 # Only the UNet is on the card: bulk-onloading all four fits the weights and
 # then OOMs in the fp32 VAE decode. The encoders and decoder compute on the

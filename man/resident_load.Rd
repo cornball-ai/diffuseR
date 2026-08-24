@@ -4,7 +4,7 @@
 \title{Load a diffusion pipeline as a resident handle}
 \usage{
 resident_load(
-  model = c("flux2", "flux1", "zimage", "ltx", "sdxl"),
+  model = c("flux2", "flux1", "zimage", "ltx", "sdxl", "sd21"),
   device = "cuda",
   ...,
   verbose = TRUE

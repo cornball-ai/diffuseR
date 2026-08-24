@@ -42,7 +42,7 @@
 
 # Families that ship a pinned/staged loader. Keyed by the `model` name
 # used everywhere else in the package (see recommend()).
-.resident_families <- c("flux1", "flux2", "zimage", "ltx", "sdxl")
+.resident_families <- c("flux1", "flux2", "zimage", "ltx", "sdxl", "sd21")
 
 #' Every nn_module field of a pipeline, by name
 #'
@@ -254,7 +254,8 @@
 #' }
 #'
 #' @export
-resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx", "sdxl"),
+resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
+                                    "sdxl", "sd21"),
                           device = "cuda", ..., verbose = TRUE) {
     model <- match.arg(model)
     if (!torch::cuda_is_available()) {
@@ -276,7 +277,8 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx", "sdxl"),
                      flux2 = flux2_load_pipeline,
                      zimage = zimage_load_pipeline,
                      ltx = ltx23_load_pipeline,
-                     sdxl = sdxl_load_pipeline)
+                     sdxl = sdxl_load_pipeline,
+                     sd21 = sd21_load_pipeline)
     # Capture the phase-offload choice here rather than reading it back
     # off the pipeline: the FLUX family stores it as a field, LTX takes
     # it again at generate time and stores nothing, so the field is
@@ -620,7 +622,8 @@ resident_generate <- function(res, prompt, ...) {
                   flux2 = txt2img_flux2,
                   zimage = txt2img_zimage,
                   ltx = txt2vid_ltx2,
-                  sdxl = txt2img_sdxl)
+                  sdxl = txt2img_sdxl,
+                  sd21 = txt2img_sd21)
     do.call(gen, c(list(prompt, pipeline = res$pipeline),
                    .resident_gen_args(res, list(...))))
 }
@@ -650,18 +653,22 @@ resident_generate <- function(res, prompt, ...) {
 #'
 #' @keywords internal
 .resident_gen_args <- function(res, args) {
-    if (identical(res$model, "sdxl") && is.null(args$devices)) {
+    if (res$model %in% c("sdxl", "sd21") && is.null(args$devices)) {
         on_gpu <- .resident_gpu_set(res)
-        place <- function(nm) {
-            if (nm %in% on_gpu) {
+        # The component set is the generator's, not the pipeline's: SD 2.1
+        # declares an `encoder` (the VAE encoder img2img needs) that the
+        # text-to-image pipeline never builds, and standardize_devices()
+        # would otherwise refuse the list as missing a required component.
+        # It follows the decoder, which is where it would live anyway.
+        want <- get_required_components(res$model)
+        args$devices <- stats::setNames(lapply(want, function(nm) {
+            src <- if (identical(nm, "encoder")) "decoder" else nm
+            if (src %in% on_gpu) {
                 res$device
             } else {
                 "cpu"
             }
-        }
-        args$devices <- list(unet = place("unet"), decoder = place("decoder"),
-                             text_encoder = place("text_encoder"),
-                             text_encoder2 = place("text_encoder2"))
+        }), want)
     }
     args
 }
