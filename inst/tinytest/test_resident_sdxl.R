@@ -213,4 +213,33 @@ expect_silent(diffuseR:::.resident_prewarm(NA_real_, "cuda"))
 expect_silent(diffuseR:::.resident_prewarm(NULL, "cuda"))
 # An impossible size on a real card must be swallowed, not raised.
 expect_silent(diffuseR:::.resident_prewarm(1e18, "cuda"))
-expect_null(diffuseR:::.resident_prewarm(1024, "cuda"))
+expect_equal(diffuseR:::.resident_prewarm(0, "cuda"), 0)
+
+# It must GROW the pool, not re-request it. Asking for the full figure on
+# every activation doubled the cache once a render had fragmented it: the
+# single large request could not be served from cache and took a fresh
+# cudaMalloc beside the old block. Under release = FALSE -- which a
+# residency broker passes deliberately -- nothing empties the cache, so
+# SDXL went 5.299 -> 10.322 GiB and the third activation was refused.
+gb <- 1024^3
+
+# Pool already covers the transfer: ask for nothing at all.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 5 * gb), 0)
+# Exactly equal still counts as covered.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 4 * gb), 0)
+
+# Pool short: ask for the SHORTFALL, not the whole need. Requesting the
+# whole need here is precisely the bug.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 3 * gb),
+             1 * gb * 1.05)
+
+# Cold pool: byte-identical to the original behaviour, so the 74x
+# cold-start win is untouched.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = 0),
+             4 * gb * 1.05)
+
+# A nonsense reading must not be trusted into a negative request.
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = NA_real_),
+             4 * gb * 1.05)
+expect_equal(diffuseR:::.resident_prewarm(4 * gb, "cuda", held = -1),
+             4 * gb * 1.05)

@@ -3,16 +3,24 @@
 \alias{.resident_prewarm}
 \title{Grow the caching allocator's pool in one allocation before a bulk onload}
 \usage{
-.resident_prewarm(bytes, device)
+.resident_prewarm(bytes, device, held = NULL)
 }
 \arguments{
 \item{bytes}{Numeric. Host bytes about to be transferred; the pool is
 warmed to this plus a small margin for allocator slack.}
 
 \item{device}{Target CUDA device.}
+
+\item{held}{Bytes the caching allocator already holds. NULL measures it.
+Pass a value to make the decision deterministic: without CUDA the
+measurement is 0, which would always warm, so a test that wants the
+skip has to state what the pool holds rather than depend on the
+machine having a card. Same reason \code{\link{.resident_check_fits}}
+takes \code{free_gb}.}
 }
 \value{
-Invisibly NULL.
+Invisibly, the bytes requested from the allocator: 0 when the
+  pool already covers the transfer and nothing was asked for.
 }
 \description{
 A cold bulk onload grows the pool one \code{cudaMalloc} per tensor, and

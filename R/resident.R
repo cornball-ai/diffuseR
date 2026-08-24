@@ -334,26 +334,60 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
 #' @param bytes Numeric. Host bytes about to be transferred; the pool is
 #'   warmed to this plus a small margin for allocator slack.
 #' @param device Target CUDA device.
+#' @param held Bytes the caching allocator already holds. NULL measures it.
+#'   Pass a value to make the decision deterministic: without CUDA the
+#'   measurement is 0, which would always warm, so a test that wants the
+#'   skip has to state what the pool holds rather than depend on the
+#'   machine having a card. Same reason \code{\link{.resident_check_fits}}
+#'   takes \code{free_gb}.
 #'
-#' @return Invisibly NULL.
+#' @return Invisibly, the bytes requested from the allocator: 0 when the
+#'   pool already covers the transfer and nothing was asked for.
 #'
 #' @keywords internal
-.resident_prewarm <- function(bytes, device) {
+.resident_prewarm <- function(bytes, device, held = NULL) {
     # isTRUE() rather than a bare is.finite(): a NULL pinned_bytes gives
     # logical(0), and `||` on a zero-length value is an error in R >= 4.3,
     # so the guard meant to skip the pre-warm would instead fail the
     # activation it exists to speed up.
     if (!isTRUE(is.finite(bytes)) || bytes <= 0) {
-        return(invisible(NULL))
+        return(invisible(0))
     }
+    # Only grow what is missing, and only when something IS missing.
+    #
+    # Asking for the full figure unconditionally doubles the pool on every
+    # activation after the first. A render fragments the cache into its
+    # activation blocks, so the next single large request cannot be served
+    # from it and takes a fresh cudaMalloc alongside the old block. With
+    # release = FALSE -- which a residency broker passes deliberately, to
+    # keep an exclusive grant's blocks off other tenants -- nothing ever
+    # empties the cache, so it grows by one block per cycle until
+    # activation is refused. Measured on SDXL: 5.299 GiB after cycle 1,
+    # 10.322 after cycle 2, refused on cycle 3, with the step (5.023 GiB)
+    # matching the pre-warm block (5.021 GiB) to two thousandths.
+    #
+    # Bare activate/deactivate cycles never showed it: without a render the
+    # block is reused cleanly and the pool holds flat. It takes a
+    # generation in between, which is why one cycle is not a test.
+    if (is.null(held)) {
+        held <- tryCatch({
+            as.numeric(torch::cuda_memory_stats()$reserved_bytes$all$current)
+        }, error = function(e) 0)
+    }
+    if (!isTRUE(is.finite(held)) || held < 0) {
+        held <- 0
+    }
+    if (held >= bytes) {
+        return(invisible(0))
+    }
+    want <- (as.numeric(bytes) - held) * 1.05
     tryCatch({
-        warm <- torch::torch_empty(as.numeric(bytes) * 1.05,
-                                   dtype = torch::torch_uint8(),
+        warm <- torch::torch_empty(want, dtype = torch::torch_uint8(),
                                    device = device)
         rm(warm)
         gc(verbose = FALSE)
     }, error = function(e) invisible(NULL))
-    invisible(NULL)
+    invisible(want)
 }
 
 #' Which components a bulk activation puts on the card
