@@ -299,7 +299,8 @@ Native torch modules will load weights directly from HuggingFace safetensors for
 model <- load_from_hf("stabilityai/stable-diffusion-xl-base-1.0")
 ```
 
-See cornyverse CLAUDE.md for safetensors package setup (use cornball-ai fork until PR merged).
+See cornyverse CLAUDE.md for safetensors package setup. CRAN safetensors
+0.3.0 contains the required fixes; keep downstream gates capability-probed.
 
 ## Roadmap
 

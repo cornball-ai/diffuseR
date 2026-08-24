@@ -85,7 +85,7 @@ r <- recommend("flux1", vram_gb = 16,
                st_caps = list(bfloat16 = TRUE, float8_e4m3fn = FALSE))
 r$precision       # "nf4": fp8 fits the card, but cannot be read
 r$fork_suggested  # TRUE
-cat(r$note)       # the fork-or-nf4 message
+cat(r$note)       # the update-or-nf4 message
 
 # Same card, once safetensors can read float8
 recommend("flux1", vram_gb = 16,

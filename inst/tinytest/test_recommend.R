@@ -155,7 +155,7 @@ expect_false(grepl("—", fn("fp8")))   # no em dash, either variant
 # GitHub development build for three days after safetensors 0.3.0 shipped
 # the fix to CRAN. A message can be well-formed and still wrong.
 for (v in list(fn("fp8"), fn("bf16", fit = FALSE))) {
-    expect_true(grepl("install.packages", v, fixed = TRUE))
+    expect_true(grepl('install.packages("safetensors")', v, fixed = TRUE))
     # Regression guard: if this ever points back at a development build,
     # the advice has gone stale again.
     expect_false(grepl("development version", v, fixed = TRUE))
@@ -170,7 +170,7 @@ expect_true(grepl("2\\^31", msg))
 expect_true(grepl("shard-00001", msg))
 # Same guard as above: the overflow breadcrumb carried the same stale
 # GitHub advice, and nothing caught it.
-expect_true(grepl("install.packages", msg, fixed = TRUE))
+expect_true(grepl('install.packages("safetensors")', msg, fixed = TRUE))
 expect_false(grepl("development version", msg, fixed = TRUE))
 expect_false(grepl("GitHub", msg, fixed = TRUE))
 

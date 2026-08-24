@@ -17,8 +17,8 @@ NULL
 }
 
 # Capability probe: can the installed safetensors round-trip this dtype?
-# CRAN safetensors (<= 0.2.1) can read bfloat16 but not write it, and has
-# no float8 support; the fixes are upstream PRs. Cached per session;
+# The CRAN safetensors 0.2.1 release can read bfloat16 but not write it,
+# and has no float8 support; 0.3.0 includes both fixes. Cached per session;
 # options(diffuseR.st_caps = list(bfloat16 = FALSE, ...)) overrides for
 # tests.
 .st_caps <- new.env(parent = emptyenv())
@@ -49,7 +49,7 @@ NULL
 # Resolve precision = "auto": prefer an existing quantized artifact
 # (fp8 first), else pick by float8 write capability. An fp8 artifact is
 # only chosen if the installed safetensors can actually read float8 -
-# otherwise a fork-built fp8 artifact on a CRAN-safetensors machine
+# otherwise an fp8 artifact on a reader without float8 support
 # would be selected and then fail at read time. Write capability is a
 # sound proxy for read capability (nothing writes fp8 but cannot read
 # it).
@@ -310,10 +310,10 @@ NULL
 #'   the per-format location under \code{tools::R_user_dir}).
 #' @param format "nf4" or "fp8".
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
-#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that
-#'   stock CRAN safetensors can read, so the artifact loads fork-free.
-#'   Pass a larger value (e.g. 4e9) only for local builds you will read
-#'   back with a fork-patched safetensors.
+#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling in
+#'   safetensors older than 0.3.0, so the artifact remains readable there.
+#'   Larger values (e.g. 4e9) require safetensors 0.3.0 or newer and are
+#'   best kept for local artifacts; use the default for redistribution.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
 #' @param verbose Logical.
 #'

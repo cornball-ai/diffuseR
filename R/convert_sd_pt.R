@@ -13,7 +13,7 @@
 #' CreativeML OpenRAIL++-M (redistributable), and cornball already hosts
 #' these weights as \code{.pt}. At \code{float16} the components are all
 #' sub-2 GB single files (unet ~1.7 GB, text_encoder ~0.65 GB, vae
-#' ~0.16 GB), so they load on stock CRAN safetensors.
+#' ~0.16 GB), so they also load on safetensors older than 0.3.0.
 #'
 #' @param pt_dir Directory holding \code{unet-cpu.pt},
 #'   \code{decoder-cpu.pt}, \code{text_encoder-cpu.pt} (default: the

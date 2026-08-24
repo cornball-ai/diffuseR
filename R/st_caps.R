@@ -1,10 +1,10 @@
 #' safetensors read-capability probes and upgrade messaging
 #'
-#' safetensors 0.2.1 reads bfloat16 but cannot write it, and has no
-#' float8 support at all. Both fixes (mlverse/safetensors#11 for bfloat16
-#' write, #13 for float8) merged upstream on 2026-07-31 and reached CRAN
-#' in safetensors 0.3.0 on 2026-08-21, along with #14 for the >2 GB
-#' offset overflow and #10 for empty tensor names.
+#' The CRAN safetensors 0.2.1 release reads bfloat16 but cannot write it,
+#' and has no float8 support at all. Both fixes (mlverse/safetensors#11
+#' for bfloat16 write, #13 for float8) merged upstream on 2026-07-31 and
+#' reached CRAN in safetensors 0.3.0 on 2026-08-21, along with #14 for the
+#' >2 GB offset overflow and #10 for empty tensor names.
 #'
 #' The gates here stayed runtime probes rather than a version floor, and
 #' that decision is what let the fork requirement retire itself the day
@@ -21,9 +21,9 @@
 #'   \item \emph{read} (\code{.st_can_read}, here): needed to LOAD a
 #'     hosted artifact in that dtype. This is the capability that gates
 #'     user-facing recommendations. It is strictly weaker than write:
-#'     CRAN safetensors reads bfloat16 it cannot write, so the write
-#'     probe is the wrong signal for whether a hosted bf16 artifact will
-#'     load.
+#'     the CRAN 0.2.1 release reads bfloat16 it cannot write, so the
+#'     write probe is the wrong signal for whether a hosted bf16 artifact
+#'     will load.
 #' }
 #'
 #' Both are capability-probed, never version-pinned. That is why the fork
@@ -35,13 +35,13 @@ NULL
 
 # Read-probe cache, keyed by dtype. Separate from quantize_flux.R's
 # `.st_caps` write cache: the same dtype can be readable but not
-# writable (bfloat16 on CRAN), so the two must not share entries.
+# writable (bfloat16 on CRAN 0.2.1), so the two must not share entries.
 .st_read_caps <- new.env(parent = emptyenv())
 
 # Write a minimal 2-element safetensors file by hand: a u64
 # little-endian header length, the JSON header, then the raw tensor
 # bytes. Deliberately does NOT go through safetensors::safe_save_file -
-# that is the whole point, since a CRAN safetensors cannot WRITE
+# that is the whole point, since CRAN safetensors 0.2.1 cannot WRITE
 # bfloat16 yet can READ it. Lets `.st_can_read` test read capability in
 # isolation from write capability.
 .st_write_min <- function(path, dtype_name, payload) {

@@ -9,11 +9,22 @@
   note, the graceful fp8/bf16 fallback, both `flux_quantize()` errors, and
   the >2 GB read breadcrumb.
 
+  The same sweep reached the documentation, which is where most of the
+  stale advice actually was: the `shard_bytes` help for `flux_quantize()`,
+  `ltx23_quantize_nf4()`, `ltx23_quantize_fp8()` and
+  `gemma3_quantize_nf4()` described the 1.9e9 default as what "stock CRAN
+  safetensors" can read and pointed at a fork for anything larger. Those
+  now say the default keeps artifacts readable on safetensors older than
+  0.3.0, and that larger shards need 0.3.0 or newer. `README.md`,
+  `vignette("performance-levers")`, and the `unet_safetensors`,
+  `download_prebuilt` and `convert_sd21_pt_to_diffusers` help pages got
+  the same treatment.
+
   The capability probes are unchanged, and deliberately so. They were
   written as runtime probes rather than a version floor precisely so this
   day would need no code change, and they still cover what a version test
   cannot: the fixes existed for three weeks in builds that reported 0.2.1.
-  No version floor has been added to `Suggests` for the same reason — nf4
+  No version floor has been added to `Suggests` for the same reason: nf4
   works on older safetensors, so a stale install costs a tier rather than
   the model.
 
