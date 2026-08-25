@@ -30,8 +30,12 @@ A list with \code{model}, \code{precision}, \code{devices}
   logical), \code{max_pixels}, \code{text_device}, \code{attn_chunk},
   \code{vram_gb}, \code{pin} (page-lock the phase-swapped host
   copies), \code{pinned_set_gb} (estimated pinned bytes),
-  \code{host_ram_gb}, \code{fork_suggested} (logical), and
-  \code{note} (the fork suggestion string, or NULL).
+  \code{host_ram_gb}, \code{fork_suggested} (logical: the installed
+  safetensors cannot read the tier the card could otherwise run), and
+  \code{note} (the suggestion string, or NULL). The field name is
+  historical -- the remedy used to be the cornball-ai fork and is now
+  \code{install.packages("safetensors")}, since the fixes reached CRAN
+  in 0.3.0 -- and is kept because it is part of the returned contract.
 }
 \description{
 One VRAM-and-capability-aware recommendation for every diffuseR
@@ -48,7 +52,7 @@ floor is fp16 with placement varying by VRAM.
 bf16) AND the installed safetensors can \emph{read} that dtype
 (\code{\link{.st_can_read}}), that tier is recommended instead.
 \item When the card has room but safetensors cannot read the tier,
-nf4 is recommended and the fork suggestion is surfaced in
+nf4 is recommended and the upgrade suggestion is surfaced in
 \code{note} (never an error).
 }
 
@@ -81,7 +85,7 @@ r <- recommend("flux1", vram_gb = 16,
                st_caps = list(bfloat16 = TRUE, float8_e4m3fn = FALSE))
 r$precision       # "nf4": fp8 fits the card, but cannot be read
 r$fork_suggested  # TRUE
-cat(r$note)       # the fork-or-nf4 message
+cat(r$note)       # the update-or-nf4 message
 
 # Same card, once safetensors can read float8
 recommend("flux1", vram_gb = 16,

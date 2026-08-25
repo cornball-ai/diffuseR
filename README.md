@@ -224,17 +224,19 @@ txt2img("a lighthouse at dusk", model_name = "flux2")
 ### Precision and safetensors
 
 The quantized transformers ship as **nf4** by default (packed uint8 +
-float32 blocks). nf4 loads on **stock CRAN safetensors** because the
-artifacts are written in sub-2 GB shards; R's safetensors overflows a
-32-bit offset on any single file at or above 2^31 bytes (~2.15 GB), so
-shard size, not the dtype, is what gates readability.
+float32 blocks). nf4 loads on every safetensors release because the
+artifacts are written in sub-2 GB shards. Releases before 0.3.0 overflow
+a 32-bit offset on any single file at or above 2^31 bytes (~2.15 GB), so
+the default shard size preserves backward compatibility; 0.3.0 and newer
+can also read larger shards.
 
 Higher-quality tiers behave as follows:
 
 - **bf16** (24 GB+ cards) is also CRAN-readable.
-- **fp8** (the 12-16 GB sweet spot) needs the
-  [`cornball-ai/safetensors`](https://github.com/cornball-ai/safetensors)
-  fork until float8 support lands on CRAN (mlverse/safetensors#13).
+- **fp8** (the 12-16 GB sweet spot) needs float8 support
+  (mlverse/safetensors#13), which reached CRAN in safetensors 0.3.0. A
+  safetensors without it still reads nf4, so a stale install costs you a
+  tier rather than the model.
 
 `recommend(model)` picks the right tier for your VRAM and the
 safetensors you have installed, and asking for a tier your safetensors
@@ -242,7 +244,7 @@ cannot read falls back to nf4 with a note rather than erroring:
 
 ```r
 recommend("flux2")            # e.g. list(precision = "fp8", ...) on a 16 GB card
-recommend("flux1")$note       # the fork suggestion, when fp8/bf16 would fit but can't load
+recommend("flux1")$note       # the upgrade suggestion when fp8/bf16 would fit but cannot load
 ```
 
 ## Supported Models

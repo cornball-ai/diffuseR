@@ -17,8 +17,8 @@ NULL
 }
 
 # Capability probe: can the installed safetensors round-trip this dtype?
-# CRAN safetensors (<= 0.2.1) can read bfloat16 but not write it, and has
-# no float8 support; the fixes are upstream PRs. Cached per session;
+# The CRAN safetensors 0.2.1 release can read bfloat16 but not write it,
+# and has no float8 support; 0.3.0 includes both fixes. Cached per session;
 # options(diffuseR.st_caps = list(bfloat16 = FALSE, ...)) overrides for
 # tests.
 .st_caps <- new.env(parent = emptyenv())
@@ -49,7 +49,7 @@ NULL
 # Resolve precision = "auto": prefer an existing quantized artifact
 # (fp8 first), else pick by float8 write capability. An fp8 artifact is
 # only chosen if the installed safetensors can actually read float8 -
-# otherwise a fork-built fp8 artifact on a CRAN-safetensors machine
+# otherwise an fp8 artifact on a reader without float8 support
 # would be selected and then fail at read time. Write capability is a
 # sound proxy for read capability (nothing writes fp8 but cannot read
 # it).
@@ -310,10 +310,11 @@ NULL
 #'   the per-format location under \code{tools::R_user_dir}).
 #' @param format "nf4" or "fp8".
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
-#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that
-#'   stock CRAN safetensors can read, so the artifact loads fork-free.
-#'   Pass a larger value (e.g. 4e9) only for local builds you will read
-#'   back with a fork-patched safetensors.
+#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) offset
+#'   ceiling, so the artifact reads on a safetensors that lacks the
+#'   overflow fix (mlverse/safetensors#14, which reached CRAN in 0.3.0).
+#'   Larger values (e.g. 4e9) need that fix present, so keep them for
+#'   local artifacts and use the default for anything redistributed.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
 #' @param verbose Logical.
 #'
@@ -327,14 +328,15 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
     if (format == "fp8" && !.st_can_write("float8_e4m3fn")) {
         stop("The installed safetensors package cannot write float8 ",
              "tensors (needs the float8 support from ",
-             "mlverse/safetensors#13, which is merged upstream but not ",
-             "yet on CRAN; install the development version of ",
-             "safetensors from GitHub, or use format = \"nf4\").",
-             call. = FALSE)
+             "mlverse/safetensors#13, released in safetensors 0.3.0). ",
+             "Run install.packages(\"safetensors\") to update, or use ",
+             "format = \"nf4\".", call. = FALSE)
     }
     # Residents load into the compute dtype either way; bf16 halves the
-    # artifact but the CRAN build of safetensors 0.2.1 cannot write it
-    # (the fix is merged upstream; the probe decides, not the version)
+    # artifact but a safetensors without the bfloat16 write fix
+    # (mlverse/safetensors#11, which reached CRAN in 0.3.0) cannot write
+    # it. The probe decides, not the version: the fix existed for three
+    # weeks in builds still reporting 0.2.1.
     resident_dtype <- if (.st_can_write("bfloat16")) {
         torch::torch_bfloat16()
     } else {
@@ -491,10 +493,9 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     format <- ckpt$format %||% "full"
     if (identical(format, "fp8") && !.st_can_write("float8_e4m3fn")) {
         stop("This fp8 artifact needs float8 support the installed ",
-             "safetensors lacks (mlverse/safetensors#13, merged upstream ",
-             "but not yet on CRAN). Install the development version of ",
-             "safetensors from GitHub, or rebuild the artifact as nf4.",
-             call. = FALSE)
+             "safetensors lacks (mlverse/safetensors#13, released in ",
+             "safetensors 0.3.0). Run install.packages(\"safetensors\") ",
+             "to update, or rebuild the artifact as nf4.", call. = FALSE)
     }
     hooks <- .flux_family_hooks(ckpt$config)
 

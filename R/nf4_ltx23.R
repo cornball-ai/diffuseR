@@ -259,9 +259,11 @@ ltx23_nf4_linear <- torch::nn_module(
 #' @param output_dir Output directory for shards + manifest; NULL (the
 #'   default) resolves under tools::R_user_dir("diffuseR", "data").
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
-#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) ceiling that
-#'   stock CRAN safetensors can read. Pass a larger value (e.g. 4e9) only
-#'   for local builds you will read back with a fork-patched safetensors.
+#'   1.9e9 keeps every shard under the 2^31-byte (~2.15 GB) offset
+#'   ceiling, so the artifact reads on a safetensors that lacks the
+#'   overflow fix (mlverse/safetensors#14, which reached CRAN in 0.3.0).
+#'   Larger values (e.g. 4e9) need that fix present, so keep them for
+#'   local artifacts and use the default for anything redistributed.
 #' @param force Logical. Re-quantize even if a valid manifest exists.
 #' @param verbose Logical.
 #'

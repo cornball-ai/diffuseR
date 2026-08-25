@@ -122,7 +122,7 @@ r <- recommend("ltx")     # or "flux1", "flux2", "zimage", "sdxl", "sd21"
 r$precision               # tier the card + safetensors support
 r$devices                 # per-component placement
 r$pin                     # page-lock the phase-swapped host copies?
-r$note                    # fork suggestion when fp8 wanted but unreadable
+r$note                    # upgrade suggestion when fp8 wanted but unreadable
 ```
 
 Treat the result as the machine's advice: pass its fields to the

@@ -386,7 +386,7 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         held <- tryCatch({
             s <- torch::cuda_memory_stats(device = .cuda_index(device))
             as.numeric(s$reserved_bytes$all$current) -
-                as.numeric(s$allocated_bytes$all$current)
+            as.numeric(s$allocated_bytes$all$current)
         }, error = function(e) 0)
     }
     if (!isTRUE(is.finite(held)) || held < 0) {

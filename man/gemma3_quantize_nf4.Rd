@@ -19,7 +19,7 @@ model-*.safetensors).}
 \code{gemma3-nf4} under \code{tools::R_user_dir}).}
 
 \item{shard_bytes}{Numeric. Target shard size in bytes; the 1.9e9
-default keeps shards readable by stock CRAN safetensors.}
+default keeps shards readable by safetensors older than 0.3.0.}
 
 \item{force}{Logical. Re-quantize even if a valid manifest exists.}
 
