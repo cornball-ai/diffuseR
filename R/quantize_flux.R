@@ -333,9 +333,10 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
              "format = \"nf4\".", call. = FALSE)
     }
     # Residents load into the compute dtype either way; bf16 halves the
-    # artifact but safetensors before 0.3.0 cannot write it. The probe
-    # decides, not the version: the fix existed for three weeks in builds
-    # still reporting 0.2.1.
+    # artifact but a safetensors without the bfloat16 write fix
+    # (mlverse/safetensors#11, which reached CRAN in 0.3.0) cannot write
+    # it. The probe decides, not the version: the fix existed for three
+    # weeks in builds still reporting 0.2.1.
     resident_dtype <- if (.st_can_write("bfloat16")) {
         torch::torch_bfloat16()
     } else {

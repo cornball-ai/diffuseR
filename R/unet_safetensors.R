@@ -11,7 +11,8 @@
 #' parameter is filled and no key or shape is left unmatched.
 #'
 #' Reads route through the shared sharded opener, so an oversize (>2 GB)
-#' single-file checkpoint on safetensors older than 0.3.0 surfaces the
+#' single-file checkpoint read by a safetensors without the overflow fix
+#' (mlverse/safetensors#14, which reached CRAN in 0.3.0) surfaces the
 #' actionable "update safetensors or rebuild with smaller shards" message
 #' rather than a raw 32-bit overflow.
 #'

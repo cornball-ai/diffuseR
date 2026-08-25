@@ -28,19 +28,19 @@
   stale advice actually was: the `shard_bytes` help for `flux_quantize()`,
   `ltx23_quantize_nf4()`, `ltx23_quantize_fp8()` and
   `gemma3_quantize_nf4()` described the 1.9e9 default as what "stock CRAN
-  safetensors" can read and pointed at a fork for anything larger. Those
-  now say the default keeps artifacts readable on safetensors older than
-  0.3.0, and that larger shards need 0.3.0 or newer. `README.md`,
-  `vignette("performance-levers")`, and the `unet_safetensors`,
-  `download_prebuilt` and `convert_sd21_pt_to_diffusers` help pages got
-  the same treatment.
+  safetensors" can read and pointed at a fork for anything larger.
+  `README.md`, `vignette("performance-levers")`, `reshard_safetensors()`
+  and the `unet_safetensors`, `download_prebuilt` and
+  `convert_sd21_pt_to_diffusers` help pages carried variants of the same.
 
-  That prose now names the fix rather than the version: "needs the
+  All of it now names the capability rather than a version: "needs the
   overflow fix (mlverse/safetensors#14, which reached CRAN in 0.3.0)"
-  instead of "requires safetensors 0.3.0 or newer". Making the version
-  the requirement contradicted the probe-don't-pin rationale documented
-  two paragraphs down, which turns on capable builds having existed while
-  still reporting 0.2.1.
+  rather than "requires safetensors 0.3.0 or newer". That distinction is
+  the package's whole stance here, documented below: a version number
+  never separated a capable build from an incapable one, so prose making
+  0.3.0 the requirement contradicts the probes it sits beside. The >2 GB
+  read breadcrumb and the bf16 resident-dtype message use the same
+  vocabulary.
 
   The capability probes are unchanged, and deliberately so. They were
   written as runtime probes rather than a version floor precisely so this

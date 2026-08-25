@@ -183,9 +183,10 @@ NULL
 # .st_read_or_breadcrumb so it can be unit-tested without a real 2 GB
 # file.
 .st_overflow_message <- function(file_path, size_bytes, underlying) {
-    sprintf(paste0("Could not read %s (%.1f GB). safetensors before ",
-                   "0.3.0 overflows a 32-bit offset on files at or above ",
-                   "2^31 bytes (~2.15 GB). Run ",
+    sprintf(paste0("Could not read %s (%.1f GB). A safetensors without ",
+                   "the >2 GB offset fix (mlverse/safetensors#14, which ",
+                   "reached CRAN in 0.3.0) overflows a 32-bit offset on ",
+                   "files at or above 2^31 bytes (~2.15 GB). Run ",
                    "install.packages(\"safetensors\") to update, or ",
                    "rebuild the artifact with smaller shards (the ",
                    "quantizers default to shard_bytes = 1.9e9). ",
@@ -195,11 +196,10 @@ NULL
 
 # Run a safetensors read; if it fails AND the backing shard is at/above
 # the 2^31-byte ceiling, translate the cryptic overflow into the
-# update-or-smaller-shards breadcrumb. A read that succeeds (safetensors
-# 0.3.0+, or a sub-2 GB shard) is untouched; a failure on a small shard
-# rethrows
-# verbatim. Reactive by design, so it never false-alarms on a machine
-# that can read large files.
+# update-or-smaller-shards breadcrumb. A read that succeeds (a reader
+# with the overflow fix, or a sub-2 GB shard) is untouched; a failure on
+# a small shard rethrows verbatim. Reactive by design, so it never
+# false-alarms on a machine that can read large files.
 .st_read_or_breadcrumb <- function(read_fn, file_path = NULL) {
     tryCatch(read_fn(), error = function(e) {
         sz <- if (!is.null(file_path)) {
