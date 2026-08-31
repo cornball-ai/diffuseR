@@ -1,3 +1,24 @@
+# diffuseR 0.2.2.8
+
+* `flux2_load_pipeline()` takes a `revision`. Its VAE, Qwen3 encoder and
+  tokenizer come from the Hugging Face cache, and hfhub's default revision
+  is the branch `main` -- resolved through `refs/main` and, failing that,
+  over the network. A read-only bind of one snapshot carries neither, so
+  the load failed there; an exact 40-hex commit takes hfhub straight to
+  `snapshots/<revision>/<file>`. A branch name is refused rather than
+  passed through.
+
+* `resident_load("ltx", ...)` takes `text_encoder` and `tokenizer` paths.
+  `ltx23_load_pipeline()` does not load them and `txt2vid_ltx2()` takes
+  them per call, so a resident LTX handle could be activated and could not
+  generate -- and a serving caller passing paths re-read 7.6 GB of Gemma3
+  on every request. Given here they load once, pinned on the host, and
+  `resident_generate()` supplies them. They stay OUT of the handle's
+  staging on purpose: `resident_activate()` places everything in staging at
+  once, and the encoder does not fit beside the transformer. It rides to
+  the card for its own phase and back off, as the pipeline's components do.
+  `pinned_bytes` counts it.
+
 # diffuseR 0.2.2.7
 
 * `recommend()` diagnosed the wrong safetensors capability for bf16. The
