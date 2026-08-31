@@ -11,13 +11,46 @@
 #' @name txt2img_flux2
 NULL
 
+# The revision a hub lookup resolves against.
+#
+# NULL means hfhub's default, "main" -- a BRANCH, which it resolves through
+# `refs/main` in the cache and, failing that, over the network. An exact 40-hex
+# commit takes hfhub's fast path instead: straight to
+# `snapshots/<revision>/<file>`, never consulting `refs/`.
+#
+# That difference is what lets a pipeline load from a cache holding ONLY the
+# snapshot -- a read-only bind of one revision, with no `refs/` and no network,
+# which is how a fleet node serves weights it did not bake. It is also the
+# stronger guarantee generally: a branch moves, so a deployment pinned to
+# yesterday's weights would silently start resolving today's.
+#
+# A branch name is REFUSED rather than passed through. Accepting one would hand
+# hfhub a value it resolves the slow way, which is the behaviour this argument
+# exists to avoid, and the caller would have no way to tell.
+.flux2_rev <- function(revision) {
+    if (is.null(revision)) {
+        return(list())
+    }
+    if (!is.character(revision) || length(revision) != 1L || is.na(revision) ||
+        !grepl("^[0-9a-f]{40}$", revision)) {
+        stop("revision must be a single 40-character hex commit, not a branch ",
+             "name: a branch resolves through refs/ and defeats the point of ",
+             "pinning one", call. = FALSE)
+    }
+    list(revision = revision)
+}
+
 # Resolve a FLUX.2-klein support file from the HuggingFace cache
-.flux2_cached <- function(file) {
+.flux2_cached <- function(file, revision = NULL) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to locate model files.")
     }
+    ## Outside the tryCatch below, which reports every error as a missing
+    ## download: a branch name is a caller mistake, not an absent file.
+    rev <- .flux2_rev(revision)
     tryCatch(
-             hfhub::hub_download(.flux2_repo, file, local_files_only = TRUE),
+             do.call(hfhub::hub_download,
+                     c(list(.flux2_repo, file, local_files_only = TRUE), rev)),
              error = function(e) {
         stop("Missing ", file, " in the HuggingFace cache; ",
              "run download_flux2_klein() first.", call. = FALSE)
@@ -47,6 +80,12 @@ NULL
 #'   resolves via \code{options(diffuseR.pin_staging)} then the
 #'   host-RAM-aware \code{\link{recommend}} decision.
 #' @param verbose Logical.
+#' @param revision Optional exact 40-hex commit for the support files (VAE,
+#'   Qwen3 encoder, tokenizer) this pulls from the \code{black-forest-labs}
+#'   cache. With one they resolve straight out of
+#'   \code{snapshots/<revision>/}, so the load works against a cache holding
+#'   only that snapshot -- no \code{refs/} entry and no network. The
+#'   transformer comes from \code{model_dir} and is unaffected.
 #'
 #' @return A \code{flux2_pipeline} list.
 #'
@@ -55,7 +94,10 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 precision = c("auto", "fp8", "nf4", "bf16"),
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, pin = NULL,
-                                verbose = TRUE) {
+                                verbose = TRUE, revision = NULL) {
+    ## Checked before any device work, where a configuration mistake is
+    ## cheapest to report.
+    .flux2_rev(revision)
     precision <- .flux_resolve_precision(match.arg(precision),
         file.path(tools::R_user_dir("diffuseR", "data"), "flux2-klein-4b-"))
     if (is.null(text_device)) {
@@ -124,10 +166,11 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading FLUX.2 VAE decoder...")
     }
-    vae_config <- jsonlite::fromJSON(.flux2_cached("vae/config.json"))
+    vae_config <- jsonlite::fromJSON(.flux2_cached("vae/config.json",
+                                                   revision))
     pipe$vae_bn_eps <- vae_config$batch_norm_eps %||% 1e-4
     pipe$decoder <- load_flux2_vae_decoder(
-        .flux2_cached("vae/diffusion_pytorch_model.safetensors"),
+        .flux2_cached("vae/diffusion_pytorch_model.safetensors", revision),
         latent_channels = as.integer(vae_config$latent_channels %||% 32L),
         verbose = verbose
     )
@@ -142,13 +185,14 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading Qwen3 text encoder...")
     }
-    te_dir <- dirname(.flux2_cached("text_encoder/config.json"))
+    te_dir <- dirname(.flux2_cached("text_encoder/config.json", revision))
     pipe$text_encoder <- load_qwen3_text_encoder(
         te_dir, device = if (phase_offload) "cpu" else text_device,
         dtype = if (text_device == "cpu") "float32" else "bfloat16",
         verbose = verbose
     )
-    pipe$tokenizer <- qwen_bpe_tokenizer(.flux2_cached("tokenizer/tokenizer.json"))
+    pipe$tokenizer <- qwen_bpe_tokenizer(
+        .flux2_cached("tokenizer/tokenizer.json", revision))
 
     components <- c("transformer", "decoder")
     if (!identical(text_device, "cpu")) {

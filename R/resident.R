@@ -235,6 +235,14 @@
 #'   \code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
 #'   \code{\link{download_sdxl}} cache).
 #' @param verbose Print progress messages.
+#' @param text_encoder,tokenizer \code{ltx} only: paths to the Gemma3 encoder
+#'   artifact and the tokenizer directory. \code{\link{ltx23_load_pipeline}}
+#'   does not load these -- \code{\link{txt2vid_ltx2}} takes them per call --
+#'   so a handle built without them can be activated and cannot generate.
+#'   Given here they are loaded ONCE, pinned on the host, and passed to every
+#'   generate; the encoder rides to the card for its phase and back off, the
+#'   way the pipeline's own components do, so it is never resident beside the
+#'   transformer.
 #'
 #' @return A \code{diffuseR_resident} handle (an environment). Inspect it
 #'   with \code{\link{resident_status}}; the fields of interest are the
@@ -256,8 +264,19 @@
 #' @export
 resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
                                     "sdxl", "sd21"),
-                          device = "cuda", ..., verbose = TRUE) {
+                          device = "cuda", ..., verbose = TRUE,
+                          text_encoder = NULL, tokenizer = NULL) {
     model <- match.arg(model)
+    ## NAMED ARGUMENTS RATHER THAN `...`, because `...` goes to the family
+    ## loader and `ltx23_load_pipeline` has no `...` of its own -- an unknown
+    ## argument there is an error, not a pass-through. Refused for the other
+    ## families for the same reason: silently ignoring them would leave a
+    ## caller believing a text encoder had been loaded.
+    if (!identical(model, "ltx") &&
+        (!is.null(text_encoder) || !is.null(tokenizer))) {
+        stop("text_encoder/tokenizer apply to the ltx family only; ",
+             model, " loads its own", call. = FALSE)
+    }
     if (!torch::cuda_is_available()) {
         stop("resident_load() requires CUDA", call. = FALSE)
     }
@@ -308,6 +327,48 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     res$gpu_components <- pipeline$gpu_components
     res$components <- names(.resident_components(pipeline))
     res$pinned_bytes <- .resident_pinned_bytes(staging)
+
+    ## THE LTX TEXT ENCODER, LOADED ONCE AND KEPT OFF THE HANDLE'S STAGING.
+    ##
+    ## `txt2vid_ltx2` takes `text_encoder` and `tokenizer` per call and
+    ## accepts a PATH, which it then loads -- so a serving caller that passed
+    ## paths would re-read 7.6 GB of Gemma3 on every request. Loading here
+    ## makes it once.
+    ##
+    ## Deliberately NOT added to `staging`: `resident_activate` puts
+    ## everything in staging on the card at once, and the encoder beside the
+    ## transformer does not fit. It carries its own staging attribute from
+    ## `pin = TRUE`, and `encode_with_gemma3` onloads it for the encode and
+    ## offloads on exit -- one GPU tenant per phase, the same discipline the
+    ## pipeline's own components follow.
+    if (identical(model, "ltx") && !is.null(text_encoder)) {
+        if (is.null(tokenizer)) {
+            stop("text_encoder needs a tokenizer: the encode takes both",
+                 call. = FALSE)
+        }
+        if (verbose) message("Loading the Gemma3 text encoder (pinned)...")
+        res$text_encoder <- load_gemma3_text_encoder(
+            text_encoder, device = "cpu", pin = TRUE, verbose = verbose)
+        res$tokenizer <- gemma3_tokenizer(tokenizer)
+        ## Counted, so `resident_status()` reports what the process actually
+        ## holds. A pinned set omitted from the total reads as headroom that
+        ## is not there, and the fleet's admission arithmetic is downstream
+        ## of this number.
+        ## WRAPPED IN A LIST, AND THAT IS NOT COSMETIC. There are two
+        ## staging shapes in this package: a pipeline's is a list OF
+        ## COMPONENTS each holding a list of pairs, which is why
+        ## `.resident_pinned_bytes` loops twice; an encoder's
+        ## `attr(model, "staging")` is a FLAT list of pairs, which is why
+        ## `.staged_onload` loops once. Passing the flat one straight in
+        ## reads a pair's fields as pairs and dies on `pair$pinned$shape`
+        ## -- "object of type 'closure' is not subsettable", from inside a
+        ## worker, sixty seconds after the pin began.
+        te_staging <- attr(res$text_encoder, "staging")
+        if (!is.null(te_staging)) {
+            res$pinned_bytes <- res$pinned_bytes +
+                .resident_pinned_bytes(list(te_staging))
+        }
+    }
     res$state <- "inactive"
     res$last_error <- NULL
     res$loaded_at <- Sys.time()
@@ -761,6 +822,17 @@ resident_generate <- function(res, prompt, ...) {
                 "cpu"
             }
         }), want)
+    }
+    ## LTX takes its text encoder per call and stores none, so a handle that
+    ## loaded one has to hand it over on every generate. An explicit argument
+    ## still wins -- this fills a gap rather than overriding a caller who
+    ## brought precomputed embeds or a different encoder.
+    if (identical(res$model, "ltx") && !is.null(res$text_encoder) &&
+        is.null(args$text_encoder) && is.null(args$prompt_embeds)) {
+        args$text_encoder <- res$text_encoder
+        if (is.null(args$tokenizer)) {
+            args$tokenizer <- res$tokenizer
+        }
     }
     args
 }
