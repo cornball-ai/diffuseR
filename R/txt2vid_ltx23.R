@@ -373,6 +373,32 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     structure(pipe, class = "ltx23_pipeline")
 }
 
+# The device the prompt encode runs on, for the text_encoder txt2vid_ltx2
+# was handed. A PATH is loaded fresh onto `device` -- a caller who names a
+# file is asking for it there. A PRELOADED object is CPU-resident by the
+# resident loader's convention (load_gemma3_text_encoder(device = "cpu",
+# pin = TRUE)), and only safe to encode on the compute device when it
+# carries the pinned `staging` set that lets encode_with_gemma3() DMA it
+# there and back per encode. Without that set, `device = "cuda"` would send
+# the tokens to the card while the weights sat on the host -- a mismatch --
+# so a bare object degrades to CPU.
+#
+# The `else "cpu"` this replaces was blunter than that: it forced CPU for
+# EVERY preloaded encoder, so the resident/gpuhost path (which loads with
+# pin = TRUE precisely to stage) encoded every prompt on CPU (~24 s) with
+# its own pinned staging sitting unused, instead of the ~7 s staged-GPU
+# encode. Split out so the decision is assertable without a GPU or a real
+# encode, the way `.resident_gen_args` is.
+.ltx23_text_encode_device <- function(text_encoder, device) {
+    if (is.character(text_encoder)) {
+        return(device)
+    }
+    if (!is.null(attr(text_encoder, "staging")) && grepl("^cuda", device)) {
+        return(device)
+    }
+    "cpu"
+}
+
 #' Generate video (and audio) with LTX-2.3
 #'
 #' Distilled text-to-video generation: encodes the prompt with Gemma3 +
@@ -561,7 +587,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             prompt,
             model = text_encoder, tokenizer = tokenizer,
             max_sequence_length = max_sequence_length,
-            device = if (is.character(text_encoder)) device else "cpu",
+            device = .ltx23_text_encode_device(text_encoder, device),
             verbose = verbose
         )
     }
