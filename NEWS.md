@@ -1,3 +1,20 @@
+# diffuseR 0.2.2.9
+
+* **A resident LTX encoder now stages the prompt encode to the card
+  instead of running it on CPU.** `txt2vid_ltx2()` chose the encode device
+  with `if (is.character(text_encoder)) device else "cpu"` -- so a
+  PRELOADED encoder (the resident/gpuhost path, `resident_load("ltx",
+  text_encoder = ...)`) always encoded on CPU, even though the resident
+  loader page-locks it with `pin = TRUE` for exactly the staged transfer
+  `encode_with_gemma3()` supports. The pinned staging sat unused and every
+  prompt paid the ~24 s CPU encode instead of the ~7 s staged-GPU one; on
+  the gpuhost path that is once per chunk. The device decision is now
+  `.ltx23_text_encode_device()`: a path loads onto the asked-for device, a
+  preloaded encoder with a `staging` set and a cuda request stages to the
+  card, and a bare CPU-resident object still degrades to CPU (a cuda
+  request without staging would be a device mismatch). Pure and unit-tested
+  without a GPU (`test_text_encode_device.R`).
+
 # diffuseR 0.2.2.8
 
 * `flux2_load_pipeline()` takes a `revision`. Its VAE, Qwen3 encoder and
