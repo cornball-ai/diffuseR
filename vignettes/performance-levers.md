@@ -129,3 +129,135 @@ Treat the result as the machine's advice: pass its fields to the
 loaders and generators. The FLUX-family loaders' `pin` (and FLUX.1's
 `text_device`), `flux_memory_profile()`, and `serve()`'s LTX artifact
 selection consume it automatically.
+
+## Where the time goes: TorchScript and the allocator
+
+The levers above decide what fits. A second set decides how fast the
+fitted configuration runs. They came out of making the 22B NF4 LTX
+DiT fast on a 16 GB card, where a same-seed render went from 1331 s
+to 221 s without changing a weight.
+
+### Compile the hot step
+
+R torch pays twice per eager op: the dispatch itself and the R handle
+each intermediate becomes, which the garbage collector then has to
+sweep. `jit_compile()` removes both. The LTX denoiser step compiles
+into one TorchScript call: a `while` loop over the 48 blocks inside
+the script, weights passed as a flat `List[Tensor]` with a fixed
+per-block slot layout, and the NF4 dequant math in-script. Measured on
+the same step: eager 99.9 s at 88% of wall time in R's gc, compiled
+8.8 s at 1%.
+
+Builtins lantern's TorchScript accepts beyond the documented list:
+`torch.scaled_dot_product_attention` (fused, so materialized
+`[B,H,S,S]` score matrices and their chunked-attention workarounds go
+away), `torch.gelu(x, approximate="tanh")`, `torch.sigmoid`,
+`torch.silu`, `torch.rsqrt`, `torch.linear`,
+`torch.bitwise_right_shift`, `torch.bitwise_and`, `torch.index_select`,
+and the `.long()` method cast. That set is enough for NF4 dequant
+fully in-script; chunk the loop to bound the int64 index temporaries.
+
+Marshalling traps, all silent or opaque:
+
+- A named R list marshals as `Dict[str, Tensor]`, not `List[Tensor]`.
+  `lapply()` over an `nn_module_list` yields named children, so
+  `unname()` the packed weight list. Parity-test the packer against
+  the script's slot indices.
+- R integers marshal as `List[int]`; wrap scalars in `jit_scalar()`.
+- Dtype constants such as `torch.long` do not resolve; use method
+  casts and `type_as()`.
+- `Optional[Tensor]` parameters accept R `NULL`. Cross-def calls
+  within one compilation unit work. Tuple returns come back as R
+  lists.
+- Compile once per session and cache the compilation unit. Passing
+  5000+ tensor references per call costs milliseconds.
+
+### When tracing loses
+
+`jit_trace()` converts static feed-forward modules (VAE decoders,
+vocoders) wholesale with exact parity, but it bakes runtime shapes
+into the graph, so cache one trace per input shape. Trace a closure
+rather than a bare `nn_module`, and set `requires_grad_(FALSE)` on the
+parameters first. Two hazards decide whether it pays:
+
+- An R gc during recording corrupts captured argument values. Under
+  memory pressure the allocator callback can fire mid-trace and the
+  graph records garbage narrow offsets. Run `gc()` and
+  `cuda_empty_cache()` immediately before tracing, wrap the trace in
+  `tryCatch()`, and validate every fresh trace against the eager
+  output once, falling back to eager for that shape on mismatch.
+- A trace captures the module's weights and pins them on the device
+  across phase offloads, so it must be released when the component
+  leaves the GPU. A once-per-render decode then re-pays trace plus
+  validation every run: traced was net slower than eager (39.8 s vs
+  32.6 s). `jit_compile()` from source is shape-generic and captures
+  nothing, so prefer it wherever you can afford to write the script.
+
+### Allocator cost models
+
+`PYTORCH_CUDA_ALLOC_CONF` picks between two cost models, and the right
+one depends on whether intermediates still exist as R handles:
+
+- `expandable_segments:True`: cheap growth, expensive frees (page
+  unmaps). Suits eager paths with fragmentation churn.
+- `backend:native`: expensive growth (about 15 ms per `cudaMalloc`),
+  cheap frees. Suits a JIT path that keeps intermediates out of R.
+
+The same decode measured 32.7 s at 86% gc on expandable segments and
+21.0 s at 50% on native. The setting is process-wide and read before
+the first CUDA allocation, so set it per model at load time.
+
+When a phase is gc-bound, ask where the gc time goes before touching
+options. If the trigger frequency is the problem, the callback gates
+help: `torch.cuda_allocator_reserved_rate` plus the two most people
+forget, `torch.cuda_allocator_allocated_rate` and
+`torch.cuda_allocator_allocated_reserved_rate` (both default 0.8).
+Raising those two to 0.95 took the expandable-segments decode from
+32.7 s to 21.5 s. If the freeing work itself is the problem, no
+option helps; the fix is fewer or cheaper frees, through the backend
+choice or through JIT so the handles never exist.
+
+torch reads all three gates once, in its `.onLoad`. Any package that
+imports torch has it loaded before its own tuner runs, and the set
+silently no-ops while `getOption()` still returns the value you set.
+`ltx23_tune_gc()` therefore pushes the gates into the live allocator
+as well as setting the options.
+
+### Pool regrowth between phases
+
+`cuda_empty_cache()` between pipeline phases returns every block to
+the driver, so the next phase regrows the pool one `cudaMalloc` per
+tensor. Measured: 5530 tensors, 83.5 s for one 11 GB component
+onload, and back to 83 s after a single empty-cache. Two fixes:
+
+- Pre-warm once by allocating one footprint-sized tensor and freeing
+  it into the cache (0.2 s, one `cudaMalloc`); later per-tensor
+  allocations carve from it (83.5 s to 4.6 s).
+- Between phases, `gc()` without `cuda_empty_cache()`. The caching
+  allocator reuses freed blocks across phases on its own.
+
+The corollary is that "phase offload traffic" may not be transfer
+time at all. Pinned staging is worth having and roughly doubles
+transfer rate, but the transfers here were about 1 s all along; the
+110 s was regrowth. Time the transfer in isolation before optimizing
+it.
+
+### Compact per-token conditioning
+
+Prefix conditioning gives conditioned tokens timestep 0 and free
+tokens timestep t, a per-token timestep vector with only a few
+distinct values. Materializing per-token modulation as
+`[B,S,num_params,D]` cost about 2 GB at 13.5k tokens and ran out of
+memory. Passing the distinct timesteps plus an integer index and doing
+`index_select` per modulation vector inside the script materializes
+one `[B,S,D]` slice at a time (about 110 MB). Whenever a per-token
+tensor is an index into few variants, ship the variants and the index
+and select late.
+
+### Verify the inputs to tuning formulas
+
+A VRAM-detection helper once returned a hardcoded 8 GB guess when its
+optional dependency was missing, and every allocator rate computed
+from it was wrong for weeks. If a formula tunes by footprint over
+total, log both numbers at tuning time and fail loudly on a fallback
+guess. `nvidia-smi` is always there to ask.
