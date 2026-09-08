@@ -15,8 +15,8 @@ ltx23_tune_gc(footprint_gb = 12, total_gb = NULL)
 Invisibly, the applied reserved rate (NULL if skipped).
 }
 \description{
-Stops the allocator GC storm (cf. ~/skills/torch
-torch-jit-gc-performance.md): lantern proactively calls R's gc()
+Stops the allocator GC storm (see the "Performance Levers" vignette
+and chatterbox's "performance" vignette): lantern proactively calls R's gc()
 whenever reserved memory exceeds \code{torch.cuda_allocator_reserved_rate}
 (default 0.20) of the card. With ~75\% of VRAM occupied by resident
 weights that fires on nearly every allocation. Raising the rate to the
