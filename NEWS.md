@@ -1,3 +1,22 @@
+# diffuseR 0.2.2.10
+
+* **A pinned component whose onload failed partway no longer stays
+  wedged.** The Gemma3 encoder's staged encode, and the LTX pipeline's
+  per-phase onload, decided "already on the card" by probing the FIRST
+  staging pair. An onload that dies partway -- device memory runs out
+  with most of the encoder copied -- leaves exactly that pair on the card
+  and the rest on the host, so every later call skipped the onload and
+  failed on the first matrix multiply with "mat2 is on cpu", on every
+  request, until the process ended. That is what took the gpuhost's
+  ltx-2.3 entry down for USA 20260912 on 2026-09-10. Three changes:
+  `.staged_on()` asks every pair, not the first; `.staged_onload()` is
+  idempotent per pair, so a resident component is a no-op (no re-transfer
+  over itself) and a partial one is completed; and `encode_with_gemma3()`
+  arms its offload BEFORE the onload, so a failed transfer is undone on
+  the way out and the next encode starts from a clean host copy. Covered
+  by `test_staged_on.R` (pure fakes, no GPU) and a partial round trip in
+  `test_staging.R` (CUDA).
+
 # diffuseR 0.2.2.9
 
 * **A resident LTX encoder now stages the prompt encode to the card
