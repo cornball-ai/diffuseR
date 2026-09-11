@@ -903,8 +903,17 @@ resident_unload <- function(res) {
         for (nm in names(res$staging)) {
             .staged_offload(res$staging[[nm]])
         }
+        # The LTX text encoder is deliberately outside `staging` (see
+        # resident_load), but it is pinned host memory this handle owns
+        # and counted in pinned_bytes, so it goes the same way.
+        te_staging <- attr(res$text_encoder, "staging")
+        if (!is.null(te_staging)) {
+            .staged_offload(te_staging)
+        }
     }, error = function(e) NULL)
     res$pipeline <- NULL
+    res$text_encoder <- NULL
+    res$tokenizer <- NULL
     res$staging <- list()
     res$components <- character(0)
     res$pinned_bytes <- 0

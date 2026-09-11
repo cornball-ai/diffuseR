@@ -80,16 +80,39 @@ NULL
     }, error = function(e) NULL)
 }
 
-# The device TYPE a device spec names: "cuda" for "cuda", "cuda:0" and a
-# torch_device on the card alike. Type is what the staging checks
-# compare -- a pair lives on the card or on the host -- and a string
-# compare keeps `.staged_on` runnable without torch, which is how it is
-# tested.
-.device_type <- function(device) {
+# What a device spec names, as type and index. The index is NA when the
+# spec leaves it open: "cuda" means whichever card is current, so a
+# target without an index accepts any card, and "cuda:1" accepts only
+# that one. A tensor's own device always carries a concrete index on the
+# card (torch reports 0 for "cuda"), so the comparison below is exact
+# whenever the caller asked for a particular card. Parsed from the string
+# rather than through torch_device() so `.staged_on` runs without torch,
+# which is how it is tested.
+.device_spec <- function(device) {
     if (inherits(device, "torch_device")) {
-        return(device$type)
+        return(list(type = device$type,
+                    index = as.integer(device$index %||% NA_integer_)))
     }
-    sub(":.*$", "", as.character(device))
+    s <- as.character(device)
+    index <- if (grepl(":", s, fixed = TRUE)) {
+        as.integer(sub("^[^:]*:", "", s))
+    } else {
+        NA_integer_
+    }
+    list(type = sub(":.*$", "", s), index = index)
+}
+
+# Is this tensor on the device the spec names? Type must match; the
+# index must match too when the spec has one.
+.on_device <- function(tensor, spec) {
+    d <- tryCatch(tensor$device, error = function(e) NULL)
+    if (is.null(d) || !identical(d$type, spec$type)) {
+        return(FALSE)
+    }
+    if (is.na(spec$index)) {
+        return(TRUE)
+    }
+    identical(as.integer(d$index %||% NA_integer_), spec$index)
 }
 
 #' Is every pinned tensor of a component on this device?
@@ -109,17 +132,16 @@ NULL
 #' @param staging A component's staging set: the list of
 #'   \code{list(live, pinned)} pairs \code{.pin_component} returned.
 #' @param device The compute device, as a string (\code{"cuda"},
-#'   \code{"cuda:0"}) or a \code{torch_device}; only its type is compared.
-#' @return TRUE when every pair's live tensor is on the device's type;
-#'   FALSE on any mismatch or unreadable pair. Vacuously TRUE for an
-#'   empty staging set, which holds nothing to move.
+#'   \code{"cuda:1"}) or a \code{torch_device}. A spec without an index
+#'   accepts any card; one with an index accepts only that card.
+#' @return TRUE when every pair's live tensor is on that device; FALSE
+#'   on any mismatch or unreadable pair. Vacuously TRUE for an empty
+#'   staging set, which holds nothing to move.
 #' @keywords internal
 .staged_on <- function(staging, device) {
-    type <- .device_type(device)
+    spec <- .device_spec(device)
     for (pair in staging) {
-        cur <- tryCatch(pair$live$device$type,
-                        error = function(e) NA_character_)
-        if (!identical(cur, type)) {
+        if (!.on_device(pair$live, spec)) {
             return(FALSE)
         }
     }
@@ -139,11 +161,9 @@ NULL
 #'
 #' @keywords internal
 .staged_onload <- function(staging, device) {
-    type <- .device_type(device)
+    spec <- .device_spec(device)
     for (pair in staging) {
-        cur <- tryCatch(pair$live$device$type,
-                        error = function(e) NA_character_)
-        if (identical(cur, type)) {
+        if (.on_device(pair$live, spec)) {
             next
         }
         pair$live$set_data(pair$pinned$to(device = device, non_blocking = TRUE))

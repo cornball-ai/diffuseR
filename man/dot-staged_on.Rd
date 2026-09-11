@@ -10,12 +10,13 @@
 \code{list(live, pinned)} pairs \code{.pin_component} returned.}
 
 \item{device}{The compute device, as a string (\code{"cuda"},
-\code{"cuda:0"}) or a \code{torch_device}; only its type is compared.}
+\code{"cuda:1"}) or a \code{torch_device}. A spec without an index
+accepts any card; one with an index accepts only that card.}
 }
 \value{
-TRUE when every pair's live tensor is on the device's type;
-  FALSE on any mismatch or unreadable pair. Vacuously TRUE for an
-  empty staging set, which holds nothing to move.
+TRUE when every pair's live tensor is on that device; FALSE
+  on any mismatch or unreadable pair. Vacuously TRUE for an empty
+  staging set, which holds nothing to move.
 }
 \description{
 The check a caller makes before skipping an onload. It asks EVERY

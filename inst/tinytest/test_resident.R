@@ -166,6 +166,27 @@ expect_error(resident_activate(u), pattern = "unloaded")
 # Status still works on an unloaded handle.
 expect_equal(resident_status(u)$state, "unloaded")
 
+# Unload drops the LTX text encoder too. It lives outside `staging` on
+# purpose (resident_load), so a handle that only cleared `staging` kept
+# the encoder's pinned buffers while reporting pinned_bytes = 0.
+# A fake pair records the offload it receives.
+te_log <- new.env()
+te_log$calls <- list()
+te_pair <- list(live = list(set_data = function(x) {
+                    te_log$calls[[length(te_log$calls) + 1L]] <- x
+                }),
+                pinned = "pinned-copy")
+u2 <- mk("inactive")
+u2$text_encoder <- structure(list(), staging = list(te_pair))
+u2$tokenizer <- list(vocab = 3L)
+resident_unload(u2)
+expect_equal(u2$state, "unloaded")
+expect_null(u2$text_encoder)
+expect_null(u2$tokenizer)
+# The encoder's pinned staging was offloaded (pointer swap back to the
+# pinned copy) before being dropped.
+expect_equal(te_log$calls, list("pinned-copy"))
+
 # --- CUDA round trip --------------------------------------------------------------
 
 if (have_torch && at_home() && torch::cuda_is_available()) {

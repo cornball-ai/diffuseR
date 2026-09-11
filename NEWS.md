@@ -17,6 +17,18 @@
   by `test_staged_on.R` (pure fakes, no GPU) and a partial round trip in
   `test_staging.R` (CUDA).
 
+* **Staging compares the card, not just the device type.** A request
+  for `"cuda:1"` no longer counts a tensor on `cuda:0` as resident, so a
+  multi-GPU caller asking for a particular card gets its weights moved
+  there instead of a skipped transfer and a device mismatch. A request
+  for bare `"cuda"` still accepts any card, as before.
+
+* **`resident_unload()` drops the LTX text encoder.** The encoder a
+  resident LTX handle loads (0.2.2.8) sits outside `staging` by design,
+  and unload never released it: an unloaded handle kept the encoder's
+  pinned buffers while reporting `pinned_bytes = 0`. Both review findings
+  from the 2026-09-11 Codex pass.
+
 # diffuseR 0.2.2.9
 
 * **A resident LTX encoder now stages the prompt encode to the card

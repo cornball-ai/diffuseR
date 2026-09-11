@@ -1,7 +1,7 @@
 # .staged_on / .staged_onload (R/staging.R): the checks a phase makes
 # before moving a pinned component. Pure fakes, no torch, no GPU: a
-# "pair" is anything with $live$device$type, $live$set_data and
-# $pinned$to, which is all the helpers touch.
+# "pair" is anything with $live$device, $live$set_data and $pinned$to,
+# which is all the helpers touch.
 #
 # The case that matters is the PARTIAL one. An onload that dies partway
 # leaves the first pairs on the card and the rest on the host. Probing
@@ -12,14 +12,14 @@
 library(diffuseR)
 staged_on <- diffuseR:::.staged_on
 staged_onload <- diffuseR:::.staged_onload
-device_type <- diffuseR:::.device_type
+device_spec <- diffuseR:::.device_spec
 
-# A fake pair whose live tensor sits on `type`, recording every
-# set_data it receives.
-fake_pair <- function(type) {
+# A fake pair whose live tensor sits on `type` (and card `index`),
+# recording every set_data it receives.
+fake_pair <- function(type, index = if (type == "cpu") NULL else 0L) {
     log <- new.env()
     log$calls <- list()
-    live <- list(device = list(type = type),
+    live <- list(device = list(type = type, index = index),
                  set_data = function(x) {
                      log$calls[[length(log$calls) + 1L]] <- x
                  })
@@ -30,12 +30,16 @@ fake_pair <- function(type) {
 }
 calls <- function(p) p$log$calls
 
-# Device type: strings with and without an index, and a torch_device.
-expect_equal(device_type("cuda"), "cuda")
-expect_equal(device_type("cuda:0"), "cuda")
-expect_equal(device_type("cpu"), "cpu")
-expect_equal(device_type(structure(list(type = "cuda", index = 0L),
-                                   class = "torch_device")), "cuda")
+# Device spec: strings with and without an index, and a torch_device.
+expect_equal(device_spec("cuda"), list(type = "cuda", index = NA_integer_))
+expect_equal(device_spec("cuda:1"), list(type = "cuda", index = 1L))
+expect_equal(device_spec("cpu"), list(type = "cpu", index = NA_integer_))
+expect_equal(device_spec(structure(list(type = "cuda", index = 1),
+                                   class = "torch_device")),
+             list(type = "cuda", index = 1L))
+expect_equal(device_spec(structure(list(type = "cuda", index = NULL),
+                                   class = "torch_device")),
+             list(type = "cuda", index = NA_integer_))
 
 # All on the card: resident.
 st <- list(fake_pair("cuda"), fake_pair("cuda"), fake_pair("cuda"))
@@ -52,6 +56,14 @@ expect_true(staged_on(st, "cpu"))
 # probe said "resident"; the whole-set check must not.
 st <- list(fake_pair("cuda"), fake_pair("cpu"))
 expect_false(staged_on(st, "cuda"))
+
+# THE WRONG CARD is not this card. A request naming an index accepts only
+# that index; a request without one accepts any card.
+st <- list(fake_pair("cuda", 0L), fake_pair("cuda", 1L))
+expect_false(staged_on(st, "cuda:0"))
+expect_false(staged_on(st, "cuda:1"))
+expect_true(staged_on(st, "cuda"))
+expect_true(staged_on(list(fake_pair("cuda", 1L)), "cuda:1"))
 
 # An unreadable pair is not resident.
 st <- list(fake_pair("cuda"), list(live = NULL, pinned = NULL))
@@ -74,4 +86,10 @@ expect_equal(calls(st[[4]]), list("copy->cuda"))
 st <- list(fake_pair("cuda"), fake_pair("cuda"))
 staged_onload(st, "cuda:0")
 expect_equal(length(calls(st[[1]])), 0L)
+expect_equal(length(calls(st[[2]])), 0L)
+
+# A pair on another card IS moved when a particular card was asked for.
+st <- list(fake_pair("cuda", 0L), fake_pair("cuda", 1L))
+staged_onload(st, "cuda:1")
+expect_equal(calls(st[[1]]), list("copy->cuda:1"))
 expect_equal(length(calls(st[[2]])), 0L)
