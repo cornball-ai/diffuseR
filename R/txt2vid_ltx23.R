@@ -608,37 +608,30 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         if (phase_offload) {
             # Idempotent: a resident component is already in place on
-            # the second and later calls of a chained run. Probe the
-            # staging pair's live tensor when staging exists - custom
-            # module classes (the NF4 transformer) may not expose
+            # the second and later calls of a chained run, and must not
+            # be re-transferred over itself (that fragments the
+            # allocator pool until the next large allocation OOMs).
+            # With staging, `.staged_onload` decides PER PAIR: a
+            # resident component is a no-op, and one whose earlier
+            # onload stopped partway is completed instead of being
+            # reported resident by its first tensor and left split.
+            # Without staging, probe the module -- custom module
+            # classes (the NF4 transformer) may not expose
             # $parameters, and a failed probe must not degrade into a
-            # re-onload: re-transferring resident weights over
-            # themselves fragments the allocator pool until the next
-            # large allocation OOMs.
-            if (is.character(what)) {
-                st_probe <- staging[[what]]
-            } else {
-                st_probe <- NULL
-            }
-            cur <- tryCatch({
-                if (!is.null(st_probe)) {
-                    st_probe[[1]]$live$device$type
-                } else {
-                    module$parameters[[1]]$device$type
-                }
-            }, error = function(e) NULL)
-            if (identical(cur, target_type)) {
-                return(module)
-            }
+            # re-onload.
             if (is.character(what)) {
                 st <- staging[[what]]
             } else {
                 st <- NULL
             }
-            if (is.null(st)) {
-                module$to(device = device)
-            } else {
+            if (!is.null(st)) {
                 .staged_onload(st, device)
+                return(module)
+            }
+            cur <- tryCatch(module$parameters[[1]]$device$type,
+                            error = function(e) NULL)
+            if (!identical(cur, target_type)) {
+                module$to(device = device)
             }
         }
         module

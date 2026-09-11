@@ -80,14 +80,72 @@ NULL
     }, error = function(e) NULL)
 }
 
+# The device TYPE a device spec names: "cuda" for "cuda", "cuda:0" and a
+# torch_device on the card alike. Type is what the staging checks
+# compare -- a pair lives on the card or on the host -- and a string
+# compare keeps `.staged_on` runnable without torch, which is how it is
+# tested.
+.device_type <- function(device) {
+    if (inherits(device, "torch_device")) {
+        return(device$type)
+    }
+    sub(":.*$", "", as.character(device))
+}
+
+#' Is every pinned tensor of a component on this device?
+#'
+#' The check a caller makes before skipping an onload. It asks EVERY
+#' pair, not the first one: a component is on the card when all of it
+#' is, and a probe of one tensor cannot tell a resident component from
+#' one whose onload failed partway. That partial state is real -- an
+#' onload that runs out of device memory leaves the pairs it copied on
+#' the card and the rest on the host -- and a first-pair probe reports
+#' it as "already resident", so every later phase skips the onload and
+#' dies on a device mismatch, on every call, until the process ends.
+#' That is how a gpuhost's LTX entry wedged for a whole show on
+#' 2026-09-10: one failed encoder onload, then "mat2 is on cpu" from
+#' every request after it.
+#'
+#' @param staging A component's staging set: the list of
+#'   \code{list(live, pinned)} pairs \code{.pin_component} returned.
+#' @param device The compute device, as a string (\code{"cuda"},
+#'   \code{"cuda:0"}) or a \code{torch_device}; only its type is compared.
+#' @return TRUE when every pair's live tensor is on the device's type;
+#'   FALSE on any mismatch or unreadable pair. Vacuously TRUE for an
+#'   empty staging set, which holds nothing to move.
+#' @keywords internal
+.staged_on <- function(staging, device) {
+    type <- .device_type(device)
+    for (pair in staging) {
+        cur <- tryCatch(pair$live$device$type,
+                        error = function(e) NA_character_)
+        if (!identical(cur, type)) {
+            return(FALSE)
+        }
+    }
+    TRUE
+}
+
 #' Move a pinned component onto the compute device
 #'
 #' Non-blocking copies from pinned memory share the default stream,
 #' so later kernels are ordered after them; no explicit sync needed.
 #'
+#' Idempotent PER PAIR: a tensor already on the device is left where it
+#' is, so a resident component costs nothing to onload again (no
+#' re-transfer of weights over themselves, which fragments the
+#' allocator pool) and a component whose earlier onload stopped partway
+#' is completed rather than restarted.
+#'
 #' @keywords internal
 .staged_onload <- function(staging, device) {
+    type <- .device_type(device)
     for (pair in staging) {
+        cur <- tryCatch(pair$live$device$type,
+                        error = function(e) NA_character_)
+        if (identical(cur, type)) {
+            next
+        }
         pair$live$set_data(pair$pinned$to(device = device, non_blocking = TRUE))
     }
     invisible(NULL)

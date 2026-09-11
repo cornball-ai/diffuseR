@@ -860,14 +860,24 @@ encode_with_gemma3 <- function(prompts, model = NULL, tokenizer = NULL,
     }
 
     # A pinned CPU-resident model (see the loaders' pin argument) swaps
-    # to the compute device for the encode and back for free afterwards
+    # to the compute device for the encode and back for free afterwards.
+    # A model already on the device IN FULL is left there, and left alone
+    # on exit: whoever put it there owns it.
+    #
+    # THE OFFLOAD IS ARMED BEFORE THE ONLOAD, not after it. An onload that
+    # fails partway -- device memory runs out with most of the encoder
+    # already copied -- must still be undone on the way out, or the
+    # encoder stays half on the card with nothing left to move it back,
+    # and every encode after it inherits the split. `.staged_on` asks
+    # every pair rather than the first one for the same reason: the first
+    # tensor of a half-copied encoder IS on the card, and a probe of it
+    # alone reported the encoder resident and skipped the onload on every
+    # request for the rest of the process (the gpuhost's ltx-2.3 entry,
+    # 2026-09-10: "mat2 is on cpu" from every encode after one failure).
     staging <- attr(model, "staging")
-    if (!is.null(staging) && device != "cpu") {
-        cur <- tryCatch(staging[[1]]$live$device$type, error = function(e) NULL)
-        if (!identical(cur, device)) {
-            .staged_onload(staging, device)
-            on.exit(.staged_offload(staging), add = TRUE)
-        }
+    if (!is.null(staging) && device != "cpu" && !.staged_on(staging, device)) {
+        on.exit(.staged_offload(staging), add = TRUE)
+        .staged_onload(staging, device)
     }
 
     # Ensure prompts is a list
