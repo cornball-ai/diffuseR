@@ -1,3 +1,72 @@
+# diffuseR 0.2.2.10
+
+* **A pinned component whose onload failed partway no longer stays
+  wedged.** The Gemma3 encoder's staged encode, and the LTX pipeline's
+  per-phase onload, decided "already on the card" by probing the FIRST
+  staging pair. An onload that dies partway -- device memory runs out
+  with most of the encoder copied -- leaves exactly that pair on the card
+  and the rest on the host, so every later call skipped the onload and
+  failed on the first matrix multiply with "mat2 is on cpu", on every
+  request, until the process ended. That is what took the gpuhost's
+  ltx-2.3 entry down for USA 20260912 on 2026-09-10. Three changes:
+  `.staged_on()` asks every pair, not the first; `.staged_onload()` is
+  idempotent per pair, so a resident component is a no-op (no re-transfer
+  over itself) and a partial one is completed; and `encode_with_gemma3()`
+  arms its offload BEFORE the onload, so a failed transfer is undone on
+  the way out and the next encode starts from a clean host copy. Covered
+  by `test_staged_on.R` (pure fakes, no GPU) and a partial round trip in
+  `test_staging.R` (CUDA).
+
+* **Staging compares the card, not just the device type.** A request
+  for `"cuda:1"` no longer counts a tensor on `cuda:0` as resident, so a
+  multi-GPU caller asking for a particular card gets its weights moved
+  there instead of a skipped transfer and a device mismatch. A request
+  for bare `"cuda"` still accepts any card, as before.
+
+* **`resident_unload()` drops the LTX text encoder.** The encoder a
+  resident LTX handle loads (0.2.2.8) sits outside `staging` by design,
+  and unload never released it: an unloaded handle kept the encoder's
+  pinned buffers while reporting `pinned_bytes = 0`. Both review findings
+  from the 2026-09-11 Codex pass.
+
+# diffuseR 0.2.2.9
+
+* **A resident LTX encoder now stages the prompt encode to the card
+  instead of running it on CPU.** `txt2vid_ltx2()` chose the encode device
+  with `if (is.character(text_encoder)) device else "cpu"` -- so a
+  PRELOADED encoder (the resident/gpuhost path, `resident_load("ltx",
+  text_encoder = ...)`) always encoded on CPU, even though the resident
+  loader page-locks it with `pin = TRUE` for exactly the staged transfer
+  `encode_with_gemma3()` supports. The pinned staging sat unused and every
+  prompt paid the ~24 s CPU encode instead of the ~7 s staged-GPU one; on
+  the gpuhost path that is once per chunk. The device decision is now
+  `.ltx23_text_encode_device()`: a path loads onto the asked-for device, a
+  preloaded encoder with a `staging` set and a cuda request stages to the
+  card, and a bare CPU-resident object still degrades to CPU (a cuda
+  request without staging would be a device mismatch). Pure and unit-tested
+  without a GPU (`test_text_encode_device.R`).
+
+# diffuseR 0.2.2.8
+
+* `flux2_load_pipeline()` takes a `revision`. Its VAE, Qwen3 encoder and
+  tokenizer come from the Hugging Face cache, and hfhub's default revision
+  is the branch `main` -- resolved through `refs/main` and, failing that,
+  over the network. A read-only bind of one snapshot carries neither, so
+  the load failed there; an exact 40-hex commit takes hfhub straight to
+  `snapshots/<revision>/<file>`. A branch name is refused rather than
+  passed through.
+
+* `resident_load("ltx", ...)` takes `text_encoder` and `tokenizer` paths.
+  `ltx23_load_pipeline()` does not load them and `txt2vid_ltx2()` takes
+  them per call, so a resident LTX handle could be activated and could not
+  generate -- and a serving caller passing paths re-read 7.6 GB of Gemma3
+  on every request. Given here they load once, pinned on the host, and
+  `resident_generate()` supplies them. They stay OUT of the handle's
+  staging on purpose: `resident_activate()` places everything in staging at
+  once, and the encoder does not fit beside the transformer. It rides to
+  the card for its own phase and back off, as the pipeline's components do.
+  `pinned_bytes` counts it.
+
 # diffuseR 0.2.2.7
 
 * `recommend()` diagnosed the wrong safetensors capability for bf16. The
