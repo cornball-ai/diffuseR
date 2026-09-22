@@ -80,14 +80,92 @@ NULL
     }, error = function(e) NULL)
 }
 
+# What a device spec names, as type and index. The index is NA when the
+# spec leaves it open: "cuda" means whichever card is current, so a
+# target without an index accepts any card, and "cuda:1" accepts only
+# that one. A tensor's own device always carries a concrete index on the
+# card (torch reports 0 for "cuda"), so the comparison below is exact
+# whenever the caller asked for a particular card. Parsed from the string
+# rather than through torch_device() so `.staged_on` runs without torch,
+# which is how it is tested.
+.device_spec <- function(device) {
+    if (inherits(device, "torch_device")) {
+        return(list(type = device$type,
+                    index = as.integer(device$index %||% NA_integer_)))
+    }
+    s <- as.character(device)
+    index <- if (grepl(":", s, fixed = TRUE)) {
+        as.integer(sub("^[^:]*:", "", s))
+    } else {
+        NA_integer_
+    }
+    list(type = sub(":.*$", "", s), index = index)
+}
+
+# Is this tensor on the device the spec names? Type must match; the
+# index must match too when the spec has one.
+.on_device <- function(tensor, spec) {
+    d <- tryCatch(tensor$device, error = function(e) NULL)
+    if (is.null(d) || !identical(d$type, spec$type)) {
+        return(FALSE)
+    }
+    if (is.na(spec$index)) {
+        return(TRUE)
+    }
+    identical(as.integer(d$index %||% NA_integer_), spec$index)
+}
+
+#' Is every pinned tensor of a component on this device?
+#'
+#' The check a caller makes before skipping an onload. It asks EVERY
+#' pair, not the first one: a component is on the card when all of it
+#' is, and a probe of one tensor cannot tell a resident component from
+#' one whose onload failed partway. That partial state is real -- an
+#' onload that runs out of device memory leaves the pairs it copied on
+#' the card and the rest on the host -- and a first-pair probe reports
+#' it as "already resident", so every later phase skips the onload and
+#' dies on a device mismatch, on every call, until the process ends.
+#' That is how a gpuhost's LTX entry wedged for a whole show on
+#' 2026-09-10: one failed encoder onload, then "mat2 is on cpu" from
+#' every request after it.
+#'
+#' @param staging A component's staging set: the list of
+#'   \code{list(live, pinned)} pairs \code{.pin_component} returned.
+#' @param device The compute device, as a string (\code{"cuda"},
+#'   \code{"cuda:1"}) or a \code{torch_device}. A spec without an index
+#'   accepts any card; one with an index accepts only that card.
+#' @return TRUE when every pair's live tensor is on that device; FALSE
+#'   on any mismatch or unreadable pair. Vacuously TRUE for an empty
+#'   staging set, which holds nothing to move.
+#' @keywords internal
+.staged_on <- function(staging, device) {
+    spec <- .device_spec(device)
+    for (pair in staging) {
+        if (!.on_device(pair$live, spec)) {
+            return(FALSE)
+        }
+    }
+    TRUE
+}
+
 #' Move a pinned component onto the compute device
 #'
 #' Non-blocking copies from pinned memory share the default stream,
 #' so later kernels are ordered after them; no explicit sync needed.
 #'
+#' Idempotent PER PAIR: a tensor already on the device is left where it
+#' is, so a resident component costs nothing to onload again (no
+#' re-transfer of weights over themselves, which fragments the
+#' allocator pool) and a component whose earlier onload stopped partway
+#' is completed rather than restarted.
+#'
 #' @keywords internal
 .staged_onload <- function(staging, device) {
+    spec <- .device_spec(device)
     for (pair in staging) {
+        if (.on_device(pair$live, spec)) {
+            next
+        }
         pair$live$set_data(pair$pinned$to(device = device, non_blocking = TRUE))
     }
     invisible(NULL)

@@ -43,3 +43,20 @@ diffuseR:::.staged_onload(st, "cuda")
 torch::with_no_grad(out_gpu2 <- m(x$to(device = "cuda"))$cpu())
 expect_true(as.numeric((out_gpu2 - out_gpu)$abs()$max()) == 0)
 diffuseR:::.staged_offload(st)
+
+# PARTIAL onload, the state a failed transfer leaves behind: the first
+# pair on the card, the rest on the host. The whole-set check must call
+# it not resident, and the next onload must complete it -- moving only
+# what is missing -- rather than skip it on the strength of pair 1.
+st[[1]]$live$set_data(st[[1]]$pinned$to(device = "cuda"))
+expect_equal(st[[1]]$live$device$type, "cuda")
+expect_equal(st[[length(st)]]$live$device$type, "cpu")
+expect_false(diffuseR:::.staged_on(st, "cuda"))
+diffuseR:::.staged_onload(st, "cuda")
+expect_true(diffuseR:::.staged_on(st, "cuda"))
+torch::with_no_grad(out_gpu3 <- m(x$to(device = "cuda"))$cpu())
+expect_true(as.numeric((out_gpu3 - out_gpu)$abs()$max()) == 0)
+diffuseR:::.staged_offload(st)
+expect_true(diffuseR:::.staged_on(st, "cpu"))
+torch::with_no_grad(out_back2 <- m(x))
+expect_true(as.numeric((out_back2 - ref)$abs()$max()) == 0)

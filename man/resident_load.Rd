@@ -7,7 +7,9 @@ resident_load(
   model = c("flux2", "flux1", "zimage", "ltx", "sdxl", "sd21"),
   device = "cuda",
   ...,
-  verbose = TRUE
+  verbose = TRUE,
+  text_encoder = NULL,
+  tokenizer = NULL
 )
 }
 \arguments{
@@ -23,6 +25,15 @@ resident_load(
 \code{\link{download_sdxl}} cache).}
 
 \item{verbose}{Print progress messages.}
+
+\item{text_encoder,tokenizer}{\code{ltx} only: paths to the Gemma3 encoder
+artifact and the tokenizer directory. \code{\link{ltx23_load_pipeline}}
+does not load these -- \code{\link{txt2vid_ltx2}} takes them per call --
+so a handle built without them can be activated and cannot generate.
+Given here they are loaded ONCE, pinned on the host, and passed to every
+generate; the encoder rides to the card for its phase and back off, the
+way the pipeline's own components do, so it is never resident beside the
+transformer.}
 }
 \value{
 A \code{diffuseR_resident} handle (an environment). Inspect it

@@ -11,7 +11,8 @@ flux2_load_pipeline(
   attn_chunk = NULL,
   phase_offload = TRUE,
   pin = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  revision = NULL
 )
 }
 \arguments{
@@ -37,6 +38,13 @@ resolves via \code{options(diffuseR.pin_staging)} then the
 host-RAM-aware \code{\link{recommend}} decision.}
 
 \item{verbose}{Logical.}
+
+\item{revision}{Optional exact 40-hex commit for the support files (VAE,
+Qwen3 encoder, tokenizer) this pulls from the \code{black-forest-labs}
+cache. With one they resolve straight out of
+\code{snapshots/<revision>/}, so the load works against a cache holding
+only that snapshot -- no \code{refs/} entry and no network. The
+transformer comes from \code{model_dir} and is unaffected.}
 }
 \value{
 A \code{flux2_pipeline} list.

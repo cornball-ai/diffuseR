@@ -9,4 +9,12 @@
 Non-blocking copies from pinned memory share the default stream,
 so later kernels are ordered after them; no explicit sync needed.
 }
+\details{
+Idempotent PER PAIR: a tensor already on the device is left where it
+is, so a resident component costs nothing to onload again (no
+re-transfer of weights over themselves, which fragments the
+allocator pool) and a component whose earlier onload stopped partway
+is completed rather than restarted.
+
+}
 \keyword{internal}
