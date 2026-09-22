@@ -29,10 +29,15 @@
 #'     \code{{prompt, size, seed, steps}} (\code{size} like
 #'     \code{"1024x1024"}; \code{n > 1} is not supported). Returns
 #'     \code{{created, data: [{b64_json}]}} with a base64 PNG.
-#'   \item \code{POST /v1/videos/generations} - \code{model = "ltx"}
-#'     only. JSON body \code{{prompt, width, height, num_frames,
-#'     frame_rate, seed}}. Returns raw \code{video/mp4} bytes. Video
-#'     generation takes minutes: give your client a matching timeout.
+#'   \item \code{POST /v1/videos} - \code{model = "ltx"} only, a job that
+#'     matches the wan2gp-api container. JSON body \code{{prompt, width,
+#'     height, num_frames, frame_rate, seed}} returns \code{{id, status}};
+#'     poll \code{GET /v1/videos/{id}} for the status and download the mp4 at
+#'     \code{GET /v1/videos/{id}/content}. Generation is synchronous on this
+#'     single-threaded, in-process server, so a created job is already
+#'     \code{completed} and the create call still blocks for the minutes the
+#'     render takes; the split lets a client written for the async contract
+#'     talk to either service unchanged.
 #' }
 #'
 #' The server is single-threaded and runs until interrupted. Run it
@@ -69,6 +74,9 @@
 #' @param timeout Integer. Per-connection I/O timeout in seconds.
 #' @param max_body Integer. Maximum request body bytes. Default 1 MB
 #'   (bodies are JSON).
+#' @param max_jobs Integer. How many completed video jobs to keep for
+#'   status/content retrieval before evicting the oldest (and its file).
+#'   Default 8.
 #' @param warmup Logical. Image models: run one small generation at
 #'   startup so the first request doesn't pay tracing and allocator
 #'   growth. Ignored for "ltx".
@@ -79,7 +87,7 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
                   device = "cuda", token = NULL, max_pixels = 1024L ^ 2,
                   max_frames = 161L, max_steps = 50L,
                   max_pixel_frames = NULL, max_prompts = 32L, timeout = 300L,
-                  max_body = 1024L ^ 2, warmup = TRUE) {
+                  max_body = 1024L ^ 2, max_jobs = 8L, warmup = TRUE) {
     model <- match.arg(model)
     if (is.null(max_pixel_frames)) {
         # Joint video budget: full max_pixels only up to 121 frames;
@@ -95,6 +103,12 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
     state$max_frames <- as.integer(max_frames)
     state$max_steps <- as.integer(max_steps)
     state$max_pixel_frames <- as.numeric(max_pixel_frames)
+    state$max_jobs <- as.integer(max_jobs)
+    # Completed video jobs, kept so a client can poll status and download the
+    # result separately (the /v1/videos contract, matching the wan2gp-api
+    # container). Bounded, LRU by age. An env so it persists across requests.
+    state$jobs <- new.env(parent = emptyenv())
+    state$jobs[["__order__"]] <- character(0)
     message("Model loaded.")
 
     if (isTRUE(warmup) && model != "ltx") {
@@ -299,18 +313,88 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
     if (identical(req$method, "POST") && path == "/v1/images/generations") {
         if (isTRUE(state$video)) {
             return(.dserve_err(400L,
-                               "this server hosts a video model; POST /v1/videos/generations"))
+                               "this server hosts a video model; POST /v1/videos"))
         }
         return(.dserve_image(req, state))
     }
-    if (identical(req$method, "POST") && path == "/v1/videos/generations") {
+    # Video is a job, matching the wan2gp-api container: create at
+    # POST /v1/videos, poll GET /v1/videos/{id}, download the content at
+    # GET /v1/videos/{id}/content. Generation is synchronous on this
+    # single-threaded, in-process server, so a created job is already
+    # completed; the split still lets a client written for the async
+    # contract talk to either service unchanged.
+    if (identical(req$method, "POST") && path == "/v1/videos") {
         if (!isTRUE(state$video)) {
             return(.dserve_err(400L,
                                "this server hosts an image model; POST /v1/images/generations"))
         }
-        return(.dserve_video(req, state))
+        return(.dserve_video_create(req, state))
+    }
+    m <- regmatches(path, regexec("^/v1/videos/([^/]+)(/content)?$", path))[[1]]
+    if (identical(req$method, "GET") && length(m) == 3L) {
+        job <- .dserve_jobs_get(state, m[[2]])
+        if (is.null(job)) {
+            return(.dserve_err(404L, paste0("no video job '", m[[2]], "'")))
+        }
+        if (nzchar(m[[3]])) {
+            if (!identical(job$status, "completed") || is.null(job$path) ||
+                !file.exists(job$path)) {
+                return(.dserve_err(404L, "no content for this job"))
+            }
+            bytes <- readBin(job$path, "raw", n = file.size(job$path))
+            return(list(status = 200L, content_type = job$content_type,
+                        body = bytes))
+        }
+        return(.dserve_json(.dserve_job_view(job)))
     }
     .dserve_err(404L, "not found")
+}
+
+# A completed (or failed) job, as the client polls it. The output stays a
+# server-side file; the bytes come from the content endpoint.
+.dserve_job_view <- function(job) {
+    v <- list(id = job$id, object = "video", status = job$status,
+              progress = if (identical(job$status, "completed")) 100L else 0L,
+              created_at = as.integer(job$created))
+    if (identical(job$status, "completed")) {
+        v$metadata <- job$metadata
+    }
+    if (!is.null(job$error)) {
+        v$error <- job$error
+    }
+    v
+}
+
+# Store a completed job, evicting the oldest (and its file) past max_jobs.
+.dserve_jobs_put <- function(state, job) {
+    jobs <- state$jobs
+    assign(job$id, job, envir = jobs)
+    ord <- c(jobs[["__order__"]], job$id)
+    cap <- state$max_jobs %||% 8L
+    while (length(ord) > cap) {
+        old <- ord[[1]]
+        ord <- ord[-1]
+        oj <- tryCatch(get(old, envir = jobs), error = function(e) NULL)
+        if (!is.null(oj) && !is.null(oj$path)) {
+            unlink(oj$path)
+        }
+        if (exists(old, envir = jobs, inherits = FALSE)) {
+            rm(list = old, envir = jobs)
+        }
+    }
+    jobs[["__order__"]] <- ord
+    invisible(NULL)
+}
+
+.dserve_jobs_get <- function(state, id) {
+    if (identical(id, "__order__")) {
+        return(NULL)
+    }
+    if (exists(id, envir = state$jobs, inherits = FALSE)) {
+        get(id, envir = state$jobs)
+    } else {
+        NULL
+    }
 }
 
 # One length-1 atomic value or the default; JSON arrays/objects sent
@@ -385,7 +469,7 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         ))
 }
 
-.dserve_video <- function(req, state) {
+.dserve_video_create <- function(req, state) {
     body <- .dserve_body(req)
     if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
         return(.dserve_err(400L,
@@ -413,8 +497,10 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
             return(.dserve_err(400L, "seed must be a single integer"))
         }
     }
-    out <- tempfile(fileext = ".mp4")
-    on.exit(unlink(out), add = TRUE)
+    # Generate to a kept tempfile (the job store owns it until evicted).
+    # Errors, including CUDA OOM, propagate to the top-level handler, which
+    # returns 500 and, for OOM, exits for a clean supervisor restart.
+    out <- tempfile("vid_", fileext = ".mp4")
     txt2vid_ltx2(
                  prompt = body$prompt,
                  pipeline = state$pipe,
@@ -427,8 +513,13 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
                  device = state$device, dtype = "bfloat16",
                  filename = out, verbose = FALSE
     )
-    bytes <- readBin(out, "raw", n = file.size(out))
-    list(status = 200L, content_type = "video/mp4", body = bytes)
+    job <- list(id = sub("\\.mp4$", "", basename(out)),
+                status = "completed", content_type = "video/mp4", path = out,
+                created = as.numeric(Sys.time()),
+                metadata = list(width = w, height = h, num_frames = nf,
+                                frame_rate = fr))
+    .dserve_jobs_put(state, job)
+    .dserve_json(.dserve_job_view(job), status = 202L)
 }
 
 # ---- HTTP plumbing (same shape as whisper::serve) ---------------------------
