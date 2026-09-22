@@ -86,6 +86,10 @@ single-threaded, in-process server, so a created job is already
 \code{completed} and the create call still blocks for the minutes the
 render takes; the split lets a client written for the async contract
 talk to either service unchanged.
+\item \code{POST /v1/videos/generations} - the legacy synchronous shape,
+kept for backwards compatibility: the same JSON body, but it returns
+raw \code{video/mp4} bytes inline and keeps no job. Prefer
+\code{POST /v1/videos}.
 }
 
 The server is single-threaded and runs until interrupted. Run it
