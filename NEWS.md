@@ -1,3 +1,16 @@
+# diffuseR 0.2.2.8
+
+* **`serve()` serves video as a job**, matching the wan2gp-api container.
+  The video endpoint moved from `POST /v1/videos/generations` (raw mp4
+  bytes, synchronous) to create/poll/download: `POST /v1/videos` returns
+  `{id, status}`, `GET /v1/videos/{id}` reports status, and
+  `GET /v1/videos/{id}/content` returns the mp4. A client written for that
+  contract can talk to diffuseR or the container unchanged. The server is
+  single-threaded and holds the model in-process, so generation is still
+  synchronous on create; the result is stored behind a job id (bounded LRU,
+  `max_jobs`, default 8) and fetched separately. Image generation is
+  unchanged.
+
 # diffuseR 0.2.2.7
 
 * `recommend()` diagnosed the wrong safetensors capability for bf16. The
