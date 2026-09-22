@@ -1,3 +1,11 @@
+# diffuseR 0.2.2.12
+
+* **`serve()` keeps `POST /v1/videos/generations` for backwards
+  compatibility.** 0.2.2.11 replaced the legacy synchronous video endpoint
+  with the `/v1/videos` job contract; the old path is restored and again
+  returns the mp4 bytes inline (no job), alongside the new create/poll/
+  download. Both share validation and generation, so they cannot drift.
+
 # diffuseR 0.2.2.11
 
 * **`serve()` serves video as a job**, matching the wan2gp-api container.

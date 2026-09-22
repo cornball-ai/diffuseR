@@ -38,6 +38,10 @@
 #'     \code{completed} and the create call still blocks for the minutes the
 #'     render takes; the split lets a client written for the async contract
 #'     talk to either service unchanged.
+#'   \item \code{POST /v1/videos/generations} - the legacy synchronous shape,
+#'     kept for backwards compatibility: the same JSON body, but it returns
+#'     raw \code{video/mp4} bytes inline and keeps no job. Prefer
+#'     \code{POST /v1/videos}.
 #' }
 #'
 #' The server is single-threaded and runs until interrupted. Run it
@@ -330,6 +334,15 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         }
         return(.dserve_video_create(req, state))
     }
+    # Legacy synchronous endpoint, kept for backwards compatibility: returns
+    # the mp4 bytes inline rather than a job.
+    if (identical(req$method, "POST") && path == "/v1/videos/generations") {
+        if (!isTRUE(state$video)) {
+            return(.dserve_err(400L,
+                               "this server hosts an image model; POST /v1/images/generations"))
+        }
+        return(.dserve_video_legacy(req, state))
+    }
     m <- regmatches(path, regexec("^/v1/videos/([^/]+)(/content)?$", path))[[1]]
     if (identical(req$method, "GET") && length(m) == 3L) {
         job <- .dserve_jobs_get(state, m[[2]])
@@ -469,11 +482,15 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         ))
 }
 
-.dserve_video_create <- function(req, state) {
+# Validate a video request and render it to a kept tempfile. Returns
+# list(path, w, h, nf, fr) on success, or list(err = <response>) to send as
+# is. Generation errors (including CUDA OOM) propagate to the top-level
+# handler, which returns 500 and, for OOM, exits for a clean restart.
+.dserve_video_render <- function(req, state) {
     body <- .dserve_body(req)
     if (is.null(body) || !.dserve_prompt_ok(body$prompt)) {
-        return(.dserve_err(400L,
-                           "body must be JSON with a single string prompt"))
+        return(list(err = .dserve_err(400L,
+                    "body must be JSON with a single string prompt")))
     }
     w <- suppressWarnings(as.integer(.dserve_scalar(body$width, 768L)))
     h <- suppressWarnings(as.integer(.dserve_scalar(body$height, 512L)))
@@ -482,24 +499,23 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
     if (anyNA(c(w, h, nf)) || w < 32L || h < 32L || nf < 9L ||
         w * h > state$max_pixels || nf > state$max_frames ||
         as.numeric(w) * h * nf > state$max_pixel_frames) {
-        return(.dserve_err(400L, sprintf(
-                    "request exceeds limits (max %d pixels, %d frames, %.0f pixel-frames)",
-                    state$max_pixels, state$max_frames, state$max_pixel_frames)))
+        return(list(err = .dserve_err(400L, sprintf(
+            "request exceeds limits (max %d pixels, %d frames, %.0f pixel-frames)",
+            state$max_pixels, state$max_frames, state$max_pixel_frames))))
     }
     # frame_rate scales the audio-latent length inversely: bound it
     if (is.na(fr) || fr < 12 || fr > 60) {
-        return(.dserve_err(400L, "frame_rate must be between 12 and 60"))
+        return(list(err = .dserve_err(400L,
+                    "frame_rate must be between 12 and 60")))
     }
     vseed <- .dserve_scalar(body$seed)
     if (!is.null(vseed)) {
         vseed <- suppressWarnings(as.integer(vseed))
         if (is.na(vseed)) {
-            return(.dserve_err(400L, "seed must be a single integer"))
+            return(list(err = .dserve_err(400L,
+                        "seed must be a single integer")))
         }
     }
-    # Generate to a kept tempfile (the job store owns it until evicted).
-    # Errors, including CUDA OOM, propagate to the top-level handler, which
-    # returns 500 and, for OOM, exits for a clean supervisor restart.
     out <- tempfile("vid_", fileext = ".mp4")
     txt2vid_ltx2(
                  prompt = body$prompt,
@@ -513,13 +529,37 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
                  device = state$device, dtype = "bfloat16",
                  filename = out, verbose = FALSE
     )
-    job <- list(id = sub("\\.mp4$", "", basename(out)),
-                status = "completed", content_type = "video/mp4", path = out,
+    list(path = out, w = w, h = h, nf = nf, fr = fr)
+}
+
+# POST /v1/videos: the job contract (create -> poll -> content), matching
+# the wan2gp-api container. Generation is synchronous here, so the created
+# job is already completed; the kept file is served from the content
+# endpoint and owned by the job store until evicted.
+.dserve_video_create <- function(req, state) {
+    r <- .dserve_video_render(req, state)
+    if (!is.null(r$err)) {
+        return(r$err)
+    }
+    job <- list(id = sub("\\.mp4$", "", basename(r$path)),
+                status = "completed", content_type = "video/mp4", path = r$path,
                 created = as.numeric(Sys.time()),
-                metadata = list(width = w, height = h, num_frames = nf,
-                                frame_rate = fr))
+                metadata = list(width = r$w, height = r$h, num_frames = r$nf,
+                                frame_rate = r$fr))
     .dserve_jobs_put(state, job)
     .dserve_json(.dserve_job_view(job), status = 202L)
+}
+
+# POST /v1/videos/generations: the legacy synchronous shape, kept for
+# backwards compatibility. Returns the mp4 bytes inline and keeps no job.
+.dserve_video_legacy <- function(req, state) {
+    r <- .dserve_video_render(req, state)
+    if (!is.null(r$err)) {
+        return(r$err)
+    }
+    on.exit(unlink(r$path), add = TRUE)
+    bytes <- readBin(r$path, "raw", n = file.size(r$path))
+    list(status = 200L, content_type = "video/mp4", body = bytes)
 }
 
 # ---- HTTP plumbing (same shape as whisper::serve) ---------------------------

@@ -202,6 +202,13 @@ local({
   expect_equal(content$content_type, "video/mp4")
   expect_identical(content$body, as.raw(c(0L, 1L, 2L, 3L)))
 
+  # legacy synchronous endpoint still returns raw mp4 bytes (backwards compat)
+  legacy <- diffuseR:::.dserve_route(
+    mkreq("POST", "/v1/videos/generations", body = '{"prompt":"a cat"}'), vs)
+  expect_equal(legacy$status, 200L)
+  expect_equal(legacy$content_type, "video/mp4")
+  expect_identical(legacy$body, as.raw(c(0L, 1L, 2L, 3L)))
+
   # unknown job
   expect_equal(
     diffuseR:::.dserve_route(mkreq("GET", "/v1/videos/nope"), vs)$status, 404L)
