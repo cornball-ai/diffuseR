@@ -15,6 +15,7 @@ serve(
   max_prompts = 32L,
   timeout = 300L,
   max_body = 1024L^2,
+  max_jobs = 8L,
   warmup = TRUE
 )
 }
@@ -49,6 +50,10 @@ cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.}
 \item{max_body}{Integer. Maximum request body bytes. Default 1 MB
 (bodies are JSON).}
 
+\item{max_jobs}{Integer. How many completed video jobs to keep for
+status/content retrieval before evicting the oldest (and its file).
+Default 8.}
+
 \item{warmup}{Logical. Image models: run one small generation at
 startup so the first request doesn't pay tracing and allocator
 growth. Ignored for "ltx".}
@@ -72,10 +77,15 @@ single-threaded, so health only answers between requests.
 \code{{prompt, size, seed, steps}} (\code{size} like
 \code{"1024x1024"}; \code{n > 1} is not supported). Returns
 \code{{created, data: [{b64_json}]}} with a base64 PNG.
-\item \code{POST /v1/videos/generations} - \code{model = "ltx"}
-only. JSON body \code{{prompt, width, height, num_frames,
-frame_rate, seed}}. Returns raw \code{video/mp4} bytes. Video
-generation takes minutes: give your client a matching timeout.
+\item \code{POST /v1/videos} - \code{model = "ltx"} only, a job that
+matches the wan2gp-api container. JSON body \code{{prompt, width,
+height, num_frames, frame_rate, seed}} returns \code{{id, status}};
+poll \code{GET /v1/videos/{id}} for the status and download the mp4 at
+\code{GET /v1/videos/{id}/content}. Generation is synchronous on this
+single-threaded, in-process server, so a created job is already
+\code{completed} and the create call still blocks for the minutes the
+render takes; the split lets a client written for the async contract
+talk to either service unchanged.
 }
 
 The server is single-threaded and runs until interrupted. Run it

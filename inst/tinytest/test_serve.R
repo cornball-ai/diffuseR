@@ -92,7 +92,7 @@ expect_equal(dim(img)[1:2], c(64L, 64L))
 
 # wrong endpoint for the hosted model type
 expect_equal(diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations", body = '{"prompt":"x"}'),
+  mkreq("POST", "/v1/videos", body = '{"prompt":"x"}'),
   state)$status, 400L)
 
 # --- video caps (no model needed: limits check precedes generation) ----------------
@@ -100,11 +100,11 @@ expect_equal(diffuseR:::.dserve_route(
 vstate <- list(model = "fake", video = TRUE,
                max_pixels = 1024L^2, max_frames = 161L)
 overv <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","width":2048,"height":2048}'), vstate)
 expect_equal(overv$status, 400L)
 overf <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","num_frames":9999}'), vstate)
 expect_equal(overf$status, 400L)
 
@@ -125,21 +125,21 @@ expect_equal(okstep$status, 200L)
 vstate$max_steps <- 50L
 vstate$max_pixel_frames <- 1024^2 * 121
 badfr <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","frame_rate":1}'), vstate)
 expect_equal(badfr$status, 400L)
 expect_true(grepl("frame_rate", jbody(badfr)$error$message))
 
 # joint budget: each dimension legal alone, product over budget
 joint <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","width":1024,"height":1024,"num_frames":161}'),
   vstate)
 expect_equal(joint$status, 400L)
 expect_true(grepl("pixel-frames", jbody(joint)$error$message))
 
 tiny <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","width":8,"height":8}'), vstate)
 expect_equal(tiny$status, 400L)
 
@@ -161,6 +161,62 @@ arrseed <- diffuseR:::.dserve_route(
 expect_equal(arrseed$status, 400L)
 
 arrw <- diffuseR:::.dserve_route(
-  mkreq("POST", "/v1/videos/generations",
+  mkreq("POST", "/v1/videos",
         body = '{"prompt":"x","width":[512,640]}'), vstate)
 expect_equal(arrw$status, 400L)
+
+# --- video jobs: create -> status -> content, and eviction -------------------
+# The model call is stubbed, so this needs no GPU. .dserve_video_create calls
+# diffuseR::txt2vid_ltx2 (not a state closure), so replace it in the namespace
+# and restore it afterwards.
+local({
+  orig <- diffuseR:::txt2vid_ltx2
+  on.exit(assignInNamespace("txt2vid_ltx2", orig, "diffuseR"), add = TRUE)
+  assignInNamespace("txt2vid_ltx2", function(..., filename, verbose = FALSE) {
+    writeBin(as.raw(c(0L, 1L, 2L, 3L)), filename)
+    invisible(filename)
+  }, "diffuseR")
+
+  vs <- list(model = "fake", video = TRUE, pipe = NULL,
+             embeds = function(p) NULL, device = "cpu",
+             max_pixels = 1024L^2, max_frames = 161L,
+             max_pixel_frames = 1024^2 * 121, max_jobs = 2L)
+  vs$jobs <- new.env(parent = emptyenv())
+  vs$jobs[["__order__"]] <- character(0)
+
+  created <- diffuseR:::.dserve_route(
+    mkreq("POST", "/v1/videos", body = '{"prompt":"a cat","num_frames":121}'),
+    vs)
+  expect_equal(created$status, 202L)
+  job <- jbody(created)
+  expect_equal(job$status, "completed")
+  expect_true(grepl("^vid_", job$id))
+
+  st <- diffuseR:::.dserve_route(mkreq("GET", paste0("/v1/videos/", job$id)), vs)
+  expect_equal(st$status, 200L)
+  expect_equal(jbody(st)$status, "completed")
+
+  content <- diffuseR:::.dserve_route(
+    mkreq("GET", paste0("/v1/videos/", job$id, "/content")), vs)
+  expect_equal(content$status, 200L)
+  expect_equal(content$content_type, "video/mp4")
+  expect_identical(content$body, as.raw(c(0L, 1L, 2L, 3L)))
+
+  # unknown job
+  expect_equal(
+    diffuseR:::.dserve_route(mkreq("GET", "/v1/videos/nope"), vs)$status, 404L)
+
+  # eviction: max_jobs = 2, so creating a third drops the first (and its file)
+  ids <- character(0)
+  paths <- character(0)
+  for (i in 1:3) {
+    r <- diffuseR:::.dserve_route(
+      mkreq("POST", "/v1/videos", body = sprintf('{"prompt":"p%d"}', i)), vs)
+    j <- jbody(r)
+    ids <- c(ids, j$id)
+    paths <- c(paths, get(j$id, envir = vs$jobs)$path)
+  }
+  expect_null(diffuseR:::.dserve_jobs_get(vs, ids[[1]]))
+  expect_false(file.exists(paths[[1]]))
+  expect_true(!is.null(diffuseR:::.dserve_jobs_get(vs, ids[[3]])))
+})
