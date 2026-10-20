@@ -12,13 +12,19 @@
 #' @name txt2img_zimage
 NULL
 
-# Resolve a Z-Image support file from the HuggingFace cache
-.zimage_cached <- function(file) {
+# Resolve a Z-Image support file from the HuggingFace cache. `revision`
+# follows .flux2_rev: NULL resolves the "main" branch, a 40-hex commit
+# reads snapshots/<revision>/ directly, and a branch name is refused.
+.zimage_cached <- function(file, revision = NULL) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
         stop("The hfhub package is required to locate model files.")
     }
+    ## Outside the tryCatch below, which reports every error as a missing
+    ## download: a branch name is a caller mistake, not an absent file.
+    rev <- .flux2_rev(revision)
     tryCatch(
-             hfhub::hub_download(.zimage_repo, file, local_files_only = TRUE),
+             do.call(hfhub::hub_download,
+                     c(list(.zimage_repo, file, local_files_only = TRUE), rev)),
              error = function(e) {
         stop("Missing ", file, " in the HuggingFace cache; ",
              "run download_zimage_turbo() first.", call. = FALSE)
@@ -48,6 +54,12 @@ NULL
 #'   resolves via \code{options(diffuseR.pin_staging)} then the
 #'   host-RAM-aware \code{\link{recommend}} decision.
 #' @param verbose Logical.
+#' @param revision Optional exact 40-hex commit for the support files (VAE,
+#'   scheduler config, Qwen3 encoder, tokenizer) this pulls from the
+#'   \code{Tongyi-MAI} cache. With one they resolve straight out of
+#'   \code{snapshots/<revision>/}, so the load works against a cache holding
+#'   only that snapshot -- no \code{refs/} entry and no network. The
+#'   transformer comes from \code{model_dir} and is unaffected.
 #'
 #' @return A \code{zimage_pipeline} list.
 #'
@@ -56,7 +68,10 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                  precision = c("auto", "fp8", "nf4", "bf16"),
                                  text_device = NULL, attn_chunk = NULL,
                                  phase_offload = TRUE, pin = NULL,
-                                 verbose = TRUE) {
+                                 verbose = TRUE, revision = NULL) {
+    ## Checked before any device work, where a configuration mistake is
+    ## cheapest to report.
+    .flux2_rev(revision)
     precision <- .flux_resolve_precision(match.arg(precision),
         file.path(tools::R_user_dir("diffuseR", "data"), "zimage-turbo-"))
     if (is.null(text_device)) {
@@ -121,14 +136,16 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading VAE decoder...")
     }
-    vae_config <- jsonlite::fromJSON(.zimage_cached("vae/config.json"))
+    vae_config <- jsonlite::fromJSON(.zimage_cached("vae/config.json",
+                                                    revision))
     pipe$vae_scaling_factor <- vae_config$scaling_factor %||% 0.3611
     pipe$vae_shift_factor <- vae_config$shift_factor %||% 0.1159
     dec <- vae_decoder_native(
                               latent_channels = as.integer(vae_config$latent_channels %||% 16L)
     )
     load_decoder_safetensors(
-                             dec, .zimage_cached("vae/diffusion_pytorch_model.safetensors"),
+                             dec, .zimage_cached("vae/diffusion_pytorch_model.safetensors",
+                                                 revision),
                              verbose = verbose
     )
     dec$to(device = component_device)
@@ -140,13 +157,14 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     dec$eval()
     pipe$decoder <- dec
 
-    sched_config <- jsonlite::fromJSON(.zimage_cached("scheduler/scheduler_config.json"))
+    sched_config <- jsonlite::fromJSON(
+        .zimage_cached("scheduler/scheduler_config.json", revision))
     pipe$sched_shift <- sched_config$shift %||% 3.0
 
     if (verbose) {
         message("Loading Qwen3 text encoder...")
     }
-    te_dir <- dirname(.zimage_cached("text_encoder/config.json"))
+    te_dir <- dirname(.zimage_cached("text_encoder/config.json", revision))
     te_config <- jsonlite::fromJSON(file.path(te_dir, "config.json"))
     # hidden_states[-2]: the state after num_hidden_layers - 1 layers
     pipe$te_penult_layer <- as.integer(te_config$num_hidden_layers %||% 36L) - 1L
@@ -155,7 +173,8 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
         dtype = if (text_device == "cpu") "float32" else "bfloat16",
         verbose = verbose
     )
-    pipe$tokenizer <- qwen_bpe_tokenizer(.zimage_cached("tokenizer/tokenizer.json"))
+    pipe$tokenizer <- qwen_bpe_tokenizer(
+        .zimage_cached("tokenizer/tokenizer.json", revision))
 
     components <- c("transformer", "decoder")
     if (!identical(text_device, "cpu")) {
