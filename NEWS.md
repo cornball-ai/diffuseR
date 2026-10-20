@@ -1,3 +1,12 @@
+# diffuseR 0.2.2.13
+
+* **`zimage_load_pipeline()` takes `revision`**, as
+  `flux2_load_pipeline()` does. An exact 40-hex commit resolves the VAE,
+  scheduler config, Qwen3 encoder and tokenizer from
+  `snapshots/<revision>/`, so the load works against a cache holding only
+  that snapshot (no `refs/`, no network). A branch name is refused.
+  `resident_load("zimage", revision = ...)` forwards it.
+
 # diffuseR 0.2.2.12
 
 * **`serve()` keeps `POST /v1/videos/generations` for backwards
