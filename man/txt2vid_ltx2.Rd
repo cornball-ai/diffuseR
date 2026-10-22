@@ -157,8 +157,9 @@ Euler run at the same seed.}
 
 \item{text_encoder,tokenizer}{Gemma3 model and tokenizer (or paths;
 see \code{\link{load_gemma3_text_encoder}} and
-\code{\link{gemma3_tokenizer}}). Ignored when \code{prompt_embeds}
-is supplied.}
+\code{\link{gemma3_tokenizer}}), or for LTX-2.5 the Gemma 4 model
+and \code{\link{gemma4_tokenizer}} (selected by the tokenizer's
+class). Ignored when \code{prompt_embeds} is supplied.}
 
 \item{width,height}{Integers. Output resolution (multiples of 32).}
 

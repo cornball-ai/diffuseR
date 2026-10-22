@@ -20,7 +20,9 @@ ltx23_load_pipeline(
 \code{ltx-2.3-22b-distilled-1.1.safetensors}) or to an fp8 artifact
 directory produced by \code{\link{ltx23_quantize_fp8}}. With the fp8
 artifact, the transformer loads with CPU-resident fp8 weights that
-stream to \code{device} during the forward pass.}
+stream to \code{device} during the forward pass. An open
+\code{ltx23_checkpoint} is also accepted, such as the LTX-2.5
+component set from \code{\link{ltx25_open_checkpoint}}.}
 
 \item{device}{Character. Device for the small components (VAEs,
 vocoder, connectors) and, with fp8, the transformer residents.}

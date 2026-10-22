@@ -337,11 +337,13 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
         if (shard_size >= shard_bytes) {
             flush_shard()
         }
-        if (i %% 200L == 0L) {
-            gc(verbose = FALSE)
-            if (verbose) {
-                message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
-            }
+        # Per tensor: R's gc cannot see torch's native memory, and 200
+        # dropped bf16 sources plus float32 quantization temporaries
+        # (~0.27 GB each for the FFN weights) outgrow the free RAM of a
+        # host sharing memory with other services (cf. gemma4_quantize_nf4)
+        gc(verbose = FALSE)
+        if (i %% 200L == 0L && verbose) {
+            message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
         }
     }
     flush_shard()

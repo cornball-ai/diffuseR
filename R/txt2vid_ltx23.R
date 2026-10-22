@@ -247,7 +247,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   \code{ltx-2.3-22b-distilled-1.1.safetensors}) or to an fp8 artifact
 #'   directory produced by \code{\link{ltx23_quantize_fp8}}. With the fp8
 #'   artifact, the transformer loads with CPU-resident fp8 weights that
-#'   stream to \code{device} during the forward pass.
+#'   stream to \code{device} during the forward pass. An open
+#'   \code{ltx23_checkpoint} is also accepted, such as the LTX-2.5
+#'   component set from \code{\link{ltx25_open_checkpoint}}.
 #' @param device Character. Device for the small components (VAEs,
 #'   vocoder, connectors) and, with fp8, the transformer residents.
 #' @param dtype Character. "bfloat16" (checkpoint native) or "float32".
@@ -277,11 +279,17 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     } else {
         component_device <- device
     }
-    fp8 <- dir.exists(checkpoint_path)
-    ckpt <- if (fp8) {
-        ltx23_open_fp8_checkpoint(checkpoint_path)
+    if (inherits(checkpoint_path, "ltx23_checkpoint")) {
+        # An already-open checkpoint, e.g. ltx25_open_checkpoint()
+        ckpt <- checkpoint_path
+        fp8 <- !is.null(ckpt$format)
     } else {
-        ltx23_open_checkpoint(checkpoint_path)
+        fp8 <- dir.exists(checkpoint_path)
+        ckpt <- if (fp8) {
+            ltx23_open_fp8_checkpoint(checkpoint_path)
+        } else {
+            ltx23_open_checkpoint(checkpoint_path)
+        }
     }
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         # Must be set before the first CUDA allocation. NF4 runs the
@@ -449,6 +457,12 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     if (!is.null(attr(text_encoder, "staging")) && grepl("^cuda", device)) {
         return(device)
     }
+    # An encoder already loaded on the GPU encodes there
+    on_gpu <- tryCatch(text_encoder$parameters[[1]]$device$type == "cuda",
+                       error = function(e) FALSE)
+    if (isTRUE(on_gpu) && grepl("^cuda", device)) {
+        return(device)
+    }
     "cpu"
 }
 
@@ -465,8 +479,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   \code{\link{ltx23_load_pipeline}}.
 #' @param text_encoder,tokenizer Gemma3 model and tokenizer (or paths;
 #'   see \code{\link{load_gemma3_text_encoder}} and
-#'   \code{\link{gemma3_tokenizer}}). Ignored when \code{prompt_embeds}
-#'   is supplied.
+#'   \code{\link{gemma3_tokenizer}}), or for LTX-2.5 the Gemma 4 model
+#'   and \code{\link{gemma4_tokenizer}} (selected by the tokenizer's
+#'   class). Ignored when \code{prompt_embeds} is supplied.
 #' @param prompt_embeds Optional precomputed list with
 #'   \code{prompt_embeds} (raw stacked Gemma3 states) and
 #'   \code{prompt_attention_mask}; bypasses the text encoder.
@@ -644,7 +659,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Encoding prompt...")
         }
-        prompt_embeds <- encode_with_gemma3(
+        # LTX-2.5 encodes with Gemma 4 (chosen by its tokenizer class)
+        encode <- if (inherits(tokenizer, "gemma4_tokenizer")) {
+            encode_with_gemma4
+        } else {
+            encode_with_gemma3
+        }
+        prompt_embeds <- encode(
             prompt,
             model = text_encoder, tokenizer = tokenizer,
             max_sequence_length = max_sequence_length,
