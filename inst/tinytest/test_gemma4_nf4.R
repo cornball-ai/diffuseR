@@ -52,6 +52,28 @@ art_seen <- local({
   # A second call reuses the artifact
   expect_identical(gemma4_quantize_nf4(src, art, verbose = FALSE)$shards,
                    manifest$shards)
+  # ...but only a complete one: a missing tokenizer.json forces a rebuild
+  expect_equal(manifest$tokenizer, "tokenizer.json")
+  unlink(file.path(art, "tokenizer.json"))
+  expect_message(gemma4_quantize_nf4(src, art, verbose = TRUE), "Quantized")
+  expect_true(file.exists(file.path(art, "tokenizer.json")))
+
+  # Shards stay under shard_bytes; only a single oversized source tensor
+  # (NF4 packed + absmax pair, or one resident) may exceed it alone
+  local({
+    small <- tempfile("gemma4-nf4-small-")
+    on.exit(unlink(small, recursive = TRUE), add = TRUE)
+    bound <- 20000
+    m <- gemma4_quantize_nf4(src, small, shard_bytes = bound, verbose = FALSE)
+    expect_true(length(m$shards) > 1L)
+    for (s in m$shards) {
+      w <- safetensors::safe_load_file(file.path(small, s), framework = "torch")
+      payload <- sum(vapply(w, function(t) t$numel() * t$element_size(), 0))
+      n_src <- length(setdiff(names(w), grep("_absmax$", names(w), value = TRUE)))
+      expect_true(payload <= bound * 1.01 || n_src == 1L,
+                  info = sprintf("%s: %.0f bytes, %d tensors", s, payload, n_src))
+    }
+  })
 
   enc <- load_gemma4_text_encoder(art, device = "cpu", dtype = "float32",
                                   pin = FALSE, verbose = FALSE)

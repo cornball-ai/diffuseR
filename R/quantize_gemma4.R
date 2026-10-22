@@ -39,9 +39,12 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
     manifest_path <- file.path(output_dir, "manifest.json")
     if (!force && file.exists(manifest_path)) {
         manifest <- jsonlite::fromJSON(manifest_path)
+        # Complete means every shard plus the tokenizer the manifest
+        # promises; anything less is rebuilt
         if (identical(manifest$model, "gemma4") &&
             identical(manifest$format, "nf4") &&
-            all(file.exists(file.path(output_dir, manifest$shards)))) {
+            all(file.exists(file.path(output_dir,
+                                      c(manifest$shards, manifest$tokenizer))))) {
             if (verbose) {
                 message("NF4 artifact already present: ", output_dir)
             }
@@ -64,6 +67,7 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
                 "tensors as float32 (larger artifact, same results)")
         torch::torch_float32()
     }
+    resident_bytes <- torch::torch_empty(1L, dtype = resident_dtype)$element_size()
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     # A stale manifest must not validate a half-written artifact
     unlink(manifest_path)
@@ -102,27 +106,33 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
             name <- key # kept for the LTX-2.5 connectors
         }
         tensor <- ckpt$handle$get_tensor(key)
-        if (.gemma3_is_quant_key(name)) {
+        quant <- .gemma3_is_quant_key(name)
+        bytes <- prod(tensor$shape) * if (quant) 0.5625 else resident_bytes
+        # Flush first so a shard stays under shard_bytes; a tensor larger
+        # than the target alone (the 2 GB embedding) gets its own shard
+        if (shard_size + bytes > shard_bytes) {
+            flush_shard()
+        }
+        if (quant) {
             torch::with_no_grad({
                 q <- ltx23_nf4_quantize(tensor)
                 shard[[name]] <- q$packed
                 shard[[paste0(name, "_absmax")]] <- q$absmax
             })
-            shard_size <- shard_size + prod(tensor$shape) * 0.5625
             n_cast <- n_cast + 1L
         } else {
             shard[[name]] <- tensor$to(dtype = resident_dtype)
-            shard_size <- shard_size + prod(tensor$shape) * 2
         }
+        shard_size <- shard_size + bytes
         rm(tensor)
-        if (shard_size >= shard_bytes) {
-            flush_shard()
-        }
     }
     flush_shard()
 
     manifest <- list(model = "gemma4", format = "nf4", shards = shard_files,
                      n_cast = n_cast, config = config_raw)
+    if (file.exists(file.path(output_dir, "tokenizer.json"))) {
+        manifest$tokenizer <- "tokenizer.json"
+    }
     jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE,
                          pretty = TRUE, digits = NA, null = "null")
     if (verbose) {
