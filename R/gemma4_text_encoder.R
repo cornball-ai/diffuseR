@@ -333,7 +333,9 @@ gemma4_text_model <- torch::nn_module(
 #'
 #' @param path Path to the LTX-2.5 text encoder file (e.g.
 #'   \code{gemma4-12b-with-proj-ltx-2.5-bf16.safetensors}), which embeds
-#'   its config as \code{gemma_config} metadata.
+#'   its config as \code{gemma_config} metadata, or an NF4 artifact
+#'   directory from \code{\link{gemma4_quantize_nf4}} (dispatched to
+#'   \code{\link{load_gemma4_nf4}}).
 #' @param device Character. Device for the loaded model.
 #' @param dtype Character. "bfloat16" (checkpoint native) or "float32".
 #' @param pin Logical. When loading to the CPU, page-lock the weights so
@@ -348,6 +350,10 @@ gemma4_text_model <- torch::nn_module(
 load_gemma4_text_encoder <- function(path, device = "cpu", dtype = "bfloat16",
                                      pin = getOption("diffuseR.pin_staging", TRUE),
                                      verbose = TRUE) {
+    if (file.exists(file.path(path, "manifest.json"))) {
+        return(load_gemma4_nf4(path, device = device, dtype = dtype,
+                               pin = pin, verbose = verbose))
+    }
     ckpt <- ltx23_open_checkpoint(path, require_version = NULL)
     meta <- ckpt$handle$metadata[["__metadata__"]]
     if (is.null(meta[["gemma_config"]])) {

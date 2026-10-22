@@ -105,9 +105,6 @@ ckpt["vision_model.patch_dense.weight"] = torch.randn(4, 4)
 gemma_config = {"architectures": ["Gemma4UnifiedForConditionalGeneration"],
                 "gemma_version": "gemma4-12b-ltx-v1",
                 "text_config": text_config}
-save_file(ckpt, os.path.join(OUT_DIR, "gemma4_tiny_ckpt.safetensors"),
-          metadata={"gemma_config": json.dumps(gemma_config), "format": "pt"})
-print(f"wrote {len(ckpt)} tensors to {OUT_DIR}/gemma4_tiny_ckpt.safetensors")
 
 # --- Tokenizer ------------------------------------------------------------------
 
@@ -154,6 +151,14 @@ tok_json = {
 tok_path = os.path.join(OUT_DIR, "gemma4_tiny_tokenizer.json")
 with open(tok_path, "w", encoding="utf-8") as f:
     json.dump(tok_json, f, ensure_ascii=False)
+
+# The LTX file carries its tokenizer.json as a uint8 tensor
+with open(tok_path, "rb") as f:
+    tok_bytes = f.read()
+ckpt["tokenizer_json"] = torch.tensor(list(tok_bytes), dtype=torch.uint8)
+save_file(ckpt, os.path.join(OUT_DIR, "gemma4_tiny_ckpt.safetensors"),
+          metadata={"gemma_config": json.dumps(gemma_config), "format": "pt"})
+print(f"wrote {len(ckpt)} tensors to {OUT_DIR}/gemma4_tiny_ckpt.safetensors")
 
 tok = Tokenizer.from_file(tok_path)
 prompts = ["the cat sat", "hello cat", " the  cat ", "tell", "caté ok",

@@ -14,7 +14,9 @@ load_gemma4_text_encoder(
 \arguments{
 \item{path}{Path to the LTX-2.5 text encoder file (e.g.
 \code{gemma4-12b-with-proj-ltx-2.5-bf16.safetensors}), which embeds
-its config as \code{gemma_config} metadata.}
+its config as \code{gemma_config} metadata, or an NF4 artifact
+directory from \code{\link{gemma4_quantize_nf4}} (dispatched to
+\code{\link{load_gemma4_nf4}}).}
 
 \item{device}{Character. Device for the loaded model.}
 
