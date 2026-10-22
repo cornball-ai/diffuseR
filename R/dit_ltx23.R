@@ -489,6 +489,30 @@ ltx23_dit_config_args <- function(config) {
     args
 }
 
+# Load the unquantized transformer from a single-file checkpoint: a
+# skeleton built from the embedded config (explicit ... wins, as in the
+# fp8/NF4 loaders), streamed in at `dtype`, refused unless every key
+# lands and every parameter is filled.
+.ltx23_load_transformer <- function(ckpt, dtype, device = "cpu",
+                                    verbose = TRUE, ...) {
+    args <- utils::modifyList(ltx23_dit_config_args(ckpt$config), list(...))
+    model <- do.call(.construct_skeleton,
+                     c(list(ltx23_transformer, dtype = dtype), args))
+    keys <- ltx23_split_keys(ckpt$keys)$dit
+    if (verbose) {
+        message("Loading dit (", length(keys), " tensors)...")
+    }
+    res <- ltx23_load_group(ckpt, keys, model, map_key = ltx23_map_dit_key,
+                            verbose = verbose)
+    if (length(res$unmapped) || length(res$unfilled)) {
+        stop("dit: incomplete load (", length(res$unmapped), " unmapped, ",
+             length(res$unfilled), " unfilled)")
+    }
+    model$to(device = device)
+    model$eval()
+    model
+}
+
 #' Map an official DiT checkpoint key to the R module name
 #'
 #' Applies the official-to-diffusers renames for the LTX-2.3 transformer

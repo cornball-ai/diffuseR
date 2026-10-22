@@ -306,11 +306,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                 ckpt, device = component_device, pin = pin, verbose = verbose
             )
         } else {
-            skeleton <- do.call(.construct_skeleton,
-                c(list(ltx23_transformer, dtype = torch_dtype),
-                  ltx23_dit_config_args(ckpt$config)))
-            pipe$transformer <- load_component(
-                "dit", skeleton, ltx23_map_dit_key, transformer_device
+            pipe$transformer <- .ltx23_load_transformer(
+                ckpt, dtype = torch_dtype, device = transformer_device,
+                verbose = verbose
             )
         }
         if (!is.null(attn_chunk)) {

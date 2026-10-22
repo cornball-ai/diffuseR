@@ -101,43 +101,66 @@ to_official <- function(name) {
 }
 
 params <- m25$named_parameters()
-tensors <- list()
-for (name in names(params)) {
-  tensors[[to_official(name)]] <- params[[name]]$detach()$clone()
-}
-src <- tempfile(fileext = ".safetensors")
-on.exit(unlink(src), add = TRUE)
-safetensors::safe_save_file(tensors, src, metadata = list(
-  model_version = "2.5.0",
-  config = as.character(jsonlite::toJSON(cfg25, auto_unbox = TRUE))
-))
 
-# The single-file opener accepts 2.5 and parses the flags back out
-ckpt25 <- ltx23_open_checkpoint(src)
-expect_equal(ckpt25$version, "2.5.0")
-expect_identical(ltx23_dit_config_args(ckpt25$config),
-                 list(ff_bias = FALSE, use_keyframes_abs_pos_embedding = TRUE))
+# Every temp file and directory is created and removed inside its own
+# local() scope, so a failing expectation or loader error still cleans up
+src_seen <- local({
+  tensors <- list()
+  for (name in names(params)) {
+    tensors[[to_official(name)]] <- params[[name]]$detach()$clone()
+  }
+  src <- tempfile(fileext = ".safetensors")
+  on.exit(unlink(src), add = TRUE)
+  safetensors::safe_save_file(tensors, src, metadata = list(
+    model_version = "2.5.0",
+    config = as.character(jsonlite::toJSON(cfg25, auto_unbox = TRUE))
+  ))
 
-for (fmt in c("nf4", "fp8")) {
-  dir <- tempfile(paste0(fmt, "_"))
-  quantize <- if (fmt == "nf4") ltx23_quantize_nf4 else ltx23_quantize_fp8
-  load <- if (fmt == "nf4") ltx23_load_transformer_nf4 else ltx23_load_transformer_fp8
-  manifest <- quantize(src, dir, verbose = FALSE)
-  expect_equal(manifest[[paste0(fmt, "_cast")]],
-               sum(ltx23_is_fp8_cast_key(names(params))), info = fmt)
+  # The single-file opener accepts 2.5 and parses the flags back out
+  ckpt25 <- ltx23_open_checkpoint(src)
+  expect_equal(ckpt25$version, "2.5.0")
+  expect_identical(ltx23_dit_config_args(ckpt25$config),
+                   list(ff_bias = FALSE, use_keyframes_abs_pos_embedding = TRUE))
 
-  # No ff_bias argument here: it must arrive through the manifest config.
-  # An incomplete load (a missing or surplus bias) stops inside the loader.
-  q <- do.call(load, c(list(ckpt = ltx23_open_fp8_checkpoint(dir),
-                            device = "cpu", verbose = FALSE), tiny_cfg))
-  qblk <- q$transformer_blocks[[1]]
-  expect_null(qblk$ff$net[[3]]$bias, info = fmt)
-  expect_false(is.null(qblk$audio_ff$net[[3]]$bias), info = fmt)
-  expect_equal(as.numeric(q$keyframes_abs_pos_embedding$float()$mean()), 0.5,
-               info = fmt)
+  # Dense (bf16/fp32) loader, the ltx23_load_pipeline() path. No ff_bias
+  # argument: it must arrive through the embedded config, and an
+  # incomplete load stops inside the loader. Loading at float32 makes
+  # the round trip exact.
+  d <- do.call(diffuseR:::.ltx23_load_transformer,
+               c(list(ckpt = ckpt25, dtype = torch::torch_float32(),
+                      verbose = FALSE), tiny_cfg))
+  expect_null(d$transformer_blocks[[1]]$ff$net[[3]]$bias)
+  loaded <- d$named_parameters()
+  expect_equal(sort(names(loaded)), sort(names(params)))
+  same <- vapply(names(params), function(n) {
+    as.logical(torch::torch_equal(loaded[[n]], params[[n]]))
+  }, logical(1))
+  expect_true(all(same))
 
-  q$to(dtype = torch::torch_float32())
-  out <- run(q, video_keyframes_mask = first_frame)
-  expect_true(as.logical(out$sample$isfinite()$all()$item()), info = fmt)
-  unlink(dir, recursive = TRUE)
-}
+  for (fmt in c("nf4", "fp8")) local({
+    dir <- tempfile(paste0(fmt, "_"))
+    on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+    quantize <- if (fmt == "nf4") ltx23_quantize_nf4 else ltx23_quantize_fp8
+    load <- if (fmt == "nf4") ltx23_load_transformer_nf4 else ltx23_load_transformer_fp8
+    manifest <- quantize(src, dir, verbose = FALSE)
+    expect_equal(manifest[[paste0(fmt, "_cast")]],
+                 sum(ltx23_is_fp8_cast_key(names(params))), info = fmt)
+
+    # The flags reach the quantized loaders through the manifest config
+    q <- do.call(load, c(list(ckpt = ltx23_open_fp8_checkpoint(dir),
+                              device = "cpu", verbose = FALSE), tiny_cfg))
+    qblk <- q$transformer_blocks[[1]]
+    expect_null(qblk$ff$net[[3]]$bias, info = fmt)
+    expect_false(is.null(qblk$audio_ff$net[[3]]$bias), info = fmt)
+    expect_equal(as.numeric(q$keyframes_abs_pos_embedding$float()$mean()), 0.5,
+                 info = fmt)
+
+    q$to(dtype = torch::torch_float32())
+    out <- run(q, video_keyframes_mask = first_frame)
+    expect_true(as.logical(out$sample$isfinite()$all()$item()), info = fmt)
+  })
+  src
+})
+
+# The scopes above removed their fixtures
+expect_false(file.exists(src_seen))
