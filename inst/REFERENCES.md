@@ -14,6 +14,8 @@ module; this file documents the actual lineage, idea by idea.
 | Distilled sigma schedules, default negative prompt | diffusers `pipelines/ltx2/utils.py` (Apache-2.0); values originate from Lightricks' LTX-2 release (numeric facts) |
 | Single-file checkpoint key layout, embedded config, `model_version` metadata | Format facts of the official Lightricks checkpoints, cross-checked against diffusers `scripts/convert_ltx2_to_diffusers.py` (Apache-2.0) |
 | Gemma3 text encoder | Ported from HuggingFace **transformers** (Apache-2.0) |
+| LTX-2.5 transformer flags (`ff_bias = FALSE` video FFN, `keyframes_abs_pos_embedding` after `proj_in`) | diffusers `models/transformers/transformer_ltx2.py` (Apache-2.0); flag values from the embedded config of the official LTX-2.5 checkpoints (format facts) |
+| Ancestral (SDE) Euler step for LTX-2.5, eta 1 | Ported from diffusers `schedulers/scheduling_ltx_euler_ancestral_rf.py` (Apache-2.0). That LTX-2.5+ checkpoints use it, and the stage noise seeds `seed + 10000` / `seed + 20000`, are numeric facts from Lightricks' LTX-2 release (`ANCESTRAL_SAMPLER_SINCE_VERSION`, LTX-2 Community License; no code taken) |
 
 ## FLUX.1-schnell
 
