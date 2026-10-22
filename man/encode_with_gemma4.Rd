@@ -33,7 +33,8 @@ List with \code{prompt_embeds} \code{[batch, seq_len,
   \code{\link{encode_with_gemma3}}.
 }
 \description{
-The LTX-2.5 text-encoder step: strips each prompt, tokenizes with left
+The LTX-2.5 text-encoder step: strips each prompt (Python
+\code{str.strip()} semantics, Unicode spaces included), tokenizes with left
 padding to \code{max_sequence_length}, and returns every hidden state
 (embedding output plus each layer, the last final-normed) stacked on a
 new last dimension for the connectors.

@@ -248,7 +248,7 @@ gemma4_text_model <- torch::nn_module(
     } else {
         attention_mask$to(device = device)$gt(0)$view(c(b, 1L, 1L, s))
     }
-    neg <- torch::torch_finfo(dtype)$min
+    neg <- .gemma4_dtype_min(dtype)
     additive <- function(allowed) {
         allowed <- keep$logical_and(allowed$view(c(1L, 1L, s, s)))
         torch::torch_zeros(c(b, 1L, s, s), dtype = dtype, device = device)$
@@ -256,6 +256,26 @@ gemma4_text_model <- torch::nn_module(
     }
     list(full_attention = additive(causal),
          sliding_attention = additive(sliding))
+}
+
+# Most negative finite value of a float dtype. R torch's torch_finfo()
+# rejects bfloat16, whose minimum is -(2 - 2^-7) * 2^127 (float32's
+# minimum would round to -Inf there).
+.gemma4_dtype_min <- function(dtype) {
+    if (identical(dtype$.type(), "BFloat16")) {
+        return(-(2 - 2^-7) * 2^127)
+    }
+    torch::torch_finfo(dtype)$min
+}
+
+# Python str.strip(): trims every character str.isspace() accepts, which
+# includes Unicode spaces (no-break, ideographic, ...) that base
+# trimws() keeps
+.py_strip <- function(x) {
+    ws <- intToUtf8(c(9:13, 28:32, 0x85, 0xA0, 0x1680, 0x2000:0x200A,
+                      0x2028, 0x2029, 0x202F, 0x205F, 0x3000), multiple = TRUE)
+    cls <- paste0("[", paste(ws, collapse = ""), "]")
+    gsub(paste0("^", cls, "+|", cls, "+$"), "", enc2utf8(x), perl = TRUE)
 }
 
 # Model configuration from a checkpoint's text_config (the LTX-2.5 file
@@ -371,7 +391,8 @@ load_gemma4_text_encoder <- function(path, device = "cpu", dtype = "bfloat16",
 
 #' Encode prompts with Gemma 4 for LTX-2.5
 #'
-#' The LTX-2.5 text-encoder step: strips each prompt, tokenizes with left
+#' The LTX-2.5 text-encoder step: strips each prompt (Python
+#' \code{str.strip()} semantics, Unicode spaces included), tokenizes with left
 #' padding to \code{max_sequence_length}, and returns every hidden state
 #' (embedding output plus each layer, the last final-normed) stacked on a
 #' new last dimension for the connectors.
@@ -401,7 +422,7 @@ encode_with_gemma4 <- function(prompts, model, tokenizer,
         on.exit(.staged_offload(staging), add = TRUE)
         .staged_onload(staging, device)
     }
-    tokens <- encode_gemma4(tokenizer, trimws(as.character(prompts)),
+    tokens <- encode_gemma4(tokenizer, .py_strip(as.character(prompts)),
                             max_length = max_sequence_length)
     input_ids <- torch::torch_tensor(tokens$input_ids, dtype = torch::torch_long(),
                                      device = device)

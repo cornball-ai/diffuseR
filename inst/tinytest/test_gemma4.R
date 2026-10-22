@@ -82,3 +82,37 @@ enc <- encode_with_gemma4(c("the cat sat", "tell"), model, tok,
 expect_equal(as.integer(enc$prompt_embeds$shape), c(2L, 6L, 32L, 7L))
 expect_identical(as.integer(as.array(enc$prompt_attention_mask[2, ])),
                  c(0L, 0L, 0L, 0L, 1L, 1L))
+
+# --- Prompt stripping matches Python str.strip() --------------------------------
+
+strip <- diffuseR:::.py_strip
+expect_identical(strip(" tell　\t\n"), "tell")
+expect_identical(strip(c(" a b ", " x ")), c("a b", "x"))
+expect_identical(strip("in side"), "in side")
+enc_ws <- encode_with_gemma4(" tell ", model, tok,
+                             max_sequence_length = 6L, device = "cpu",
+                             verbose = FALSE)
+enc_plain <- encode_with_gemma4("tell", model, tok, max_sequence_length = 6L,
+                                device = "cpu", verbose = FALSE)
+expect_true(torch::torch_equal(enc_ws$prompt_attention_mask,
+                               enc_plain$prompt_attention_mask))
+expect_true(max_abs_diff(enc_ws$prompt_embeds, enc_plain$prompt_embeds) == 0)
+
+# --- Default (bfloat16) loader dtype --------------------------------------------
+
+# The bf16 mask minimum must be finite in bf16 (float32's would be -Inf)
+bmin <- diffuseR:::.gemma4_dtype_min(torch::torch_bfloat16())
+expect_true(is.finite(as.numeric(torch::torch_tensor(bmin,
+  dtype = torch::torch_bfloat16())$to(dtype = torch::torch_float32()))))
+
+model_bf <- load_gemma4_text_encoder(fixture("gemma4_tiny_ckpt.safetensors"),
+                                     pin = FALSE, verbose = FALSE)
+expect_equal(model_bf$embed_tokens$weight$dtype$.type(), "BFloat16")
+# "tell" in 6 slots leaves fully padded query rows: they must stay finite
+enc_bf <- encode_with_gemma4(c("the cat sat", "tell"), model_bf, tok,
+                             max_sequence_length = 6L, device = "cpu",
+                             verbose = FALSE)
+emb_bf <- enc_bf$prompt_embeds$to(dtype = torch::torch_float32())
+expect_true(as.logical(emb_bf$isfinite()$all()$item()))
+ref <- enc$prompt_embeds
+expect_true(max_abs_diff(emb_bf, ref) / as.numeric(ref$abs()$max()) < 0.05)
