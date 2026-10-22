@@ -46,6 +46,7 @@ quantizing. Load it with \code{\link{load_gemma4_nf4}} (or
 tokenizer with \code{gemma4_tokenizer(output_dir)}.
 
 Peak host memory is about one shard (\code{shard_bytes}) plus the
-largest single source tensor (the 2 GB bf16 embedding).
+largest single source tensor and its save buffer (the 2 GB bf16
+embedding); measured under a 20 GB cgroup cap on the 12B.
 
 }

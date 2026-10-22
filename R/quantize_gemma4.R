@@ -16,7 +16,8 @@
 #' tokenizer with \code{gemma4_tokenizer(output_dir)}.
 #'
 #' Peak host memory is about one shard (\code{shard_bytes}) plus the
-#' largest single source tensor (the 2 GB bf16 embedding).
+#' largest single source tensor and its save buffer (the 2 GB bf16
+#' embedding); measured under a 20 GB cgroup cap on the 12B.
 #'
 #' @param path The LTX-2.5 text encoder file
 #'   (\code{gemma4-12b-with-proj-ltx-2.5-bf16.safetensors}).
@@ -125,6 +126,11 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
         }
         shard_size <- shard_size + bytes
         rm(tensor)
+        # R's gc cannot see torch's native memory: without a collection
+        # per tensor the dropped source tensors and quantization
+        # temporaries (up to ~0.24 GB each) pile up past 20 GB within
+        # seconds on the 12B (measured: cgroup OOM kill)
+        gc(verbose = FALSE)
     }
     flush_shard()
 
