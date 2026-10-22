@@ -15,6 +15,8 @@ module; this file documents the actual lineage, idea by idea.
 | Single-file checkpoint key layout, embedded config, `model_version` metadata | Format facts of the official Lightricks checkpoints, cross-checked against diffusers `scripts/convert_ltx2_to_diffusers.py` (Apache-2.0) |
 | Gemma3 text encoder | Ported from HuggingFace **transformers** (Apache-2.0) |
 | LTX-2.5 transformer flags (`ff_bias = FALSE` video FFN, `keyframes_abs_pos_embedding` after `proj_in`) | diffusers `models/transformers/transformer_ltx2.py` (Apache-2.0); flag values from the embedded config of the official LTX-2.5 checkpoints (format facts) |
+| Gemma 4 text encoder (LTX-2.5) | Ported from HuggingFace **transformers** (Apache-2.0) `models/gemma4_unified/modeling_gemma4_unified.py` (text stack) and `modeling_rope_utils.py` (`proportional` RoPE); the LTX encode recipe (strip, left pad, all 49 hidden states stacked) from diffusers `modular_pipelines/ltx2/encoders.py` (Apache-2.0). Parity fixtures: `tools/gen_fixtures_gemma4.py` |
+| Gemma 4 tokenizer | Re-implements the HuggingFace **tokenizers** BPE pipeline described by the shipped `tokenizer.json` (normalizer, byte fallback, ranked merges, post-processor template); verified against `tokenizers` ids |
 | Ancestral (SDE) Euler step for LTX-2.5, eta 1 | Ported from diffusers `schedulers/scheduling_ltx_euler_ancestral_rf.py` (Apache-2.0). That LTX-2.5+ checkpoints use it, and the stage noise seeds `seed + 10000` / `seed + 20000`, are numeric facts from Lightricks' LTX-2 release (`ANCESTRAL_SAMPLER_SINCE_VERSION`, LTX-2 Community License; no code taken) |
 
 ## FLUX.1-schnell
