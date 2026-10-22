@@ -38,7 +38,10 @@ ltx23_transformer(
   timestep_scale_multiplier = 1000,
   cross_attn_timestep_scale_multiplier = 1000,
   rope_type = "split",
-  perturbed_attn = TRUE
+  perturbed_attn = TRUE,
+  ff_bias = TRUE,
+  audio_ff_bias = TRUE,
+  use_keyframes_abs_pos_embedding = FALSE
 )
 }
 \arguments{
@@ -53,6 +56,11 @@ ltx23_transformer(
 \item{norm_eps}{Numeric. Norm epsilon.}
 
 \item{rope_type}{"split" (LTX-2.3) or "interleaved".}
+
+\item{use_keyframes_abs_pos_embedding}{Logical. Carry the LTX-2.5
+learned keyframe marker, added after \code{proj_in} to the tokens
+flagged by the forward's \code{video_keyframes_mask}
+(\code{[B, S, 1]}, non-zero on keyframe tokens).}
 
 \item{in_channels,out_channels}{Integers. Video latent channels.}
 
@@ -76,6 +84,9 @@ ltx23_transformer(
 the a2v/v2a gates).}
 
 \item{gated_attn,cross_attn_mod,audio_gated_attn,audio_cross_attn_mod,perturbed_attn}{LTX-2.3 feature flags (all TRUE for the 2.3 checkpoints).}
+
+\item{ff_bias,audio_ff_bias}{Logicals. Feed-forward biases per stream
+(\code{ff_bias = FALSE} for LTX-2.5).}
 }
 \value{
 Module whose forward(hidden_states, ...) returns
@@ -87,4 +98,8 @@ Module whose forward(hidden_states, ...) returns
 Dual-stream audio/video DiT. Text embeddings arrive already projected
 to the video (\code{inner_dim}) and audio (\code{audio_inner_dim})
 dimensions by the connector modules.
+}
+\seealso{
+\code{\link{ltx23_dit_config_args}} to derive these from a
+  checkpoint's embedded config.
 }

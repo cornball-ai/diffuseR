@@ -36,6 +36,15 @@ NULL
 #' @param rope_type "split" (LTX-2.3) or "interleaved".
 #' @param gated_attn,cross_attn_mod,audio_gated_attn,audio_cross_attn_mod,perturbed_attn
 #'   LTX-2.3 feature flags (all TRUE for the 2.3 checkpoints).
+#' @param ff_bias,audio_ff_bias Logicals. Feed-forward biases per stream
+#'   (\code{ff_bias = FALSE} for LTX-2.5).
+#' @param use_keyframes_abs_pos_embedding Logical. Carry the LTX-2.5
+#'   learned keyframe marker, added after \code{proj_in} to the tokens
+#'   flagged by the forward's \code{video_keyframes_mask}
+#'   (\code{[B, S, 1]}, non-zero on keyframe tokens).
+#'
+#' @seealso \code{\link{ltx23_dit_config_args}} to derive these from a
+#'   checkpoint's embedded config.
 #'
 #' @return Module whose forward(hidden_states, ...) returns
 #'   \code{list(sample, audio_sample)}: the predicted velocity for the
@@ -80,7 +89,10 @@ ltx23_transformer <- torch::nn_module(
         timestep_scale_multiplier = 1000,
         cross_attn_timestep_scale_multiplier = 1000,
         rope_type = "split",
-        perturbed_attn = TRUE
+        perturbed_attn = TRUE,
+        ff_bias = TRUE,
+        audio_ff_bias = TRUE,
+        use_keyframes_abs_pos_embedding = FALSE
     ) {
     inner_dim <- num_attention_heads * attention_head_dim
     audio_inner_dim <- audio_num_attention_heads * audio_attention_head_dim
@@ -93,6 +105,13 @@ ltx23_transformer <- torch::nn_module(
     # 1. Patchified input projections
     self$proj_in <- linear_noinit(in_channels, inner_dim)
     self$audio_proj_in <- linear_noinit(audio_in_channels, audio_inner_dim)
+
+    # LTX-2.5 keyframe marker (zero-initialized in the reference)
+    if (use_keyframes_abs_pos_embedding) {
+        self$keyframes_abs_pos_embedding <- torch::nn_parameter(
+            torch::torch_zeros(1L, inner_dim)
+        )
+    }
 
     # 2. Global timestep modulation (9 params each with cross-attn mod)
     video_mod_params <- if (cross_attn_mod) 9L else 6L
@@ -175,7 +194,9 @@ ltx23_transformer <- torch::nn_module(
                                 eps = norm_eps,
                                 elementwise_affine = FALSE,
                                 rope_type = rope_type,
-                                perturbed_attn = perturbed_attn
+                                perturbed_attn = perturbed_attn,
+                                ff_bias = ff_bias,
+                                audio_ff_bias = audio_ff_bias
         )
     }))
 
@@ -209,7 +230,8 @@ ltx23_transformer <- torch::nn_module(
         perturbation_mask = NULL,
         use_cross_timestep = FALSE,
         video_self_attention_mask = NULL,
-        cond_token_index = NULL
+        cond_token_index = NULL,
+        video_keyframes_mask = NULL
     ) {
     audio_timestep <- audio_timestep %||% timestep
     audio_sigma <- audio_sigma %||% sigma
@@ -261,6 +283,15 @@ ltx23_transformer <- torch::nn_module(
     # 2. Input projections
     hidden_states <- self$proj_in(hidden_states)
     audio_hidden_states <- self$audio_proj_in(audio_hidden_states)
+
+    # 2.1. LTX-2.5: mark tokens whose latent frame encodes a single pixel
+    # frame (causal first frame, generated keyframe slots)
+    if (!is.null(self$keyframes_abs_pos_embedding) &&
+        !is.null(video_keyframes_mask)) {
+        marker <- video_keyframes_mask$gt(0)$to(dtype = hidden_states$dtype)
+        hidden_states <- hidden_states + marker *
+            self$keyframes_abs_pos_embedding$to(dtype = hidden_states$dtype)
+    }
 
     # 3. Timestep embeddings and global modulation parameters
     gate_scale_factor <- self$cross_attn_timestep_scale_multiplier /
@@ -432,6 +463,31 @@ ltx23_transformer <- torch::nn_module(
     list(sample = output, audio_sample = audio_output)
 }
 )
+
+#' Transformer arguments from a checkpoint's embedded config
+#'
+#' Reads the version-dependent flags out of the \code{transformer} entry
+#' of an LTX single-file checkpoint's embedded config. Every other
+#' dimension is shared by the 2.3 and 2.5 22B checkpoints and stays at
+#' the \code{\link{ltx23_transformer}} defaults. Keys absent from the
+#' config (any 2.3 checkpoint) are left out, so the defaults apply.
+#'
+#' @param config The parsed embedded config (\code{ckpt$config}), or NULL.
+#'
+#' @return Named list of \code{\link{ltx23_transformer}} arguments.
+#'
+#' @export
+ltx23_dit_config_args <- function(config) {
+    tc <- config$transformer
+    keys <- c("ff_bias", "audio_ff_bias", "use_keyframes_abs_pos_embedding")
+    args <- list()
+    for (k in keys) {
+        if (!is.null(tc[[k]])) {
+            args[[k]] <- isTRUE(tc[[k]])
+        }
+    }
+    args
+}
 
 #' Map an official DiT checkpoint key to the R module name
 #'

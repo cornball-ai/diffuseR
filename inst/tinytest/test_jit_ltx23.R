@@ -16,13 +16,13 @@ dim <- 32L; heads <- 2L; head_dim <- 16L; cross_dim <- 32L
 adim <- 16L; aheads <- 2L; ahead_dim <- 8L; across_dim <- 16L
 B <- 2L; Sv <- 6L; Sa <- 5L; St <- 4L
 
-make_block <- function() {
+make_block <- function(...) {
   blk <- ltx23_transformer_block(
     dim = dim, num_attention_heads = heads, attention_head_dim = head_dim,
     cross_attention_dim = cross_dim,
     audio_dim = adim, audio_num_attention_heads = aheads,
     audio_attention_head_dim = ahead_dim,
-    audio_cross_attention_dim = across_dim
+    audio_cross_attention_dim = across_dim, ...
   )
   blk$eval()
 
@@ -126,6 +126,17 @@ torch::with_no_grad({
 })
 expect_true(max_abs_diff(out2[[1]], ref2[[1]]) < 1e-4)
 expect_true(max_abs_diff(out2[[2]], ref2[[2]]) < 1e-4)
+
+# LTX-2.5 video FF has no biases: the stack takes the zero-length
+# sentinel and must still match eager
+blk25 <- make_block(ff_bias = FALSE)
+expect_null(blk25$ff$net[[3]]$bias)
+torch::with_no_grad({
+  ref25 <- eager(blk25, h, ah)
+  out25 <- jit(list(blk25), h, ah)
+})
+expect_true(max_abs_diff(out25[[1]], ref25[[1]]) < 1e-4)
+expect_true(max_abs_diff(out25[[2]], ref25[[2]]) < 1e-4)
 
 # The mask must actually mask: moving the -10000 changes the output
 enc_mask2 <- torch::torch_zeros(B, 1L, St)

@@ -382,7 +382,8 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
 ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                                        ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
-    model <- .construct_skeleton(ltx23_transformer, ...)
+    args <- utils::modifyList(ltx23_dit_config_args(ckpt$config), list(...))
+    model <- do.call(.construct_skeleton, c(list(ltx23_transformer), args))
 
     groups <- ltx23_split_keys(ckpt$keys)
     dit_keys <- groups$dit
