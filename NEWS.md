@@ -1,3 +1,28 @@
+# diffuseR 0.2.2.14
+
+* **LTX-2.5 (distilled) text-to-video.** The 2.3 pipeline runs the 2.5
+  checkpoints:
+  - Transformer flags come from the embedded config (`ff_bias = FALSE`,
+    keyframe position embedding); `ltx23_open_checkpoint()` accepts
+    model version 2.5.
+  - `txt2vid_ltx2(sampler = "auto")` uses the ancestral Euler sampler
+    for 2.5 (stage noise from `seed + 10000` / `seed + 20000`), Euler
+    for 2.3.
+  - New Gemma 4 text encoder: `gemma4_text_model()`,
+    `load_gemma4_text_encoder()`, `encode_with_gemma4()`, an exact
+    ranked-BPE `gemma4_tokenizer()`, and `gemma4_quantize_nf4()` /
+    `load_gemma4_nf4()`. `txt2vid_ltx2()` picks Gemma 4 by tokenizer
+    class.
+  - `ltx25_open_checkpoint()` presents the split 2.5 files (transformer,
+    encoder file with the text projection, conv VAE, audio VAE +
+    vocoder) as one checkpoint; `ltx23_load_pipeline()` takes it, and
+    `ltx23_quantize_nf4()` writes it as one self-contained NF4 artifact.
+  - `resident_load("ltx")` loads a Gemma 4 encoder artifact.
+  - The diffusion-decoder VAE, duration head and temporal upsampler are
+    not supported yet.
+* The LTX fp8/NF4 and Gemma 4 quantizers collect garbage per tensor, so
+  quantizing no longer outgrows host RAM.
+
 # diffuseR 0.2.2.13
 
 * **`zimage_load_pipeline()` takes `revision`**, as
