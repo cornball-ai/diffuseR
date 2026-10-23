@@ -18,8 +18,9 @@ NULL
 #' configuration.
 #'
 #' @param path Path to the checkpoint .safetensors file.
-#' @param require_version Character. Required \code{model_version} prefix
-#'   (default "2.3"). Set to NULL to skip the check.
+#' @param require_version Character vector. Accepted \code{model_version}
+#'   prefixes (default \code{c("2.3", "2.5")}, the 22B generations this
+#'   module tree loads). Set to NULL to skip the check.
 #'
 #' @return An object of class \code{ltx23_checkpoint}: a list with
 #'   \code{handle} (safetensors reader), \code{keys}, \code{version},
@@ -32,7 +33,7 @@ NULL
 #' ckpt <- ltx23_open_checkpoint("ltx-2.3-22b-distilled-1.1.safetensors")
 #' str(ltx23_split_keys(ckpt$keys), max.level = 1)
 #' }
-ltx23_open_checkpoint <- function(path, require_version = "2.3") {
+ltx23_open_checkpoint <- function(path, require_version = c("2.3", "2.5")) {
     if (!requireNamespace("safetensors", quietly = TRUE)) {
         stop("The safetensors package is required to read LTX checkpoints.")
     }
@@ -51,14 +52,15 @@ ltx23_open_checkpoint <- function(path, require_version = "2.3") {
     }
 
     if (!is.null(require_version)) {
+        wanted <- paste0(require_version, "*", collapse = " or ")
         if (is.null(version)) {
             stop("Checkpoint has no model_version metadata; expected an LTX ",
-                 require_version, " single-file checkpoint: ", path)
+                 wanted, " single-file checkpoint: ", path)
         }
-        if (!startsWith(version, require_version)) {
+        if (!any(startsWith(version, require_version))) {
             stop(
-                 "Checkpoint model_version is '", version, "' but '",
-                 require_version, "*' is required: ", path
+                 "Checkpoint model_version is '", version, "' but ",
+                 wanted, " is required: ", path
             )
         }
     }

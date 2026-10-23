@@ -27,7 +27,9 @@ resident_load(
 \item{verbose}{Print progress messages.}
 
 \item{text_encoder,tokenizer}{\code{ltx} only: paths to the Gemma3 encoder
-artifact and the tokenizer directory. \code{\link{ltx23_load_pipeline}}
+artifact and the tokenizer directory, or for LTX-2.5 the Gemma 4 NF4
+artifact (\code{\link{gemma4_quantize_nf4}}) for both, since it carries
+its tokenizer. \code{\link{ltx23_load_pipeline}}
 does not load these -- \code{\link{txt2vid_ltx2}} takes them per call --
 so a handle built without them can be activated and cannot generate.
 Given here they are loaded ONCE, pinned on the host, and passed to every

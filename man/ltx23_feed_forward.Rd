@@ -3,12 +3,15 @@
 \alias{ltx23_feed_forward}
 \title{LTX feed-forward layer}
 \usage{
-ltx23_feed_forward(dim, mult = 4L)
+ltx23_feed_forward(dim, mult = 4L, bias = TRUE)
 }
 \arguments{
 \item{dim}{Integer. Input/output dimension.}
 
 \item{mult}{Integer. Hidden dimension multiplier.}
+
+\item{bias}{Logical. Both linears carry a bias (FALSE for the LTX-2.5
+video stream).}
 }
 \value{
 Module whose forward(x) returns the projected states passed

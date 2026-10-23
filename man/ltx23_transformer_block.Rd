@@ -19,7 +19,9 @@ ltx23_transformer_block(
   eps = 1e-06,
   elementwise_affine = FALSE,
   rope_type = "split",
-  perturbed_attn = TRUE
+  perturbed_attn = TRUE,
+  ff_bias = TRUE,
+  audio_ff_bias = TRUE
 )
 }
 \arguments{
@@ -45,6 +47,9 @@ ltx23_transformer_block(
 
 \item{video_cross_attn_adaln,audio_cross_attn_adaln}{Logicals. LTX-2.3
 text cross-attention modulation (9 mod params instead of 6).}
+
+\item{ff_bias,audio_ff_bias}{Logicals. Feed-forward biases per stream
+(LTX-2.5 drops the video ones).}
 }
 \value{
 Module whose forward(hidden_states, ...) returns

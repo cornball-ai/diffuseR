@@ -3,13 +3,14 @@
 \alias{ltx23_open_checkpoint}
 \title{Open an LTX-2.3 checkpoint}
 \usage{
-ltx23_open_checkpoint(path, require_version = "2.3")
+ltx23_open_checkpoint(path, require_version = c("2.3", "2.5"))
 }
 \arguments{
 \item{path}{Path to the checkpoint .safetensors file.}
 
-\item{require_version}{Character. Required \code{model_version} prefix
-(default "2.3"). Set to NULL to skip the check.}
+\item{require_version}{Character vector. Accepted \code{model_version}
+prefixes (default \code{c("2.3", "2.5")}, the 22B generations this
+module tree loads). Set to NULL to skip the check.}
 }
 \value{
 An object of class \code{ltx23_checkpoint}: a list with

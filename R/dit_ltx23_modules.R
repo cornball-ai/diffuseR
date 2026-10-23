@@ -491,6 +491,8 @@ ltx23_attention <- torch::nn_module(
 #'
 #' @param dim Integer. Input/output dimension.
 #' @param mult Integer. Hidden dimension multiplier.
+#' @param bias Logical. Both linears carry a bias (FALSE for the LTX-2.5
+#'   video stream).
 #'
 #' @return Module whose forward(x) returns the projected states passed
 #'   through a tanh-approximated GELU, a tensor of the same shape as
@@ -499,12 +501,12 @@ ltx23_attention <- torch::nn_module(
 #' @export
 ltx23_feed_forward <- torch::nn_module(
                                        "ltx23_feed_forward",
-                                       initialize = function(dim, mult = 4L) {
+                                       initialize = function(dim, mult = 4L, bias = TRUE) {
     inner_dim <- as.integer(dim * mult)
     gelu_proj <- torch::nn_module(
                                   "ltx23_gelu",
                                   initialize = function(dim_in, dim_out) {
-        self$proj <- linear_noinit(dim_in, dim_out)
+        self$proj <- linear_noinit(dim_in, dim_out, bias = bias)
     },
                                   forward = function(x) {
         h <- self$proj(x)
@@ -517,7 +519,7 @@ ltx23_feed_forward <- torch::nn_module(
     self$net <- torch::nn_module_list(list(
             gelu_proj(dim, inner_dim),
             torch::nn_identity(), # dropout slot in the reference; inference no-op
-            linear_noinit(inner_dim, dim)
+            linear_noinit(inner_dim, dim, bias = bias)
         ))
 },
                                        forward = function(x) {
@@ -554,6 +556,8 @@ ltx23_get_mod_params <- function(scale_shift_table, temb, batch_size) {
 #' @param elementwise_affine Logical. Block norms carry weights (FALSE for LTX).
 #' @param rope_type "split" or "interleaved".
 #' @param perturbed_attn Logical. Enable the STG perturbation arguments.
+#' @param ff_bias,audio_ff_bias Logicals. Feed-forward biases per stream
+#'   (LTX-2.5 drops the video ones).
 #'
 #' @return Module whose forward(hidden_states, ...) returns
 #'   \code{list(hidden_states, audio_hidden_states)}, the video and audio
@@ -579,7 +583,9 @@ ltx23_transformer_block <- torch::nn_module(
                           eps = 1e-6,
                           elementwise_affine = FALSE,
                           rope_type = "split",
-                          perturbed_attn = TRUE
+                          perturbed_attn = TRUE,
+                          ff_bias = TRUE,
+                          audio_ff_bias = TRUE
     ) {
     self$perturbed_attn <- perturbed_attn
 
@@ -627,9 +633,9 @@ ltx23_transformer_block <- torch::nn_module(
 
     # 4. Feed-forward
     self$norm3 <- ltx23_rms_norm(dim, eps = eps, elementwise_affine = elementwise_affine)
-    self$ff <- ltx23_feed_forward(dim)
+    self$ff <- ltx23_feed_forward(dim, bias = ff_bias)
     self$audio_norm3 <- ltx23_rms_norm(audio_dim, eps = eps, elementwise_affine = elementwise_affine)
-    self$audio_ff <- ltx23_feed_forward(audio_dim)
+    self$audio_ff <- ltx23_feed_forward(audio_dim, bias = audio_ff_bias)
 
     # 5. Per-block modulation tables
     self$video_cross_attn_adaln <- video_cross_attn_adaln

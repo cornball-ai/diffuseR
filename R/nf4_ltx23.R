@@ -255,7 +255,12 @@ ltx23_nf4_linear <- torch::nn_module(
 #' Non-cast tensors are copied through unchanged. The manifest carries
 #' \code{format = "nf4"}.
 #'
-#' @param checkpoint_path Source .safetensors (bf16 single file).
+#' @param checkpoint_path Source .safetensors (bf16 single file), or an
+#'   open \code{ltx23_checkpoint}. For LTX-2.5, pass
+#'   \code{\link{ltx25_open_checkpoint}} to write one self-contained
+#'   artifact (transformer, connectors and text projection, VAEs,
+#'   vocoder); when its transformer is already an NF4 artifact, the
+#'   NF4 tensors are bundled as they are, with no re-quantization.
 #' @param output_dir Output directory for shards + manifest; NULL (the
 #'   default) resolves under tools::R_user_dir("diffuseR", "data").
 #' @param shard_bytes Numeric. Target shard size in bytes. The default
@@ -289,7 +294,19 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
     }
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-    ckpt <- ltx23_open_checkpoint(checkpoint_path)
+    if (inherits(checkpoint_path, "ltx23_checkpoint")) {
+        # An open checkpoint, e.g. the LTX-2.5 file set from
+        # ltx25_open_checkpoint(); one already in NF4 is bundled as is
+        ckpt <- checkpoint_path
+        source <- basename(unname(ckpt$sources %||% ckpt$path))
+        source <- source[!is.na(source)]
+    } else {
+        ckpt <- ltx23_open_checkpoint(checkpoint_path)
+        source <- basename(checkpoint_path)
+    }
+    passthrough <- identical(ckpt$format, "nf4")
+    prefix <- sprintf("ltx%s-nf4",
+                      sub("^(\\d+\\.\\d+).*", "\\1", ckpt$version %||% "2.3"))
 
     shard <- list()
     shard_size <- 0
@@ -300,7 +317,7 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
         if (!length(shard)) {
             return()
         }
-        fname <- sprintf("ltx2.3-nf4-%05d.safetensors",
+        fname <- sprintf("%s-%05d.safetensors", prefix,
                          length(shard_files) + 1L)
         safetensors::safe_save_file(shard, file.path(output_dir, fname))
         shard_files[[length(shard_files) + 1L]] <<- fname
@@ -319,7 +336,11 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
         tensor <- ckpt$handle$get_tensor(key)
 
         mapped <- ltx23_map_dit_key(key)
-        if (startsWith(key, "model.diffusion_model.") &&
+        if (passthrough) {
+            shard[[key]] <- tensor
+            shard_size <- shard_size + prod(tensor$shape) * tensor$element_size()
+            n_cast <- n_cast + endsWith(key, "_absmax")
+        } else if (startsWith(key, "model.diffusion_model.") &&
             ltx23_is_fp8_cast_key(mapped)) {
             torch::with_no_grad({
                 q <- ltx23_nf4_quantize(tensor)
@@ -337,17 +358,19 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
         if (shard_size >= shard_bytes) {
             flush_shard()
         }
-        if (i %% 200L == 0L) {
-            gc(verbose = FALSE)
-            if (verbose) {
-                message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
-            }
+        # Per tensor: R's gc cannot see torch's native memory, and 200
+        # dropped bf16 sources plus float32 quantization temporaries
+        # (~0.27 GB each for the FFN weights) outgrow the free RAM of a
+        # host sharing memory with other services (cf. gemma4_quantize_nf4)
+        gc(verbose = FALSE)
+        if (i %% 200L == 0L && verbose) {
+            message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
         }
     }
     flush_shard()
 
     manifest <- list(
-                     source = basename(checkpoint_path),
+                     source = source,
                      model_version = ckpt$version,
                      format = "nf4",
                      shards = shard_files,
@@ -382,7 +405,8 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
 ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                                        ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
-    model <- .construct_skeleton(ltx23_transformer, ...)
+    args <- utils::modifyList(ltx23_dit_config_args(ckpt$config), list(...))
+    model <- do.call(.construct_skeleton, c(list(ltx23_transformer), args))
 
     groups <- ltx23_split_keys(ckpt$keys)
     dit_keys <- groups$dit

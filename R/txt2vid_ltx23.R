@@ -77,18 +77,66 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     latents * std + mean
 }
 
-# Joint audio/video Euler denoise loop over a sigma schedule (CFG-free).
+# Sampler eta for a pipeline: LTX-2.5 and later are distilled for the
+# ancestral sampler (eta 1), LTX-2.3 for plain Euler (eta 0). "auto"
+# with no recorded version keeps the 2.3 behavior.
+.ltx23_sampler_eta <- function(sampler, model_version) {
+    if (sampler == "auto") {
+        v <- numeric_version(model_version %||% "0", strict = FALSE)
+        ancestral <- !is.na(v) && v >= "2.5"
+        sampler <- if (ancestral) "euler_ancestral" else "euler"
+    }
+    if (sampler == "euler_ancestral") 1 else 0
+}
+
+# One rectified-flow sampler step from sigma to sigma_next, in float32
+# (diffusers LTXEulerAncestralRFScheduler.step, Apache-2.0). eta = 0 is
+# the plain Euler step x + (sigma_next - sigma) * v. eta > 0 steps
+# deterministically to sigma_down <= sigma_next, then renoises back up
+# to sigma_next with the signal rescaled by alpha_next / alpha_down
+# (alpha = 1 - sigma), which keeps the transition variance-preserving.
+# The last step (sigma_next = 0) returns the denoised estimate.
+.ltx23_step <- function(x, velocity, sigma, sigma_next, eta = 0,
+                        noise = NULL, s_noise = 1) {
+    if (eta == 0) {
+        return(x + velocity * (sigma_next - sigma))
+    }
+    denoised <- x - velocity * sigma
+    if (abs(sigma_next) < 1e-8) {
+        return(denoised)
+    }
+    sigma_down <- sigma_next * (1 + (sigma_next / sigma - 1) * eta)
+    alpha_next <- 1 - sigma_next
+    alpha_down <- 1 - sigma_down
+    ratio <- sigma_down / sigma
+    x <- x * ratio + denoised * (1 - ratio)
+    renoise <- sqrt(max(sigma_next^2 -
+                        sigma_down^2 * alpha_next^2 / (alpha_down^2 + 1e-12), 0))
+    x * (alpha_next / (alpha_down + 1e-12)) + noise * (renoise * s_noise)
+}
+
+# Joint audio/video denoise loop over a sigma schedule (CFG-free).
 # With a conditioning_mask [B, S] (prefix conditioning), conditioned
 # video tokens see a per-token timestep of zero and are frozen through
-# the Euler updates (reference i2v semantics at strength 1).
+# the updates (reference i2v semantics at strength 1). eta > 0 selects
+# the ancestral step (LTX-2.5); its per-step noise (video, then audio)
+# comes from noise_seed when given, with the caller's RNG state restored
+# afterwards so later draws do not depend on the step count.
 .ltx23_denoise <- function(transformer, latents, audio_latents, sigmas,
                            video_text_embeds, audio_text_embeds, text_mask,
                            latent_frames, latent_height, latent_width,
                            audio_num_frames, frame_rate, device,
                            compute_dtype, verbose = TRUE, stage = "",
                            conditioning_mask = NULL,
-                           audio_conditioned = FALSE) {
+                           audio_conditioned = FALSE, eta = 0,
+                           noise_seed = NULL) {
     f32 <- torch::torch_float32()
+    if (eta > 0 && !is.null(noise_seed)) {
+        torch::local_torch_manual_seed(noise_seed)
+    }
+    step_noise <- function(like) {
+        if (eta > 0) torch::torch_randn_like(like) else NULL
+    }
     keep_mask <- if (!is.null(conditioning_mask)) {
         conditioning_mask$unsqueeze(3L) # [B, S, 1] for latent blending
     } else {
@@ -161,9 +209,10 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                                cond_token_index = cond_idx
             )
 
-            # Euler velocity step in float32; dt is negative (sigma decreasing)
-            dt <- torch::torch_tensor(sigmas[i + 1L] - sigma, device = device, dtype = f32)
-            stepped <- latents + dt * out$sample$to(dtype = f32)
+            # Sampler step in float32 (latents are float32 throughout)
+            sigma_next <- sigmas[i + 1L]
+            stepped <- .ltx23_step(latents, out$sample$to(dtype = f32), sigma,
+                                   sigma_next, eta, step_noise(latents))
             latents <- if (is.null(keep_mask)) {
                 stepped
             } else {
@@ -171,7 +220,10 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                 latents * keep_mask + stepped * (1 - keep_mask)
             }
             if (!audio_conditioned) {
-                audio_latents <- audio_latents + dt * out$audio_sample$to(dtype = f32)
+                audio_latents <- .ltx23_step(audio_latents,
+                                             out$audio_sample$to(dtype = f32),
+                                             sigma, sigma_next, eta,
+                                             step_noise(audio_latents))
             }
             rm(out)
             gc(verbose = FALSE)
@@ -195,7 +247,9 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   \code{ltx-2.3-22b-distilled-1.1.safetensors}) or to an fp8 artifact
 #'   directory produced by \code{\link{ltx23_quantize_fp8}}. With the fp8
 #'   artifact, the transformer loads with CPU-resident fp8 weights that
-#'   stream to \code{device} during the forward pass.
+#'   stream to \code{device} during the forward pass. An open
+#'   \code{ltx23_checkpoint} is also accepted, such as the LTX-2.5
+#'   component set from \code{\link{ltx25_open_checkpoint}}.
 #' @param device Character. Device for the small components (VAEs,
 #'   vocoder, connectors) and, with fp8, the transformer residents.
 #' @param dtype Character. "bfloat16" (checkpoint native) or "float32".
@@ -225,11 +279,17 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     } else {
         component_device <- device
     }
-    fp8 <- dir.exists(checkpoint_path)
-    ckpt <- if (fp8) {
-        ltx23_open_fp8_checkpoint(checkpoint_path)
+    if (inherits(checkpoint_path, "ltx23_checkpoint")) {
+        # An already-open checkpoint, e.g. ltx25_open_checkpoint()
+        ckpt <- checkpoint_path
+        fp8 <- !is.null(ckpt$format)
     } else {
-        ltx23_open_checkpoint(checkpoint_path)
+        fp8 <- dir.exists(checkpoint_path)
+        ckpt <- if (fp8) {
+            ltx23_open_fp8_checkpoint(checkpoint_path)
+        } else {
+            ltx23_open_checkpoint(checkpoint_path)
+        }
     }
     if (!nzchar(Sys.getenv("PYTORCH_CUDA_ALLOC_CONF"))) {
         # Must be set before the first CUDA allocation. NF4 runs the
@@ -278,7 +338,8 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                           float32 = torch::torch_float32(),
                           stop("Unsupported dtype: ", dtype))
 
-    pipe <- list(config = ckpt$config, checkpoint_path = ckpt$path)
+    pipe <- list(config = ckpt$config, checkpoint_path = ckpt$path,
+                 model_version = ckpt$version)
 
     load_component <- function(name, module, map_key, dev) {
         if (verbose) {
@@ -306,9 +367,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                 ckpt, device = component_device, pin = pin, verbose = verbose
             )
         } else {
-            pipe$transformer <- load_component(
-                "dit", .construct_skeleton(ltx23_transformer, dtype = torch_dtype),
-                ltx23_map_dit_key, transformer_device
+            pipe$transformer <- .ltx23_load_transformer(
+                ckpt, dtype = torch_dtype, device = transformer_device,
+                verbose = verbose
             )
         }
         if (!is.null(attn_chunk)) {
@@ -396,6 +457,12 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     if (!is.null(attr(text_encoder, "staging")) && grepl("^cuda", device)) {
         return(device)
     }
+    # An encoder already loaded on the GPU encodes there
+    on_gpu <- tryCatch(text_encoder$parameters[[1]]$device$type == "cuda",
+                       error = function(e) FALSE)
+    if (isTRUE(on_gpu) && grepl("^cuda", device)) {
+        return(device)
+    }
     "cpu"
 }
 
@@ -412,8 +479,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #'   \code{\link{ltx23_load_pipeline}}.
 #' @param text_encoder,tokenizer Gemma3 model and tokenizer (or paths;
 #'   see \code{\link{load_gemma3_text_encoder}} and
-#'   \code{\link{gemma3_tokenizer}}). Ignored when \code{prompt_embeds}
-#'   is supplied.
+#'   \code{\link{gemma3_tokenizer}}), or for LTX-2.5 the Gemma 4 model
+#'   and \code{\link{gemma4_tokenizer}} (selected by the tokenizer's
+#'   class). Ignored when \code{prompt_embeds} is supplied.
 #' @param prompt_embeds Optional precomputed list with
 #'   \code{prompt_embeds} (raw stacked Gemma3 states) and
 #'   \code{prompt_attention_mask}; bypasses the text encoder.
@@ -433,6 +501,12 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
 #' @param guidance_scale Numeric. Only 1 (no CFG) is supported; the
 #'   distilled checkpoints are trained for CFG-free sampling.
 #' @param seed Integer or NULL.
+#' @param sampler One of "auto", "euler" or "euler_ancestral". "auto"
+#'   picks the sampler the checkpoint was distilled for: plain Euler
+#'   for LTX-2.3, ancestral Euler (eta 1) for LTX-2.5 and later. The
+#'   ancestral steps draw their noise from \code{seed + 10000} (stage 1)
+#'   and \code{seed + 20000} (stage 2), so the initial noise matches the
+#'   Euler run at the same seed.
 #' @param device Character. Compute device for the denoising loop.
 #' @param dtype Character. Model compute dtype ("bfloat16" or "float32").
 #' @param filename Character or NULL. Output video path (.mp4). Audio is
@@ -517,15 +591,19 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
                          condition_latents = NULL, resident = character(),
-                         trim_frames = 0L, audio = NULL, verbose = TRUE) {
+                         trim_frames = 0L, audio = NULL, verbose = TRUE,
+                         sampler = c("auto", "euler", "euler_ancestral")) {
     level <- .verbosity(verbose)
     verbose <- level == "steps"
     if (level != "silent") {
-        message(sprintf("LTX-2.3: %d frames @ %dx%d, %d steps%s", num_frames,
+        message(sprintf("LTX-%s: %d frames @ %dx%d, %d steps%s",
+                        sub("^(\\d+\\.\\d+).*", "\\1", pipeline$model_version %||% "2.3"),
+                        num_frames,
                         width, height, length(sigmas) - 1L,
                 if (two_stage) " (two-stage)" else ""))
     }
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
+    eta <- .ltx23_sampler_eta(match.arg(sampler), pipeline$model_version)
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
     }
@@ -583,7 +661,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         if (verbose) {
             message("Encoding prompt...")
         }
-        prompt_embeds <- encode_with_gemma3(
+        # LTX-2.5 encodes with Gemma 4 (chosen by its tokenizer class)
+        encode <- if (inherits(tokenizer, "gemma4_tokenizer")) {
+            encode_with_gemma4
+        } else {
+            encode_with_gemma3
+        }
+        prompt_embeds <- encode(
             prompt,
             model = text_encoder, tokenizer = tokenizer,
             max_sequence_length = max_sequence_length,
@@ -812,7 +896,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                device, compute_dtype, verbose = level,
                                stage = if (two_stage) "stage 1 " else "",
                                conditioning_mask = conditioning_mask,
-                               audio_conditioned = audio_conditioned
+                               audio_conditioned = audio_conditioned,
+                               eta = eta,
+                               noise_seed = if (!is.null(seed)) seed + 10000
     )
     latents <- denoised$latents
     audio_latents <- denoised$audio_latents
@@ -868,7 +954,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                    video_text_embeds, audio_text_embeds, text_mask,
                                    latent_frames, latent_height, latent_width,
                                    audio_num_frames, frame_rate,
-                                   device, compute_dtype, verbose = level, stage = "stage 2 "
+                                   device, compute_dtype, verbose = level, stage = "stage 2 ",
+                                   eta = eta,
+                                   noise_seed = if (!is.null(seed)) seed + 20000
         )
         latents <- denoised$latents
         audio_latents <- denoised$audio_latents

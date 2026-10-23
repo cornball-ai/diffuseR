@@ -44,10 +44,14 @@ def nf4_lin(x: Tensor, packed: Tensor, absmax: Tensor, bias: Tensor, table2: Ten
     # per half-byte weight and made dequant the per-step wall. absmax
     # is cast down before the scale so the product never promotes to
     # float32 (which would materialize a full-precision weight copy).
-    rows = bias.size(0)
+    # A zero-length bias is the no-bias sentinel (List[Tensor] slots
+    # cannot hold None); the LTX-2.5 video FF has none.
     vals = torch.embedding(table2, packed.int())
     w = vals.reshape([-1, 64]) * absmax.type_as(table2).unsqueeze(1)
-    return torch.linear(x, w.reshape([rows, -1]).type_as(x), bias)
+    w = w.reshape([-1, x.size(-1)]).type_as(x)
+    if bias.numel() == 0:
+        return torch.linear(x, w)
+    return torch.linear(x, w, bias)
 
 def rmsn(x: Tensor) -> Tensor:
     v = x.float().pow(2).mean(-1, keepdim=True)
@@ -218,9 +222,16 @@ def stack_nf4(h: Tensor, ah: Tensor, enc: Tensor, aenc: Tensor,
 }
 
 .ltx23_jit_pack_ff <- function(ff) {
-    list(ff$net[[1]]$proj$weight_nf4, ff$net[[1]]$proj$weight_absmax,
-         ff$net[[1]]$proj$bias, ff$net[[3]]$weight_nf4,
-         ff$net[[3]]$weight_absmax, ff$net[[3]]$bias)
+    proj <- ff$net[[1]]$proj
+    out <- ff$net[[3]]
+    list(proj$weight_nf4, proj$weight_absmax, .ltx23_jit_bias(proj),
+         out$weight_nf4, out$weight_absmax, .ltx23_jit_bias(out))
+}
+
+# A linear's bias, or the zero-length no-bias sentinel nf4_lin expects
+.ltx23_jit_bias <- function(lin) {
+    lin$bias %||% torch::torch_empty(0L, dtype = lin$weight_absmax$dtype,
+                                     device = lin$weight_absmax$device)
 }
 
 #' Pack a transformer block's weights for the JIT stack

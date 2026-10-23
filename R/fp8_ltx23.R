@@ -193,11 +193,11 @@ ltx23_quantize_fp8 <- function(checkpoint_path, output_dir = NULL,
         if (shard_size >= shard_bytes) {
             flush_shard()
         }
-        if (i %% 200L == 0L) {
-            gc(verbose = FALSE)
-            if (verbose) {
-                message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
-            }
+        # Per tensor, as in ltx23_quantize_nf4(): R's gc cannot see
+        # torch's native memory
+        gc(verbose = FALSE)
+        if (i %% 200L == 0L && verbose) {
+            message(sprintf("  quantizing %d/%d tensors", i, length(keys)))
         }
     }
     flush_shard()
@@ -287,7 +287,8 @@ ltx23_open_fp8_checkpoint <- function(dir) {
 ltx23_load_transformer_fp8 <- function(ckpt, device = "cuda", pin = TRUE,
                                        verbose = TRUE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
-    model <- .construct_skeleton(ltx23_transformer, ...)
+    args <- utils::modifyList(ltx23_dit_config_args(ckpt$config), list(...))
+    model <- do.call(.construct_skeleton, c(list(ltx23_transformer), args))
 
     groups <- ltx23_split_keys(ckpt$keys)
     dit_keys <- groups$dit

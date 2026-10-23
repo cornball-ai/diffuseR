@@ -36,7 +36,8 @@ txt2vid_ltx2(
   resident = character(),
   trim_frames = 0L,
   audio = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  sampler = c("auto", "euler", "euler_ancestral")
 )
 }
 \arguments{
@@ -147,10 +148,18 @@ lines), FALSE = "silent". "progress" prints a one-line generation
 summary plus a denoise progress bar (interactive) or periodic
 step ticks (captured logs).}
 
+\item{sampler}{One of "auto", "euler" or "euler_ancestral". "auto"
+picks the sampler the checkpoint was distilled for: plain Euler
+for LTX-2.3, ancestral Euler (eta 1) for LTX-2.5 and later. The
+ancestral steps draw their noise from \code{seed + 10000} (stage 1)
+and \code{seed + 20000} (stage 2), so the initial noise matches the
+Euler run at the same seed.}
+
 \item{text_encoder,tokenizer}{Gemma3 model and tokenizer (or paths;
 see \code{\link{load_gemma3_text_encoder}} and
-\code{\link{gemma3_tokenizer}}). Ignored when \code{prompt_embeds}
-is supplied.}
+\code{\link{gemma3_tokenizer}}), or for LTX-2.5 the Gemma 4 model
+and \code{\link{gemma4_tokenizer}} (selected by the tokenizer's
+class). Ignored when \code{prompt_embeds} is supplied.}
 
 \item{width,height}{Integers. Output resolution (multiples of 32).}
 
