@@ -262,6 +262,11 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #' @param phase_offload Logical. Load the small components (connectors,
 #'   VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
 #'   device only for its phase.
+#' @param gpu_components Character. Components to load straight onto
+#'   \code{device} and keep there, with no host copy; currently only
+#'   \code{"transformer"} (NF4 artifacts). Saves the transformer's size
+#'   in host RAM (about 11 GB for LTX-2.5 NF4) at the cost of holding it
+#'   in VRAM through decode.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -273,7 +278,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 transformer_device = "cpu",
                                 components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
                                 pin = TRUE, attn_chunk = NULL,
-                                phase_offload = TRUE, verbose = TRUE) {
+                                phase_offload = TRUE, gpu_components = character(),
+                                verbose = TRUE) {
+    gpu_components <- intersect(gpu_components, "transformer")
     if (phase_offload) {
         component_device <- "cpu"
     } else {
@@ -339,7 +346,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                           stop("Unsupported dtype: ", dtype))
 
     pipe <- list(config = ckpt$config, checkpoint_path = ckpt$path,
-                 model_version = ckpt$version)
+                 model_version = ckpt$version, gpu_components = gpu_components)
 
     load_component <- function(name, module, map_key, dev) {
         if (verbose) {
@@ -360,7 +367,9 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     if ("dit" %in% components) {
         if (fp8 && identical(ckpt$format, "nf4")) {
             pipe$transformer <- ltx23_load_transformer_nf4(
-                ckpt, device = component_device, verbose = verbose
+                ckpt,
+                device = if ("transformer" %in% gpu_components) device else component_device,
+                verbose = verbose
             )
         } else if (fp8) {
             pipe$transformer <- ltx23_load_transformer_fp8(
@@ -388,6 +397,15 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                    ltx23_map_vae_key, component_device
         )
         pipe$vae$enable_tiling()
+        if ("transformer" %in% gpu_components) {
+            # Decode beside the GPU-held transformer: 512 px tiles OOM
+            # a 16 GB card at 768x512x97 (LTX-2.5 NF4); 256 px tiles
+            # peak at 15.7 GB
+            pipe$vae$tile_sample_min_height <- 256L
+            pipe$vae$tile_sample_min_width <- 256L
+            pipe$vae$tile_sample_stride_height <- 224L
+            pipe$vae$tile_sample_stride_width <- 224L
+        }
     }
     if ("audio_vae" %in% components) {
         pipe$audio_vae <- load_component(
@@ -419,8 +437,10 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
             message("Pinning host staging buffers...")
         }
         staging <- list()
-        for (nm in intersect(c("transformer", "connectors", "vae",
-                               "audio_vae", "vocoder"), names(pipe))) {
+        # A component loaded straight to the GPU keeps no host copy
+        for (nm in setdiff(intersect(c("transformer", "connectors", "vae",
+                                       "audio_vae", "vocoder"), names(pipe)),
+                           gpu_components)) {
             st <- .pin_component(pipe[[nm]])
             if (!is.null(st)) {
                 staging[[nm]] <- st
@@ -724,7 +744,10 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         } else {
             module <- what
         }
-        if (phase_offload && !(is.character(what) && what %in% resident)) {
+        # Components the loader put straight on the GPU have no host
+        # copy to return to, so they stay put like resident ones
+        stay <- c(resident, pipeline$gpu_components)
+        if (phase_offload && !(is.character(what) && what %in% stay)) {
             # Decode traces capture weight tensors; drop them so the
             # module's GPU memory actually frees
             .ltx23_release_vae_traces()
@@ -761,7 +784,12 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         to(device = device, dtype = compute_dtype)
         text_mask <- connector_embeds$attention_mask$to(device = device)
     } else {
-        onload("connectors")
+        # Beside a GPU-held transformer (11 GB for LTX-2.5 NF4) the
+        # connectors' 2.3 GB text projection does not fit a 16 GB card:
+        # run them where they are parked (one call per prompt)
+        if (!("transformer" %in% pipeline$gpu_components)) {
+            onload("connectors")
+        }
         connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
         torch::with_no_grad({
             conn <- pipeline$connectors(
