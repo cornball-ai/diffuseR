@@ -12,7 +12,6 @@ ltx23_load_pipeline(
   pin = TRUE,
   attn_chunk = NULL,
   phase_offload = TRUE,
-  gpu_components = character(),
   verbose = TRUE
 )
 }
@@ -43,12 +42,6 @@ weights when loading the plain (non-fp8) checkpoint.}
 \item{phase_offload}{Logical. Load the small components (connectors,
 VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
 device only for its phase.}
-
-\item{gpu_components}{Character. Components to load straight onto
-\code{device} and keep there, with no host copy; currently only
-\code{"transformer"} (NF4 artifacts). Saves the transformer's size
-in host RAM (about 11 GB for LTX-2.5 NF4) at the cost of holding it
-in VRAM through decode.}
 
 \item{verbose}{Logical.}
 }
