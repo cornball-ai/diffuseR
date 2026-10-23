@@ -616,7 +616,9 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     level <- .verbosity(verbose)
     verbose <- level == "steps"
     if (level != "silent") {
-        message(sprintf("LTX-2.3: %d frames @ %dx%d, %d steps%s", num_frames,
+        message(sprintf("LTX-%s: %d frames @ %dx%d, %d steps%s",
+                        sub("^(\\d+\\.\\d+).*", "\\1", pipeline$model_version %||% "2.3"),
+                        num_frames,
                         width, height, length(sigmas) - 1L,
                 if (two_stage) " (two-stage)" else ""))
     }
