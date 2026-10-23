@@ -236,3 +236,23 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
     }
     model
 }
+
+# TRUE when `path` is a Gemma 4 encoder: its NF4 artifact directory, or the
+# LTX-2.5 single file (gemma_config metadata). Lets a caller holding a path
+# pick the Gemma 4 loader over the Gemma 3 one.
+.is_gemma4_artifact <- function(path) {
+    if (!is.character(path) || length(path) != 1L) {
+        return(FALSE)
+    }
+    manifest <- file.path(path, "manifest.json")
+    if (file.exists(manifest)) {
+        return(identical(jsonlite::fromJSON(manifest)$model, "gemma4"))
+    }
+    if (!file.exists(path) || dir.exists(path)) {
+        return(FALSE)
+    }
+    meta <- tryCatch(
+        ltx23_open_checkpoint(path, require_version = NULL)$handle$metadata[["__metadata__"]],
+        error = function(e) NULL)
+    !is.null(meta[["gemma_config"]])
+}

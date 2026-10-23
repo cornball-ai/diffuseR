@@ -236,7 +236,9 @@
 #'   \code{\link{download_sdxl}} cache).
 #' @param verbose Print progress messages.
 #' @param text_encoder,tokenizer \code{ltx} only: paths to the Gemma3 encoder
-#'   artifact and the tokenizer directory. \code{\link{ltx23_load_pipeline}}
+#'   artifact and the tokenizer directory, or for LTX-2.5 the Gemma 4 NF4
+#'   artifact (\code{\link{gemma4_quantize_nf4}}) for both, since it carries
+#'   its tokenizer. \code{\link{ltx23_load_pipeline}}
 #'   does not load these -- \code{\link{txt2vid_ltx2}} takes them per call --
 #'   so a handle built without them can be activated and cannot generate.
 #'   Given here they are loaded ONCE, pinned on the host, and passed to every
@@ -346,10 +348,19 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
             stop("text_encoder needs a tokenizer: the encode takes both",
                  call. = FALSE)
         }
-        if (verbose) message("Loading the Gemma3 text encoder (pinned)...")
-        res$text_encoder <- load_gemma3_text_encoder(
-            text_encoder, device = "cpu", pin = TRUE, verbose = verbose)
-        res$tokenizer <- gemma3_tokenizer(tokenizer)
+        # LTX-2.5 encodes with Gemma 4; its NF4 artifact carries the
+        # tokenizer too. txt2vid_ltx2() picks the encode by tokenizer class.
+        if (.is_gemma4_artifact(text_encoder)) {
+            if (verbose) message("Loading the Gemma 4 text encoder (pinned)...")
+            res$text_encoder <- load_gemma4_text_encoder(
+                text_encoder, device = "cpu", pin = TRUE, verbose = verbose)
+            res$tokenizer <- gemma4_tokenizer(tokenizer)
+        } else {
+            if (verbose) message("Loading the Gemma3 text encoder (pinned)...")
+            res$text_encoder <- load_gemma3_text_encoder(
+                text_encoder, device = "cpu", pin = TRUE, verbose = verbose)
+            res$tokenizer <- gemma3_tokenizer(tokenizer)
+        }
         ## Counted, so `resident_status()` reports what the process actually
         ## holds. A pinned set omitted from the total reads as headroom that
         ## is not there, and the fleet's admission arithmetic is downstream

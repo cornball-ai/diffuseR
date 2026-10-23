@@ -90,6 +90,63 @@ local({
                                      path("vaediff.safetensors")), "convolutional")
   expect_error(ltx25_open_checkpoint(path("dit.safetensors"), path("vae.safetensors"),
                                      path("vae.safetensors")), "text_embedding_projection")
+
+  # --- One self-contained NF4 artifact from the split files -----------------
+  q_key <- "model.diffusion_model.transformer_blocks.0.attn1.to_q.weight"
+  torch::torch_manual_seed(3)
+  dq <- list(t(c(1, 2)), t(3), torch::torch_randn(8L, 16L))
+  names(dq) <- c("model.diffusion_model.patchify_proj.weight",
+                 "model.diffusion_model.video_embeddings_connector.learnable_registers",
+                 q_key)
+  save(dq, "ditq.safetensors",
+       config = list(transformer = list(ff_bias = FALSE)))
+  art <- path("bundle")
+  m <- ltx23_quantize_nf4(
+    ltx25_open_checkpoint(path("ditq.safetensors"), path("te.safetensors"),
+                          path("vae.safetensors"), path("audio.safetensors")),
+    art, verbose = FALSE)
+  expect_equal(m$model_version, "2.5.0")
+  expect_equal(m$nf4_cast, 1L)
+  expect_true(all(startsWith(m$shards, "ltx2.5-nf4-")))
+  expect_equal(length(m$source), 4L)
+  ab <- ltx23_open_fp8_checkpoint(art)
+  expect_equal(ab$format, "nf4")
+  expect_true(all(c(paste0(q_key, "_absmax"),
+                    "vae.per_channel_statistics.mean-of-means",
+                    "text_embedding_projection.video_aggregate_embed.weight",
+                    "vocoder.vocoder.conv_in.weight") %in% ab$keys))
+  expect_false(any(grepl("^model\\.layers", ab$keys)))
+  expect_equal(ab$config$vae$latent_channels, 128L)
+  expect_false(ab$config$transformer$ff_bias)
+  expect_equal(as.numeric(ab$handle$get_tensor("vocoder.vocoder.conv_in.weight")), 10)
+
+  # A transformer that is already NF4 is bundled as is, not re-quantized
+  dit_art <- path("dit-nf4")
+  ltx23_quantize_nf4(path("ditq.safetensors"), dit_art, verbose = FALSE)
+  art2 <- path("bundle2")
+  m2 <- ltx23_quantize_nf4(
+    ltx25_open_checkpoint(dit_art, path("te.safetensors"), path("vae.safetensors"),
+                          path("audio.safetensors")),
+    art2, verbose = FALSE)
+  expect_equal(m2$nf4_cast, 1L)
+  b2 <- ltx23_open_fp8_checkpoint(art2)
+  expect_equal(sort(b2$keys), sort(ab$keys))
+  expect_true(torch::torch_equal(b2$handle$get_tensor(q_key),
+                                 ab$handle$get_tensor(q_key)))
+  expect_true(torch::torch_equal(b2$handle$get_tensor(paste0(q_key, "_absmax")),
+                                 ab$handle$get_tensor(paste0(q_key, "_absmax"))))
+
+  # The Gemma 4 artifact is told apart from a Gemma 3 one by its manifest
+  g4 <- path("g4"); dir.create(g4)
+  jsonlite::write_json(list(model = "gemma4"), file.path(g4, "manifest.json"),
+                       auto_unbox = TRUE)
+  g3 <- path("g3"); dir.create(g3)
+  jsonlite::write_json(list(format = "nf4"), file.path(g3, "manifest.json"),
+                       auto_unbox = TRUE)
+  expect_true(diffuseR:::.is_gemma4_artifact(g4))
+  expect_false(diffuseR:::.is_gemma4_artifact(g3))
+  expect_false(diffuseR:::.is_gemma4_artifact(path("te.safetensors")))
+  expect_false(diffuseR:::.is_gemma4_artifact(NULL))
 })
 
 # An encoder already on the CPU encodes there; staging or the GPU decides otherwise

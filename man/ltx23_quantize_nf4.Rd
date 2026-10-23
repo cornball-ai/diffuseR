@@ -12,7 +12,12 @@ ltx23_quantize_nf4(
 )
 }
 \arguments{
-\item{checkpoint_path}{Source .safetensors (bf16 single file).}
+\item{checkpoint_path}{Source .safetensors (bf16 single file), or an
+open \code{ltx23_checkpoint}. For LTX-2.5, pass
+\code{\link{ltx25_open_checkpoint}} to write one self-contained
+artifact (transformer, connectors and text projection, VAEs,
+vocoder); when its transformer is already an NF4 artifact, the
+NF4 tensors are bundled as they are, with no re-quantization.}
 
 \item{output_dir}{Output directory for shards + manifest; NULL (the
 default) resolves under tools::R_user_dir("diffuseR", "data").}
