@@ -56,6 +56,30 @@ flux2_prepare_latent_ids <- function(height, width, device = "cpu") {
     ids$reshape(c(height * width, 4L))
 }
 
+#' FLUX.2 position ids for reference images
+#'
+#' (T, H, W, L) coordinates for reference-image tokens, concatenated in
+#' order: the i-th reference (1-based) takes T = 10 * i, which keeps it
+#' apart from the generated image's T = 0. Reference:
+#' Flux2KleinPipeline._prepare_image_ids (scale 10).
+#'
+#' @param sizes List of \code{c(height, width)} packed grid sizes, one
+#'   per reference image.
+#' @param device Device for the resulting tensor.
+#'
+#' @return Float tensor [sum(height * width), 4].
+#'
+#' @export
+flux2_prepare_image_ids <- function(sizes, device = "cpu") {
+    ids <- lapply(seq_along(sizes), function(i) {
+        x <- flux2_prepare_latent_ids(sizes[[i]][1], sizes[[i]][2],
+                                      device = device)
+        x[, 1] <- x[, 1]$add(10 * i)
+        x
+    })
+    torch::torch_cat(ids, dim = 1L)
+}
+
 #' Empirical timestep shift for FLUX.2
 #'
 #' BFL's piecewise-linear fit of the dynamic-shifting mu as a function of

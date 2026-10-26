@@ -371,6 +371,21 @@ phase-onloaded): 1024x1024 in ~13 s (peak 12.5 GB alloc) after the
 allocator gc-gate fix (was ~48 s); pipeline load 31 s. Cast census is
 exactly 104 weights.
 
+Image + prompt (same weights, one reference image):
+
+```r
+pipe <- flux2_load_pipeline(encoder = TRUE)   # adds the VAE encoder
+img2img_flux2("Turn the scene into a snowy winter night",
+              image = "photo.png", pipeline = pipe, seed = 7)
+```
+
+The reference is VAE-encoded once and its tokens ride after the noisy
+latents in every forward (position ids T = 10), so attention cost grows
+with the reference size; the output defaults to the reference's size.
+Verified against diffusers on the real weights (fp32 CPU, 256x256: PSNR
+123 dB; encoder rel. error 2e-6). GPU memory at 1024x1024 not yet
+measured.
+
 Perf lesson that cost an afternoon: generation was 93.8% R garbage
 collection until the tokenizer stopped holding 151k-binding
 environments — R gc cost scales with live object count (12 vs 203 ms),

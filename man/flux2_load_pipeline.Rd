@@ -12,7 +12,8 @@ flux2_load_pipeline(
   phase_offload = TRUE,
   pin = NULL,
   verbose = TRUE,
-  revision = NULL
+  revision = NULL,
+  encoder = FALSE
 )
 }
 \arguments{
@@ -45,6 +46,10 @@ cache. With one they resolve straight out of
 \code{snapshots/<revision>/}, so the load works against a cache holding
 only that snapshot -- no \code{refs/} entry and no network. The
 transformer comes from \code{model_dir} and is unaffected.}
+
+\item{encoder}{Logical. Also load the VAE encoder, which
+\code{\link{img2img_flux2}} needs (FALSE keeps a text-to-image
+pipeline's memory unchanged).}
 }
 \value{
 A \code{flux2_pipeline} list.
