@@ -86,6 +86,9 @@ NULL
 #'   \code{snapshots/<revision>/}, so the load works against a cache holding
 #'   only that snapshot -- no \code{refs/} entry and no network. The
 #'   transformer comes from \code{model_dir} and is unaffected.
+#' @param encoder Logical. Also load the VAE encoder, which
+#'   \code{\link{img2img_flux2}} needs (FALSE keeps a text-to-image
+#'   pipeline's memory unchanged).
 #'
 #' @return A \code{flux2_pipeline} list.
 #'
@@ -94,7 +97,8 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 precision = c("auto", "fp8", "nf4", "bf16"),
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, pin = NULL,
-                                verbose = TRUE, revision = NULL) {
+                                verbose = TRUE, revision = NULL,
+                                encoder = FALSE) {
     ## Checked before any device work, where a configuration mistake is
     ## cheapest to report.
     .flux2_rev(revision)
@@ -181,6 +185,21 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         # the decode reads the decoder's own dtype and follows.
         pipe$decoder$to(dtype = torch::torch_bfloat16())
     }
+    if (encoder) {
+        if (verbose) {
+            message("Loading FLUX.2 VAE encoder...")
+        }
+        pipe$encoder <- load_flux2_vae_encoder(
+            .flux2_cached("vae/diffusion_pytorch_model.safetensors", revision),
+            latent_channels = as.integer(vae_config$latent_channels %||% 32L),
+            verbose = verbose
+        )
+        pipe$encoder$to(device = component_device)
+        # Same dtype policy as the decoder above
+        if (device == "cuda" && phase_offload) {
+            pipe$encoder$to(dtype = torch::torch_bfloat16())
+        }
+    }
 
     if (verbose) {
         message("Loading Qwen3 text encoder...")
@@ -195,6 +214,9 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
         .flux2_cached("tokenizer/tokenizer.json", revision))
 
     components <- c("transformer", "decoder")
+    if (encoder) {
+        components <- c(components, "encoder")
+    }
     if (!identical(text_device, "cpu")) {
         components <- c(components, "text_encoder")
     }
@@ -204,14 +226,18 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     structure(pipe, class = "flux2_pipeline")
 }
 
-# Flow-matching Euler loop; klein is CFG-free (one forward per step)
+# Flow-matching Euler loop; klein is CFG-free (one forward per step).
+# Reference-image tokens (img2img) ride after the noisy latents in every
+# forward and only the latents' predictions are kept.
 .flux2_denoise <- function(transformer, latents, schedule, prompt_embeds,
                            image_rotary_emb, compute_dtype,
-                           chunk_size = NULL, verbose = TRUE) {
+                           chunk_size = NULL, verbose = TRUE,
+                           ref_tokens = NULL) {
     timesteps <- as.numeric(schedule$timesteps$cpu())
     n <- length(timesteps)
     pb <- .denoise_progress(n, NULL, verbose)
     f32 <- torch::torch_float32()
+    seq_img <- latents$shape[2]
 
     torch::with_no_grad({
         for (i in seq_len(n)) {
@@ -219,13 +245,21 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
             t_model <- torch::torch_tensor(t / 1000, dtype = compute_dtype,
                 device = latents$device)$reshape(1L)
 
+            hidden <- latents$to(dtype = compute_dtype)
+            if (!is.null(ref_tokens)) {
+                hidden <- torch::torch_cat(list(hidden, ref_tokens), dim = 2L)
+            }
             noise_pred <- transformer(
-                                      hidden_states = latents$to(dtype = compute_dtype),
+                                      hidden_states = hidden,
                                       encoder_hidden_states = prompt_embeds,
                                       timestep = t_model,
                                       image_rotary_emb = image_rotary_emb,
                                       chunk_size = chunk_size
             )
+            rm(hidden)
+            if (!is.null(ref_tokens)) {
+                noise_pred <- noise_pred$narrow(2L, 1L, seq_img)
+            }
 
             step <- flowmatch_scheduler_step(
                 noise_pred$to(dtype = f32), t, latents, schedule
@@ -277,14 +311,26 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
                           prompt_embeds = NULL, save_file = TRUE,
                           filename = NULL, verbose = TRUE, ...) {
     level <- .verbosity(verbose)
-    verbose <- level == "steps"
     if (level != "silent") {
         message(sprintf("FLUX.2 klein: %dx%d, %d steps", as.integer(width),
                         as.integer(height), as.integer(num_inference_steps)))
     }
     if (is.null(pipeline)) {
-        pipeline <- flux2_load_pipeline(..., verbose = verbose)
+        pipeline <- flux2_load_pipeline(..., verbose = level == "steps")
     }
+    .flux2_generate(prompt, pipeline, width, height, num_inference_steps,
+                    max_sequence_length, seed, prompt_embeds, save_file,
+                    filename, level)
+}
+
+# The shared FLUX.2 generation body. `reference` is NULL (txt2img) or a
+# preprocessed [1, 3, H, W] image in [-1, 1] (img2img), encoded to
+# reference tokens with the pipeline's VAE encoder.
+.flux2_generate <- function(prompt, pipeline, width, height,
+                            num_inference_steps, max_sequence_length, seed,
+                            prompt_embeds, save_file, filename, level,
+                            reference = NULL) {
+    verbose <- level == "steps"
     device <- pipeline$device
     width <- as.integer(width)
     height <- as.integer(height)
@@ -367,7 +413,28 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
 
     txt_ids <- flux2_prepare_text_ids(txt_len)
     latent_ids <- flux2_prepare_latent_ids(h2, w2)
-    ids <- torch::torch_cat(list(txt_ids, latent_ids), dim = 1L)
+    ids <- list(txt_ids, latent_ids)
+
+    # --- Reference image (img2img): encode once, reuse every step -------------------
+    ref_tokens <- NULL
+    if (!is.null(reference)) {
+        if (is.null(pipeline$encoder)) {
+            stop("this pipeline has no VAE encoder; load it with ",
+                 "flux2_load_pipeline(encoder = TRUE)", call. = FALSE)
+        }
+        if (verbose) {
+            message("Encoding reference image...")
+        }
+        encoder <- onload("encoder")
+        ref <- flux2_encode_image(encoder, reference,
+                                  bn_eps = pipeline$vae_bn_eps %||% 1e-4)
+        offload("encoder")
+        ref_tokens <- ref$tokens$to(device = device, dtype = compute_dtype)
+        ids <- c(ids, list(flux2_prepare_image_ids(list(c(ref$height,
+                                                          ref$width)))))
+        rm(ref)
+    }
+    ids <- torch::torch_cat(ids, dim = 1L)
     rope <- flux_pos_embed(
                            ids,
                            axes_dim = pipeline$transformer$axes_dims_rope %||% c(32L, 32L, 32L, 32L),
@@ -403,8 +470,9 @@ txt2img_flux2 <- function(prompt, pipeline = NULL, width = 1024L,
     latents <- .flux2_denoise(
                               transformer, latents, sched, prompt_embeds, rope,
                               compute_dtype, chunk_size = pipeline$attn_chunk,
-                              verbose = level
+                              verbose = level, ref_tokens = ref_tokens
     )
+    rm(ref_tokens)
     if (fp8_manual && phase_offload) {
         .flux_fp8_to_device(pipeline$transformer, "cpu")
     }

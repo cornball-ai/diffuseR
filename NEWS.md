@@ -1,3 +1,18 @@
+# diffuseR 0.2.2.15
+
+* **FLUX.2 klein image + prompt editing.** `img2img_flux2(prompt, image)`
+  edits one reference image with the same klein-4B weights: the
+  reference is VAE-encoded once and conditions every step, following the
+  diffusers klein pipeline's `image =` path.
+  - `flux2_load_pipeline(encoder = TRUE)` loads the new VAE encoder
+    (`flux2_vae_encoder()`, `load_flux2_vae_encoder()`); the default
+    keeps text-to-image memory unchanged.
+  - `flux2_preprocess_image()` validates and prepares the reference
+    (64 px minimum side, 8:1 aspect limit, Lanczos resize to 1024^2 in
+    area, center crop to multiples of 16).
+  - `flux2_encode_image()` and `flux2_prepare_image_ids()` build the
+    reference tokens and their position ids.
+
 # diffuseR 0.2.2.14
 
 * **LTX-2.5 (distilled) text-to-video.** The 2.3 pipeline runs the 2.5
