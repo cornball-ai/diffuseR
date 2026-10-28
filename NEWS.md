@@ -1,3 +1,24 @@
+# diffuseR 0.2.2.16
+
+* **FLUX 3 Image Klein.** `txt2img_flux3()` and `img2img_flux3()` run
+  Black Forest Labs' step-distilled FLUX 3 Image Klein (16 steps, no
+  guidance), ported from the diffusers pipeline. The weights are gated
+  under the FLUX Kommunity License; `download_flux3_klein()` fetches
+  them with `HF_TOKEN` and builds a 5.3 GB fp8 artifact.
+  - `flux3_load_pipeline()` swaps the transformer, Qwen3-VL text model
+    and VAE onto the GPU one phase at a time; `dtype = "bfloat16"` also
+    works on the CPU.
+  - The model expects full scene captions; expand short prompts first.
+  - `img2img_flux3()` keeps one reference whole (`max_area`, default
+    4 MP) and crops the output back to it; see
+    `flux3_preprocess_image()`.
+  - Building blocks: `flux3_transformer()`, `flux3_encode_prompt()`,
+    `flux3_prepare_image_ids()`, `flux3_prepare_text_ids()`,
+    `flux3_schedule()`, `flux3_is_quant_key()`.
+* `load_qwen3_text_encoder()` also loads Qwen3-VL text models, and the
+  encoder takes explicit `position_ids`. Requesting the last layer now
+  returns the post-norm state, as transformers does.
+
 # diffuseR 0.2.2.15
 
 * **FLUX.2 klein image + prompt editing.** `img2img_flux2(prompt, image)`
