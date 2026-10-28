@@ -79,11 +79,10 @@ VAEAttentionBlock <- torch::nn_module(
     k <- self$to_k(x)
     v <- self$to_v(x)
 
-    # Scaled dot-product attention
-    scale <- 1.0 / sqrt(channels)
-    attn <- torch::torch_bmm(q, k$transpose(2, 3)) * scale
-    attn <- torch::nnf_softmax(attn, dim = -1)
-    out <- torch::torch_bmm(attn, v)
+    # Single-head attention; fused SDPA avoids the (h*w)^2 score matrix
+    # (8 GiB in bf16 for a 2048x2048 image)
+    out <- .ltx23_sdpa(q$unsqueeze(2), k$unsqueeze(2), v$unsqueeze(2))
+    out <- out$squeeze(2)
 
     # Project out
     out <- self$to_out[[1]](out)

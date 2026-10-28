@@ -18,6 +18,10 @@
 * `load_qwen3_text_encoder()` also loads Qwen3-VL text models, and the
   encoder takes explicit `position_ids`. Requesting the last layer now
   returns the post-norm state, as transformers does.
+* The VAE mid-block attention (shared by the SD, SDXL, FLUX.1 and
+  FLUX.2/FLUX 3 VAEs) uses fused scaled-dot-product attention when
+  torch provides it. A 2048x2048 image no longer allocates an 8 GiB
+  score matrix.
 
 # diffuseR 0.2.2.15
 

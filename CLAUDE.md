@@ -461,7 +461,12 @@ bit-identical (fp32); transformer forward max abs 2.9e-6 (fp32,
 depth-reduced to 4 joint blocks, all code paths); 256 px end to end in
 bf16: edit 46 dB PSNR, text-to-image same composition at 24.5 dB (bf16
 trajectory noise over 16 steps). fp8 census exactly 265 weights.
-GPU memory/time not yet measured.
+Measured on the RTX 5060 Ti 16 GB (fp8 resident, phase offload):
+1024x1024 text-to-image ~44 s (peak 11.7 GB alloc / 12.0 GB reserved);
+1 MP edit ~50 s (13.8 / 14.1 GB); 4 MP edit (2048x2048 out) ~285 s
+(14.1 / 14.8 GB); pipeline load ~36 s. The 4 MP edit needed the VAE
+mid-block attention on fused SDPA (the manual form allocated an 8 GiB
+score matrix).
 
 Gotchas that bit once: HF's last `hidden_states` entry carries the final
 norm (the Qwen3 encoder now matches for k = num_layers); building 5.6B
