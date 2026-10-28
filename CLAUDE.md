@@ -471,6 +471,24 @@ own text encoder: R bf16 52.2 dB PSNR, R fp8 36.7 dB. Edits that change
 little (no snow from a "covered in snow" caption) reproduce in
 diffusers; they come from the model without its prompt upsampler.
 
+Small cards (planned from `vram_gb`): below 10 GB the Qwen3-VL layers
+stream from pinned host memory one at a time (`stream_text`); below
+12 GB only `vram_gb - 6.5` GB of fp8 linears stay resident and the
+rest stream inside each forward (`resident_gb`). Simulated with a
+ballast tensor on the 16 GB card: 8 GB runs 1024^2 t2i in ~30 s and a
+1 MP edit in ~56 s; 12 GB (no streaming) ~27 s / ~53 s. 16 GB: t2i
+~27 s (peak 9.1 GB), 1 MP edit ~53 s (10.7 GB).
+
+Gotchas that bit once (gc on small cards): torch for R runs R's gc only
+on an allocator miss, and not at all while reserved memory is below
+`torch.cuda_allocator_reserved_rate` x total; `ltx23_tune_gc` sets
+that from a 12 GB footprint, which on an 8 GB card means no gc even
+when an allocation fails. Above `allocated_rate` it is a full gc,
+otherwise a minor one; block outputs promoted by the per-block minor
+gcs need the full one. Streaming mode uses reserved 0.6 / allocated
+0.8. The streamed onload's R-side copies hold device memory until
+collected, hence the minor gc after each streamed Qwen layer.
+
 Gotchas that bit once: HF's last `hidden_states` entry carries the final
 norm (the Qwen3 encoder now matches for k = num_layers); building 5.6B
 params in fp32 before the bf16 cast needs 22 GB of host RAM, so the

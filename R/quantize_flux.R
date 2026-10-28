@@ -183,8 +183,7 @@ NULL
     if (is.null(config)) {
         return(list())
     }
-    args <- list(
-                 in_channels = config$in_channels,
+    args <- list(in_channels = config$in_channels,
                  cond_in_channels = config$cond_in_channels,
                  num_layers = config$num_layers,
                  num_single_layers = config$num_single_layers,
@@ -192,8 +191,7 @@ NULL
                  num_attention_heads = config$num_attention_heads,
                  joint_attention_dim = config$joint_attention_dim,
                  timestep_channels = config$timestep_channels,
-                 axes_dims_rope = config$axes_dims_rope
-    )
+                 axes_dims_rope = config$axes_dims_rope)
     args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
     args <- lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
     for (field in c("mlp_ratio", "rope_theta", "eps")) {
@@ -289,7 +287,13 @@ NULL
         }
         extra <- if (identical(nm, "transformer") &&
             isTRUE(pipe$fp8_resident)) {
-            .flux_fp8_collect(module)
+            # A split transformer (FLUX 3 on small cards) stages only its
+            # resident linears; the streamed ones stay on the host
+            if (is.null(pipe$fp8_split)) {
+                .flux_fp8_collect(module)
+            } else {
+                .flux3_fp8_fields(pipe$fp8_split$resident)
+            }
         } else {
             NULL
         }

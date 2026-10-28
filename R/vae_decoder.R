@@ -140,8 +140,14 @@ VAEUpBlock <- torch::nn_module(
 },
 
                                forward = function(x) {
+    # At 1024x1024 each resnet leaves ~1-3 GB of dead temporaries until
+    # R collects them; a minor gc per resnet bounds that on small cards
+    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_along(self$resnets)) {
         x <- self$resnets[[i]](x)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
     if (!is.null(self$upsamplers)) {
         x <- self$upsamplers[[1]](x)
