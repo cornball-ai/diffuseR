@@ -16,15 +16,22 @@ NULL
 # Llama-convention rotary tables: cos/sin [S, head_dim/2] at the given
 # theta, applied with the split-half kernel (x1*cos - x2*sin | x2*cos +
 # x1*sin), which matches rotate_half exactly.
-.qwen3_rope_tables <- function(seq_len, head_dim, theta, device) {
+# `positions` (0-based integers, length seq_len) overrides 0..seq_len-1.
+.qwen3_rope_tables <- function(seq_len, head_dim, theta, device,
+                               positions = NULL) {
     f32 <- torch::torch_float32()
     inv_freq <- 1.0 / torch::torch_pow(
                                        theta,
                                        torch::torch_arange(start = 0, end = head_dim - 2, step = 2,
             dtype = f32, device = device) / head_dim
     )
-    pos <- torch::torch_arange(start = 0, end = seq_len - 1, dtype = f32,
-                               device = device)
+    pos <- if (is.null(positions)) {
+        torch::torch_arange(start = 0, end = seq_len - 1, dtype = f32,
+                            device = device)
+    } else {
+        torch::torch_tensor(as.numeric(positions), dtype = f32,
+                            device = device)
+    }
     freqs <- pos$unsqueeze(2L) * inv_freq$unsqueeze(1L) # [S, D/2]
     # [1, 1, S, D/2] for broadcasting against [B, H, S, D/2]
     list(
@@ -125,10 +132,13 @@ NULL
 #' @param rms_norm_eps Numeric.
 #'
 #' @return Module whose forward(input_ids, attention_mask = NULL,
-#'   out_layers) returns a list of hidden-state tensors [B, S, hidden],
-#'   one per requested layer (a value of k means the state after k
-#'   layers, matching HF \code{output.hidden_states[k]}). Runs only to
-#'   \code{max(out_layers)}. \code{input_ids} are 1-based.
+#'   out_layers, position_ids = NULL) returns a list of hidden-state
+#'   tensors [B, S, hidden], one per requested layer (a value of k means
+#'   the state after k layers, matching HF \code{output.hidden_states[k]},
+#'   which carries the final norm when k is the last layer).
+#'   Runs only to \code{max(out_layers)}. \code{input_ids} are 1-based;
+#'   \code{position_ids} (0-based integers, length S, shared by the batch)
+#'   override the default 0..S-1 rotary positions.
 #'
 #' @export
 qwen3_encoder <- torch::nn_module(
@@ -159,14 +169,15 @@ qwen3_encoder <- torch::nn_module(
     self$model <- inner()
 },
                                   forward = function(input_ids, attention_mask = NULL,
-        out_layers = c(9L, 18L, 27L)) {
+        out_layers = c(9L, 18L, 27L), position_ids = NULL) {
     x <- self$model$embed_tokens(input_ids)
     b <- input_ids$shape[1]
     s <- input_ids$shape[2]
     device <- x$device
     dt <- x$dtype
 
-    rope <- .qwen3_rope_tables(s, self$head_dim, self$rope_theta, device)
+    rope <- .qwen3_rope_tables(s, self$head_dim, self$rope_theta, device,
+                               positions = position_ids)
 
     # Additive causal (+ padding) mask [B, 1, S, S] in the compute dtype:
     # the fused SDPA kernel requires the bias dtype to match the query.
@@ -185,11 +196,13 @@ qwen3_encoder <- torch::nn_module(
 
     out_layers <- sort(as.integer(out_layers))
     states <- vector("list", length(out_layers))
+    n_layers <- length(self$model$layers)
     for (i in seq_len(max(out_layers))) {
         x <- self$model$layers[[i]](x, rope, mask)
         hit <- which(out_layers == i)
         if (length(hit)) {
-            states[[hit]] <- x
+            # HF's last hidden_states entry carries the final norm
+            states[[hit]] <- if (i == n_layers) self$model$norm(x) else x
         }
     }
     states
@@ -200,10 +213,15 @@ qwen3_encoder <- torch::nn_module(
 #'
 #' Streams the (possibly sharded) safetensors weights into
 #' \code{\link{qwen3_encoder}}. The LM head is tied to the embeddings
-#' and skipped.
+#' and skipped. A Qwen3-VL checkpoint (FLUX 3's text encoder: config
+#' under \code{text_config}, weights under \code{model.language_model.*})
+#' loads its text model only; the vision tower is skipped. For text-only
+#' input with 1D positions, Qwen3-VL's interleaved MRoPE reduces to the
+#' plain Qwen3 rotary (all three axes carry the same position).
 #'
 #' @param model_path Directory with \code{config.json} and
-#'   \code{model*.safetensors} (FLUX.2-klein's \code{text_encoder}).
+#'   \code{model*.safetensors} (FLUX.2-klein's or FLUX 3's
+#'   \code{text_encoder}).
 #' @param device Character. Target device.
 #' @param dtype Character. "bfloat16" (GPU) or "float32" (CPU).
 #' @param verbose Logical.
@@ -220,6 +238,11 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
     if (file.exists(config_path)) {
         config <- jsonlite::fromJSON(config_path, simplifyVector = TRUE)
     }
+    # Qwen3-VL: text model config nested, weights under language_model
+    vl <- !is.null(config$text_config)
+    if (vl) {
+        config <- config$text_config
+    }
 
     args <- list(vocab_size = config$vocab_size,
                  hidden_size = config$hidden_size,
@@ -230,8 +253,10 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
                  head_dim = config$head_dim)
     args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
     args <- lapply(args, as.integer)
-    if (!is.null(config$rope_theta)) {
-        args$rope_theta <- as.numeric(config$rope_theta)
+    # transformers >= 5 writes rope_theta under rope_parameters
+    rope_theta <- config$rope_theta %||% config$rope_parameters$rope_theta
+    if (!is.null(rope_theta)) {
+        args$rope_theta <- as.numeric(rope_theta)
     }
     if (!is.null(config$rms_norm_eps)) {
         args$rms_norm_eps <- as.numeric(config$rms_norm_eps)
@@ -249,6 +274,12 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
     map_key <- function(key) {
         if (identical(key, "lm_head.weight")) {
             return(NA_character_) # tied to embed_tokens
+        }
+        if (vl) {
+            if (startsWith(key, "model.visual.")) {
+                return(NA_character_)
+            }
+            key <- sub("^model\\.language_model\\.", "model.", key)
         }
         key
     }

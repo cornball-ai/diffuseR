@@ -74,9 +74,11 @@ flux2_feed_forward <- torch::nn_module(
                                        "flux2_feed_forward",
                                        initialize = function(dim, dim_out = NULL, mult = 3.0, bias = FALSE) {
     inner_dim <- as.integer(dim * mult)
-    self$linear_in <- torch::nn_linear(dim, inner_dim * 2L, bias = bias)
-    self$linear_out <- torch::nn_linear(inner_dim, dim_out %||% dim,
-                                        bias = bias)
+    # linear_noinit: skips the init writes inside .construct_skeleton()
+    # (FLUX 3 loads), initializes like nn_linear otherwise
+    self$linear_in <- linear_noinit(dim, inner_dim * 2L, bias = bias)
+    self$linear_out <- linear_noinit(inner_dim, dim_out %||% dim,
+                                     bias = bias)
 },
                                        forward = function(x) {
     x <- self$linear_in(x)

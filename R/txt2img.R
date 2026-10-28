@@ -12,7 +12,8 @@
 #' img <- txt2img("a cat wearing sunglasses in space", device = "cuda")
 #' }
 txt2img <- function(prompt,
-                    model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage"),
+                    model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage",
+                                   "flux3"),
                     ...) {
     model_name <- match.arg(model_name)
     switch(model_name,
@@ -22,6 +23,7 @@ txt2img <- function(prompt,
            "flux1" = txt2img_flux(prompt, ...),
            "flux2" = txt2img_flux2(prompt, ...),
            "zimage" = txt2img_zimage(prompt, ...),
+           "flux3" = txt2img_flux3(prompt, ...),
            # "sd3" = txt2img_sd3(prompt, ...),
            stop("Unsupported model: ", model_name)
     )

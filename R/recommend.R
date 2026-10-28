@@ -199,6 +199,7 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                  flux1 = c(bf16 = 34, fp8 = 22, nf4 = 17), # DiT + T5 bf16 host copy
                  flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
                  zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
+                 flux3 = c(bf16 = 20, fp8 = 15, nf4 = 12), # DiT + Qwen3-VL text bf16
                  ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
     )
     v <- unname(sets[[model]][precision])
