@@ -192,6 +192,33 @@ res_stg <- run_model(spatio_temporal_guidance_blocks = c(1L))
 expect_true(max_abs_diff(res_stg$sample, fx$m_out_video_stg) < 1e-4)
 expect_true(max_abs_diff(res_stg$audio_sample, fx$m_out_audio_stg) < 1e-4)
 
+# --- Block streaming (small cards) ---------------------------------------------------
+
+# One of the two blocks resident, the other streamed: same output (on the
+# CPU the staged moves are host-to-host)
+blk_gb <- diffuseR:::.module_bytes(model$transformer_blocks[[1]]) / 1024^3
+other_gb <- (diffuseR:::.module_bytes(model) -
+  2 * diffuseR:::.module_bytes(model$transformer_blocks[[1]])) / 1024^3
+split <- diffuseR:::.ltx23_block_stream(model, other_gb + 1.5 * blk_gb,
+  pin = FALSE)
+expect_equal(split$n_resident, 1L)
+expect_equal(split$n_streamed, 1L)
+expect_equal(length(model$block_stream$staging), 1L)
+n_block2 <- length(c(model$transformer_blocks[[2]]$parameters,
+  model$transformer_blocks[[2]]$buffers))
+expect_equal(length(split$staging),
+  length(c(model$parameters, model$buffers)) - n_block2)
+res_stream <- run_model(
+  encoder_attention_mask = fx$m_enc_mask,
+  audio_encoder_attention_mask = fx$m_enc_mask
+)
+expect_true(max_abs_diff(res_stream$sample, res$sample) == 0)
+expect_true(max_abs_diff(res_stream$audio_sample, res$audio_sample) == 0)
+# A budget that holds everything streams nothing
+split_all <- diffuseR:::.ltx23_block_stream(model, Inf, pin = FALSE)
+expect_equal(split_all$n_streamed, 0L)
+expect_true(is.null(model$block_stream))
+
 # --- Key mapper ------------------------------------------------------------------
 
 expect_equal(

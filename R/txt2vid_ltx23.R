@@ -262,6 +262,13 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #' @param phase_offload Logical. Load the small components (connectors,
 #'   VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
 #'   device only for its phase.
+#' @param resident_gb Numeric. GB of the transformer kept on the GPU
+#'   during denoising (default \code{Inf}: all of it). With less, its
+#'   leading blocks stay resident and the rest stream from (pinned) host
+#'   memory one block at a time every step, for cards that cannot hold
+#'   the ~12.5 GB NF4 transformer; under 7 GB the text connectors
+#'   stream too. Needs \code{phase_offload} on CUDA. See
+#'   \code{\link{ltx23_memory_profile}}.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -273,7 +280,12 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 transformer_device = "cpu",
                                 components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
                                 pin = TRUE, attn_chunk = NULL,
-                                phase_offload = TRUE, verbose = TRUE) {
+                                phase_offload = TRUE, resident_gb = Inf,
+                                verbose = TRUE) {
+    if (is.finite(resident_gb) && !(phase_offload && device == "cuda")) {
+        stop("resident_gb streams transformer blocks to the GPU; it needs ",
+             "device = \"cuda\" and phase_offload = TRUE", call. = FALSE)
+    }
     if (phase_offload) {
         component_device <- "cpu"
     } else {
@@ -312,7 +324,13 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # decode phases measured 86% of wall time in callback-driven
         # R gc at the 0.20 default reserved rate. Only-if-unset, so an
         # explicit user option wins.
-        if (identical(ckpt$format, "nf4")) {
+        if (is.finite(resident_gb)) {
+            # Streaming: what stays resident, plus room for activations.
+            # A 12 GB footprint on a smaller card would push the reserved
+            # gate past the card, and R would never gc (not even on an
+            # allocation that fails).
+            footprint <- resident_gb + 1
+        } else if (identical(ckpt$format, "nf4")) {
             footprint <- 12
         } else {
             footprint <- 8
@@ -409,8 +427,33 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         pipe$vocoder <- voc
     }
 
-    if (phase_offload && device == "cuda" &&
-        isTRUE(getOption("diffuseR.pin_staging", TRUE))) {
+    pin_staging <- phase_offload && device == "cuda" &&
+    isTRUE(getOption("diffuseR.pin_staging", TRUE))
+    staging <- list()
+    if (is.finite(resident_gb) && !is.null(pipe$transformer)) {
+        # The transformer stages only its resident part; the streamed
+        # blocks carry their own staging sets (staged even unpinned, so
+        # the phase onload never moves them)
+        split <- .ltx23_block_stream(pipe$transformer, resident_gb,
+                                     pin = pin_staging)
+        staging$transformer <- split$staging
+        if (verbose) {
+            message(sprintf(paste0("Transformer: %d blocks resident (%.1f GB), ",
+                                   "%d streamed (%.1f GB/step)"),
+                            split$n_resident, split$resident_gb,
+                            split$n_streamed, split$streamed_gb))
+        }
+        # The 5.9 GB connector phase does not fit beside an 8 GB card's
+        # activations either: stream it for budgets under 7 GB
+        if (resident_gb < 7 && !is.null(pipe$connectors)) {
+            staging$connectors <- .ltx23_connector_stream(pipe$connectors,
+                                                          pin = pin_staging)
+            if (verbose) {
+                message("Text connectors stream block by block")
+            }
+        }
+    }
+    if (pin_staging) {
         # Page-lock every phase-offloaded component once so the
         # per-render CPU<->GPU moves run at full PCIe rate (offload
         # becomes a pointer swap; see staging.R). Falls back
@@ -418,17 +461,17 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         if (verbose) {
             message("Pinning host staging buffers...")
         }
-        staging <- list()
-        for (nm in intersect(c("transformer", "connectors", "vae",
-                               "audio_vae", "vocoder"), names(pipe))) {
+        for (nm in setdiff(intersect(c("transformer", "connectors", "vae",
+                                       "audio_vae", "vocoder"), names(pipe)),
+                           names(staging))) {
             st <- .pin_component(pipe[[nm]])
             if (!is.null(st)) {
                 staging[[nm]] <- st
             }
         }
-        if (length(staging)) {
-            pipe$staging <- staging
-        }
+    }
+    if (length(staging)) {
+        pipe$staging <- staging
     }
 
     structure(pipe, class = "ltx23_pipeline")
@@ -764,7 +807,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         text_mask <- connector_embeds$attention_mask$to(device = device)
     } else {
         onload("connectors")
-        connectors_device <- pipeline$connectors$video_text_proj_in$weight$device
+        # A streamed projection sits on the host between calls; the
+        # streamed connectors always compute on the device
+        connectors_device <- if (is.null(pipeline$connectors$unit_stream)) {
+            pipeline$connectors$video_text_proj_in$weight$device
+        } else {
+            device
+        }
         torch::with_no_grad({
             conn <- pipeline$connectors(
                                         prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),

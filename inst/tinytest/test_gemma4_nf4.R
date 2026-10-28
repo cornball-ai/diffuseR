@@ -131,6 +131,19 @@ art_seen <- local({
   })
   expect_true(as.numeric((h_nf4[valid] - h_twin[valid])$abs()$max()) < 1e-5)
 
+  # Layer streaming (small cards): the staging attribute holds the
+  # non-layer tensors, one set per layer on the module; on the CPU the
+  # staged moves are host-to-host, so the output is identical
+  enc_s <- load_gemma4_nf4(art, device = "cpu", dtype = "float32",
+                           pin = FALSE, stream = TRUE, verbose = FALSE)
+  expect_equal(length(enc_s$layer_stream), length(enc_s$layers))
+  tensors <- c(enc_s$parameters, enc_s$buffers)
+  expect_equal(length(attr(enc_s, "staging")),
+               sum(!startsWith(names(tensors), "layers.")))
+  h_s <- torch::with_no_grad(
+    enc_s(fx$input_ids, attention_mask = fx$attention_mask)$last_hidden_state)
+  expect_true(as.numeric((h_s - h_nf4)$abs()$max()) == 0)
+
   # Default bf16 compute through the encode step stays finite
   enc_bf <- load_gemma4_nf4(art, device = "cpu", pin = FALSE, verbose = FALSE)
   e <- encode_with_gemma4(c("the cat sat", "tell"), enc_bf, tok_art,

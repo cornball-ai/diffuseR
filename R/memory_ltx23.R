@@ -20,9 +20,18 @@ NULL
 #' (tiled VAE decode, in-place feed-forward GELU, and the default
 #' \code{diffuseR.attn_budget} of 1.5e8 all required at that size).
 #'
+#' Below 14 GB the NF4 transformer keeps \code{resident_gb} on the GPU
+#' and streams its remaining blocks from pinned host memory every step
+#' (pass it to \code{\link{ltx23_load_pipeline}}), and below 12 GB the
+#' Gemma 4 encoder streams its layers (\code{stream_text}; pass it as
+#' \code{stream} to \code{\link{load_gemma4_text_encoder}}). Measured
+#' with the rest of a 16 GB card held back: LTX-2.5 768x512x121 renders
+#' in ~84 s on both 12 GB (8 GB resident) and 8 GB (4 GB resident), the
+#' same as on the full card.
+#'
 #' \describe{
-#'   \item{precision "nf4"}{Weights resident on the GPU; fastest steps;
-#'     about 9 percent weight round-trip error.}
+#'   \item{precision "nf4"}{Weights resident on the GPU (or partly
+#'     streamed); fastest steps; about 9 percent weight round-trip error.}
 #'   \item{precision "fp8"}{Weights CPU-resident, streamed per linear;
 #'     near-bf16 quality; each step pays the PCIe transfer.}
 #' }
@@ -30,7 +39,8 @@ NULL
 #' @param vram_gb Numeric or NULL (auto-detect free VRAM).
 #'
 #' @return Named list with device/dtype placement, \code{attn_chunk},
-#'   \code{pin_weights}, and resolution caps.
+#'   \code{pin_weights}, \code{resident_gb}, \code{stream_text}, and
+#'   resolution caps.
 #'
 #' @export
 ltx23_memory_profile <- function(vram_gb = NULL) {
@@ -49,35 +59,44 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
         "cpu_only"
     }
 
+    # Streamed tiers keep vram_gb - 4 GB of the transformer resident:
+    # 768x512x121 activations, connectors and decode fit in the rest
+    resident <- max(0, vram_gb - 4)
     profiles <- list(
                      high = list(name = "high", device = "cuda", dtype = "bfloat16",
                                  precision = "nf4", phase_offload = TRUE,
                                  pin_weights = FALSE, attn_chunk = NULL,
-                                 text_device = "cpu", max_resolution = c(704L, 1280L),
+                                 text_device = "cpu", resident_gb = Inf,
+                                 stream_text = FALSE,
+                                 max_resolution = c(704L, 1280L),
                                  max_frames = 121L),
                      medium = list(
                                    name = "medium",
                                    device = "cuda",
                                    dtype = "bfloat16",
-                                   precision = "fp8",
+                                   precision = "nf4",
                                    phase_offload = TRUE,
                                    pin_weights = TRUE,
-                                   attn_chunk = 4096L,
-                                   text_device = "cpu",
-                                   max_resolution = c(576L, 1024L),
+                                   attn_chunk = NULL,
+                                   text_device = "cuda",
+                                   resident_gb = resident,
+                                   stream_text = vram_gb < 12,
+                                   max_resolution = c(512L, 768L),
                                    max_frames = 121L
         ),
                      low = list(
                                 name = "low",
                                 device = "cuda",
                                 dtype = "bfloat16",
-                                precision = "fp8",
+                                precision = "nf4",
                                 phase_offload = TRUE,
                                 pin_weights = TRUE,
-                                attn_chunk = 2048L,
-                                text_device = "cpu",
+                                attn_chunk = NULL,
+                                text_device = "cuda",
+                                resident_gb = resident,
+                                stream_text = TRUE,
                                 max_resolution = c(512L, 768L),
-                                max_frames = 65L
+                                max_frames = 121L
         ),
                      cpu_only = list(
                                      name = "cpu_only",
@@ -88,6 +107,8 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
                                      pin_weights = FALSE,
                                      attn_chunk = NULL,
                                      text_device = "cpu",
+                                     resident_gb = Inf,
+                                     stream_text = FALSE,
                                      max_resolution = c(384L, 640L),
                                      max_frames = 33L
         )

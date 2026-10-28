@@ -47,3 +47,26 @@ clear()
 expect_equal(ltx23_tune_gc(footprint_gb = 12, total_gb = 12), 0.92)
 
 options(old)
+
+# Profiles: small cards stream NF4 transformer blocks (vram - 4 GB
+# resident) and, below 12 GB, the Gemma 4 layers
+p16 <- ltx23_memory_profile(16)
+expect_equal(p16$name, "high")
+expect_equal(p16$resident_gb, Inf)
+expect_false(p16$stream_text)
+p12 <- ltx23_memory_profile(12)
+expect_equal(p12$name, "medium")
+expect_equal(p12$precision, "nf4")
+expect_equal(p12$resident_gb, 8)
+expect_false(p12$stream_text)
+p8 <- ltx23_memory_profile(8)
+expect_equal(p8$name, "low")
+expect_equal(p8$precision, "nf4")
+expect_equal(p8$resident_gb, 4)
+expect_true(p8$stream_text)
+expect_true(ltx23_memory_profile(11)$stream_text)
+expect_equal(ltx23_memory_profile(4)$name, "cpu_only")
+
+# The loader refuses block streaming it cannot do
+expect_error(ltx23_load_pipeline("unused", device = "cpu", resident_gb = 4),
+             "phase_offload")

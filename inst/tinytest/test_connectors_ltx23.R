@@ -75,6 +75,30 @@ expect_true(
   info = sprintf("video3 max abs diff: %.9g", video3_diff)
 )
 
+# Streamed (small cards): the two projections as units, each connector's
+# blocks one at a time, the rest in the returned pairs. On the CPU the
+# staged moves are host-to-host, so the output is identical.
+base <- diffuseR:::.ltx23_connector_stream(conn, pin = FALSE)
+expect_equal(sort(names(conn$unit_stream)),
+  c("audio_text_proj_in", "video_text_proj_in"))
+expect_equal(length(conn$video_connector$layer_stream), 2L)
+expect_equal(length(conn$audio_connector$layer_stream), 2L)
+n_staged <- length(base) +
+  sum(vapply(conn$unit_stream, length, 0L)) +
+  sum(vapply(conn$video_connector$layer_stream, length, 0L)) +
+  sum(vapply(conn$audio_connector$layer_stream, length, 0L))
+expect_equal(n_staged, length(c(conn$parameters, conn$buffers)))
+torch::with_no_grad({
+  res_s <- conn(fx$c_states, fx$c_mask)
+})
+expect_true(max_abs_diff(res_s$video_text_embedding,
+  res$video_text_embedding) == 0)
+expect_true(max_abs_diff(res_s$audio_text_embedding,
+  res$audio_text_embedding) == 0)
+conn$unit_stream <- NULL
+conn$video_connector$layer_stream <- NULL
+conn$audio_connector$layer_stream <- NULL
+
 # Key mapper
 expect_equal(
   ltx23_map_connector_key("model.diffusion_model.video_embeddings_connector.transformer_1d_blocks.0.attn1.q_norm.weight"),

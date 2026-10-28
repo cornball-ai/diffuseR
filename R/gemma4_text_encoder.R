@@ -217,13 +217,23 @@ gemma4_text_model <- torch::nn_module(
                    dtype = dtype)
 
     all_hidden <- NULL
+    # Layer streaming (load with stream = TRUE): each layer's weights
+    # visit the device only for its own forward
+    stream <- self$layer_stream
     for (i in seq_along(self$layers)) {
         if (output_hidden_states) {
             all_hidden <- c(all_hidden, list(hidden_states))
         }
         type <- self$config$layer_types[[i]]
+        if (!is.null(stream)) {
+            .staged_onload(stream[[i]], device)
+        }
         hidden_states <- self$layers[[i]](hidden_states, masks[[type]],
                                           rope[[type]][[1]], rope[[type]][[2]])
+        if (!is.null(stream)) {
+            .staged_offload(stream[[i]])
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
     hidden_states <- self$norm(hidden_states)
     if (output_hidden_states) {
@@ -342,6 +352,8 @@ gemma4_text_model <- torch::nn_module(
 #'   \code{\link{encode_with_gemma4}} can move the model to the GPU per
 #'   encode at DMA speed. Default follows
 #'   \code{options(diffuseR.pin_staging)}.
+#' @param stream Logical. Stage layer by layer (see
+#'   \code{\link{load_gemma4_nf4}}).
 #' @param verbose Logical.
 #'
 #' @return A \code{gemma4_text_model}.
@@ -349,10 +361,10 @@ gemma4_text_model <- torch::nn_module(
 #' @export
 load_gemma4_text_encoder <- function(path, device = "cpu", dtype = "bfloat16",
                                      pin = getOption("diffuseR.pin_staging", TRUE),
-                                     verbose = TRUE) {
+                                     stream = FALSE, verbose = TRUE) {
     if (file.exists(file.path(path, "manifest.json"))) {
         return(load_gemma4_nf4(path, device = device, dtype = dtype,
-                               pin = pin, verbose = verbose))
+                               pin = pin, stream = stream, verbose = verbose))
     }
     ckpt <- ltx23_open_checkpoint(path, require_version = NULL)
     meta <- ckpt$handle$metadata[["__metadata__"]]
@@ -383,7 +395,10 @@ load_gemma4_text_encoder <- function(path, device = "cpu", dtype = "bfloat16",
     model$to(device = device)
     model$eval()
 
-    if (pin && device == "cpu") {
+    if (stream && device == "cpu") {
+        attr(model, "staging") <- .stage_layer_stream(model, model$layers,
+                                                      "layers.", pin)
+    } else if (pin && device == "cpu") {
         st <- .pin_component(model)
         if (!is.null(st)) {
             attr(model, "staging") <- st

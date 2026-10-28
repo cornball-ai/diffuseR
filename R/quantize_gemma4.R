@@ -164,6 +164,10 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
 #'   \code{\link{encode_with_gemma4}} can move the model to the GPU per
 #'   encode at DMA speed. Default follows
 #'   \code{options(diffuseR.pin_staging)}.
+#' @param stream Logical. With \code{device = "cpu"}, stage the model
+#'   layer by layer instead of whole: an encode on the GPU then holds
+#'   only the embeddings and one layer at a time, for cards that cannot
+#'   hold the ~8 GB NF4 model.
 #' @param verbose Logical.
 #'
 #' @return A \code{gemma4_text_model}.
@@ -171,7 +175,7 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
 #' @export
 load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
                             pin = getOption("diffuseR.pin_staging", TRUE),
-                            verbose = TRUE) {
+                            stream = FALSE, verbose = TRUE) {
     ckpt <- ltx23_open_fp8_checkpoint(artifact_dir)
     manifest <- jsonlite::fromJSON(file.path(artifact_dir, "manifest.json"),
                                    simplifyVector = FALSE)
@@ -225,7 +229,13 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
 
     model$to(device = device)
     model$eval()
-    if (pin && device == "cpu") {
+    if (stream && device == "cpu") {
+        attr(model, "staging") <- .stage_layer_stream(model, model$layers,
+                                                      "layers.", pin)
+        if (verbose) {
+            message("Gemma 4 layers staged for streaming")
+        }
+    } else if (pin && device == "cpu") {
         st <- .pin_component(model)
         if (!is.null(st)) {
             attr(model, "staging") <- st

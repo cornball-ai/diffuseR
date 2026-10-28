@@ -8,6 +8,7 @@ load_gemma4_nf4(
   device = "cuda",
   dtype = "bfloat16",
   pin = getOption("diffuseR.pin_staging", TRUE),
+  stream = FALSE,
   verbose = TRUE
 )
 }
@@ -22,6 +23,11 @@ load_gemma4_nf4(
 \code{\link{encode_with_gemma4}} can move the model to the GPU per
 encode at DMA speed. Default follows
 \code{options(diffuseR.pin_staging)}.}
+
+\item{stream}{Logical. With \code{device = "cpu"}, stage the model
+layer by layer instead of whole: an encode on the GPU then holds
+only the embeddings and one layer at a time, for cards that cannot
+hold the ~8 GB NF4 model.}
 
 \item{verbose}{Logical.}
 }

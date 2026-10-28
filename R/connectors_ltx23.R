@@ -240,10 +240,19 @@ ltx23_connector_transformer_1d <- torch::nn_module(
 
     rotary_emb <- self$rope(batch_size, seq_len, device = hidden_states$device)
 
+    # Block streaming (see .ltx23_connector_stream)
+    stream <- self$layer_stream
     for (i in seq_along(self$transformer_blocks)) {
+        if (!is.null(stream)) {
+            .staged_onload(stream[[i]], hidden_states$device)
+        }
         hidden_states <- self$transformer_blocks[[i]](
             hidden_states, attention_mask = attention_mask, rotary_emb = rotary_emb
         )
+        if (!is.null(stream)) {
+            .staged_offload(stream[[i]])
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
     hidden_states <- self$norm_out(hidden_states)
 
@@ -355,8 +364,11 @@ ltx23_text_connectors <- torch::nn_module(
     video_norm <- norm_states$mul(sqrt(self$video_hidden_dim / self$caption_channels))
     audio_norm <- norm_states$mul(sqrt(self$audio_hidden_dim / self$caption_channels))
 
-    video_proj <- self$video_text_proj_in(video_norm)
-    audio_proj <- self$audio_text_proj_in(audio_norm)
+    video_proj <- .unit_call(self, "video_text_proj_in", video_norm$device,
+                             function() self$video_text_proj_in(video_norm))
+    audio_proj <- .unit_call(self, "audio_text_proj_in", audio_norm$device,
+                             function() self$audio_text_proj_in(audio_norm))
+    rm(norm_states, video_norm, audio_norm)
 
     # Multiplicative [B, S] mask -> additive [B, 1, 1, S] with -finfo max
     text_dtype <- video_proj$dtype

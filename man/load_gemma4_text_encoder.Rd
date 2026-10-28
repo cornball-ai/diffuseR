@@ -8,6 +8,7 @@ load_gemma4_text_encoder(
   device = "cpu",
   dtype = "bfloat16",
   pin = getOption("diffuseR.pin_staging", TRUE),
+  stream = FALSE,
   verbose = TRUE
 )
 }
@@ -26,6 +27,9 @@ directory from \code{\link{gemma4_quantize_nf4}} (dispatched to
 \code{\link{encode_with_gemma4}} can move the model to the GPU per
 encode at DMA speed. Default follows
 \code{options(diffuseR.pin_staging)}.}
+
+\item{stream}{Logical. Stage layer by layer (see
+\code{\link{load_gemma4_nf4}}).}
 
 \item{verbose}{Logical.}
 }

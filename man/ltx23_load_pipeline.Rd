@@ -12,6 +12,7 @@ ltx23_load_pipeline(
   pin = TRUE,
   attn_chunk = NULL,
   phase_offload = TRUE,
+  resident_gb = Inf,
   verbose = TRUE
 )
 }
@@ -42,6 +43,14 @@ weights when loading the plain (non-fp8) checkpoint.}
 \item{phase_offload}{Logical. Load the small components (connectors,
 VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
 device only for its phase.}
+
+\item{resident_gb}{Numeric. GB of the transformer kept on the GPU
+during denoising (default \code{Inf}: all of it). With less, its
+leading blocks stay resident and the rest stream from (pinned) host
+memory one block at a time every step, for cards that cannot hold
+the ~12.5 GB NF4 transformer; under 7 GB the text connectors
+stream too. Needs \code{phase_offload} on CUDA. See
+\code{\link{ltx23_memory_profile}}.}
 
 \item{verbose}{Logical.}
 }

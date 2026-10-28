@@ -171,6 +171,19 @@ NULL
     invisible(NULL)
 }
 
+# Layer streaming for a CPU-resident encoder: each layer of `layers`
+# (whose parameter names start with `prefix` in the model) gets its own
+# staging set on model$layer_stream, which the encoder's forward swaps
+# in and out around that layer; the returned pairs cover the rest of the
+# model (embeddings, final norm) for the encode-phase onload.
+.stage_layer_stream <- function(model, layers, prefix, pin) {
+    model$layer_stream <- lapply(seq_along(layers), function(i) {
+        .stage_pairs(c(layers[[i]]$parameters, layers[[i]]$buffers), pin)
+    })
+    tensors <- c(model$parameters, model$buffers)
+    .stage_pairs(tensors[!startsWith(names(tensors), prefix)], pin)
+}
+
 #' Return a pinned component to the CPU
 #'
 #' Weights are immutable during inference, so the pinned host copies
