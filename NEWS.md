@@ -1,3 +1,24 @@
+# diffuseR 0.2.2.17
+
+* **FLUX 3 on 8 and 12 GB cards.** `flux3_load_pipeline()` plans from
+  the card size (`vram_gb`, detected by default):
+  - `stream_text` (default below 10 GB): the Qwen3-VL layers stay in
+    pinned host memory and visit the GPU one at a time during the
+    encode (~1 s), instead of needing ~9 GB at once.
+  - `resident_gb` (default `vram_gb - 6.5` below 12 GB): that many GB
+    of fp8 transformer weights stay on the GPU; the rest streams in
+    from pinned memory inside each forward.
+  - Measured on a 16 GB card with the rest held back: 8 GB runs
+    1024x1024 text-to-image in ~30 s and a 1 MP edit in ~56 s; 12 GB
+    streams nothing and runs them in ~27 s and ~53 s.
+* FLUX 3 runs R's garbage collector after every transformer block as a
+  minor collection (it ran a full one after the joint blocks only):
+  1024x1024 text-to-image on 16 GB went from 44 s to 27 s and its peak
+  from 11.7 to 9.1 GB.
+* The VAE encoder and decoder blocks run a minor collection after each
+  resnet when `diffuseR.block_gc` is on, which bounds the dead
+  temporaries at 1024x1024 on small cards.
+
 # diffuseR 0.2.2.16
 
 * **FLUX 3 Image Klein.** `txt2img_flux3()` and `img2img_flux3()` run

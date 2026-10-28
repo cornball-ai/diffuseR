@@ -37,8 +37,13 @@ VAEDownBlock <- torch::nn_module(
 },
 
                                  forward = function(x) {
+    # Minor gc per resnet, as in VAEUpBlock
+    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_along(self$resnets)) {
         x <- self$resnets[[i]](x)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
     if (!is.null(self$downsamplers)) {
         x <- self$downsamplers[[1]](x)

@@ -29,8 +29,7 @@ NULL
         torch::torch_arange(start = 0, end = seq_len - 1, dtype = f32,
                             device = device)
     } else {
-        torch::torch_tensor(as.numeric(positions), dtype = f32,
-                            device = device)
+        torch::torch_tensor(as.numeric(positions), dtype = f32, device = device)
     }
     freqs <- pos$unsqueeze(2L) * inv_freq$unsqueeze(1L) # [S, D/2]
     # [1, 1, S, D/2] for broadcasting against [B, H, S, D/2]
@@ -92,8 +91,7 @@ NULL
                                initialize = function(hidden_size, intermediate_size) {
     self$gate_proj <- linear_noinit(hidden_size, intermediate_size,
                                     bias = FALSE)
-    self$up_proj <- linear_noinit(hidden_size, intermediate_size,
-                                  bias = FALSE)
+    self$up_proj <- linear_noinit(hidden_size, intermediate_size, bias = FALSE)
     self$down_proj <- linear_noinit(intermediate_size, hidden_size,
                                     bias = FALSE)
 },
@@ -197,8 +195,20 @@ qwen3_encoder <- torch::nn_module(
     out_layers <- sort(as.integer(out_layers))
     states <- vector("list", length(out_layers))
     n_layers <- length(self$model$layers)
+    # Layer streaming (see .flux3_text_stream): each layer's weights visit
+    # the device only for its own forward
+    stream <- self$layer_stream
     for (i in seq_len(max(out_layers))) {
+        if (!is.null(stream)) {
+            .staged_onload(stream[[i]], device)
+        }
         x <- self$model$layers[[i]](x, rope, mask)
+        if (!is.null(stream)) {
+            .staged_offload(stream[[i]])
+            # The onload's R-side copies hold the device storage until
+            # collected; a minor gc frees this layer before the next
+            gc(verbose = FALSE, full = FALSE)
+        }
         hit <- which(out_layers == i)
         if (length(hit)) {
             # HF's last hidden_states entry carries the final norm
@@ -265,8 +275,7 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
     # Build at the target dtype: a 4B fp32 build before the bf16 cast
     # needs 16 GB of host RAM
     model <- do.call(.construct_skeleton,
-                     c(list(qwen3_encoder), args,
-                       list(dtype = .flux_dtype(dtype))))
+                     c(list(qwen3_encoder), args, list(dtype = .flux_dtype(dtype))))
 
     opened <- .flux_open_sharded_dir(model_path, "model")
     ckpt <- structure(

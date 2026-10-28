@@ -177,6 +177,7 @@ flux3_transformer <- torch::nn_module(
     }
 
     # 5. Per-mode blocks (each mode attends within itself only)
+    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_along(self$txt_mode_blocks)) {
         encoder_hidden_states <- self$txt_mode_blocks[[i]](
                                       encoder_hidden_states, txt_early, txt_rope, chunk_size)
@@ -184,11 +185,17 @@ flux3_transformer <- torch::nn_module(
     for (i in seq_along(self$mode_blocks$image)) {
         hidden_states <- self$mode_blocks$image[[i]](
                                       hidden_states, image_early, image_rope, chunk_size)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
     if (has_cond) {
         for (i in seq_along(self$mode_blocks$image_cond)) {
             image_cond_hidden_states <- self$mode_blocks$image_cond[[i]](
                                       image_cond_hidden_states, cond_early, cond_rope, chunk_size)
+            if (block_gc) {
+                gc(verbose = FALSE, full = FALSE)
+            }
         }
     }
 
@@ -211,7 +218,6 @@ flux3_transformer <- torch::nn_module(
                        torch::torch_cat(lapply(ropes, `[[`, 2L), dim = 1L))
     rm(hidden_states, image_cond_hidden_states)
 
-    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_along(self$single_transformer_blocks)) {
         res <- self$single_transformer_blocks[[i]](
                                       hidden_states = content,
@@ -223,7 +229,7 @@ flux3_transformer <- torch::nn_module(
         encoder_hidden_states <- res[[1]]
         content <- res[[2]]
         if (block_gc) {
-            gc(verbose = FALSE)
+            gc(verbose = FALSE, full = FALSE)
         }
     }
 

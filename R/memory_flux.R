@@ -23,12 +23,18 @@ NULL
 # 12.9 GB. ltx23_tune_gc's reserved_rate stays as the fragmentation
 # net; the LTX video pipelines keep their own separately measured
 # gates.
-.flux_gc_gates <- function(footprint_gb = 12) {
+.flux_gc_gates <- function(footprint_gb = 12, allocated_rate = 0.65,
+                           reserved_rate = NULL) {
     if (is.null(getOption("torch.cuda_allocator_allocated_reserved_rate"))) {
         options(torch.cuda_allocator_allocated_reserved_rate = 1.0)
     }
     if (is.null(getOption("torch.cuda_allocator_allocated_rate"))) {
-        options(torch.cuda_allocator_allocated_rate = 0.65)
+        options(torch.cuda_allocator_allocated_rate = allocated_rate)
+    }
+    # NULL: ltx23_tune_gc sizes it from footprint_gb
+    if (!is.null(reserved_rate) &&
+        is.null(getOption("torch.cuda_allocator_reserved_rate"))) {
+        options(torch.cuda_allocator_reserved_rate = reserved_rate)
     }
     ltx23_tune_gc(footprint_gb = footprint_gb)
     # start_torch() reads the three gate options ONCE at torch init and

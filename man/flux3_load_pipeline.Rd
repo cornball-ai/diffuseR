@@ -14,6 +14,9 @@ flux3_load_pipeline(
   encoder = TRUE,
   revision = .flux3_revision,
   dtype = NULL,
+  vram_gb = NULL,
+  stream_text = NULL,
+  resident_gb = NULL,
   verbose = TRUE
 )
 }
@@ -48,6 +51,19 @@ the validated snapshot).}
 \item{dtype}{Compute dtype, "bfloat16" or "float32". NULL (default):
 bfloat16 on CUDA, float32 on the CPU. "bfloat16" on the CPU halves
 host memory (the raw transformer is ~11 GB instead of ~22 GB).}
+
+\item{vram_gb}{Numeric or NULL. Card size the streaming defaults are
+planned for (default: the detected total).}
+
+\item{stream_text}{Logical or NULL. Stream the Qwen3-VL layers through
+the GPU one at a time from host memory, for cards that cannot hold
+the whole encoder (default: below 10 GB).}
+
+\item{resident_gb}{Numeric or NULL. GB of fp8 transformer weights
+kept on the GPU; the rest stays in (pinned) host memory and streams
+in inside each forward. NULL: all of it from 12 GB up, else
+\code{vram_gb - 6.5} (1.5 GB on an 8 GB card, enough headroom for
+1024x1024 text-to-image and a 1 MP edit). fp8 only.}
 
 \item{verbose}{Logical.}
 }

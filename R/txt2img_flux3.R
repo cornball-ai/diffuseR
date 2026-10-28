@@ -73,6 +73,16 @@ NULL
 #' @param dtype Compute dtype, "bfloat16" or "float32". NULL (default):
 #'   bfloat16 on CUDA, float32 on the CPU. "bfloat16" on the CPU halves
 #'   host memory (the raw transformer is ~11 GB instead of ~22 GB).
+#' @param vram_gb Numeric or NULL. Card size the streaming defaults are
+#'   planned for (default: the detected total).
+#' @param stream_text Logical or NULL. Stream the Qwen3-VL layers through
+#'   the GPU one at a time from host memory, for cards that cannot hold
+#'   the whole encoder (default: below 10 GB).
+#' @param resident_gb Numeric or NULL. GB of fp8 transformer weights
+#'   kept on the GPU; the rest stays in (pinned) host memory and streams
+#'   in inside each forward. NULL: all of it from 12 GB up, else
+#'   \code{vram_gb - 6.5} (1.5 GB on an 8 GB card, enough headroom for
+#'   1024x1024 text-to-image and a 1 MP edit). fp8 only.
 #' @param verbose Logical.
 #'
 #' @return A \code{flux3_pipeline} list.
@@ -83,7 +93,9 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, pin = NULL,
                                 encoder = TRUE, revision = .flux3_revision,
-                                dtype = NULL, verbose = TRUE) {
+                                dtype = NULL, vram_gb = NULL,
+                                stream_text = NULL, resident_gb = NULL,
+                                verbose = TRUE) {
     .flux2_rev(revision)
     precision <- match.arg(precision)
     if (precision != "bf16") {
@@ -91,6 +103,11 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
             .flux3_artifact_prefix())
     }
     text_device <- text_device %||% device
+    gpu <- device != "cpu"
+    plan <- .flux3_stream_plan(if (gpu) vram_gb %||% .detect_vram() else 0)
+    stream_text <- isTRUE(stream_text %||% plan$stream_text) && gpu &&
+    phase_offload && !identical(text_device, "cpu")
+    resident_gb <- resident_gb %||% plan$resident_gb
     if (is.null(model_dir)) {
         model_dir <- if (precision == "bf16") {
             dirname(.flux3_cached("transformer/config.json", revision))
@@ -111,8 +128,17 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     if (device == "cuda") {
         # Gate footprint sized to the largest phase (the ~8 GB Qwen3-VL
-        # encode), as for klein
-        .flux_gc_gates(footprint_gb = 12)
+        # encode), as for klein. On a streaming (small) card torch must
+        # collect well before the limit: R gc runs only on an allocator
+        # miss with reserved memory above reserved_rate (12 GB / 8 GB
+        # would mean never), as a full gc above allocated_rate. Block
+        # outputs promoted by the per-block minor gcs need that full gc.
+        if (is.finite(resident_gb)) {
+            .flux_gc_gates(footprint_gb = 12, allocated_rate = 0.8,
+                           reserved_rate = 0.6)
+        } else {
+            .flux_gc_gates(footprint_gb = 12)
+        }
     }
     component_device <- if (phase_offload) "cpu" else device
     compute_dtype <- dtype %||% if (device == "cpu") "float32" else "bfloat16"
@@ -136,6 +162,14 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
         pin = FALSE, fp8_resident = FALSE, verbose = verbose
     )
     pipe$fp8_resident <- identical(pipe$format, "fp8") && device == "cuda"
+    if (pipe$fp8_resident && is.finite(resident_gb)) {
+        pipe$fp8_split <- .flux3_fp8_split(pipe$transformer, resident_gb, pin)
+        if (verbose) {
+            message(sprintf("fp8 transformer: %.1f GB resident, %.1f GB streamed",
+                            pipe$fp8_split$resident_gb,
+                            pipe$fp8_split$streamed_gb))
+        }
+    }
 
     if (verbose) {
         message("Loading FLUX 3 VAE...")
@@ -179,11 +213,18 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
         .flux3_cached("text_encoder/tokenizer.json", revision))
 
     components <- intersect(c("transformer", "decoder", "encoder"), names(pipe))
-    if (!identical(text_device, "cpu")) {
+    if (!identical(text_device, "cpu") && !stream_text) {
         components <- c(components, "text_encoder")
     }
     pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
                                         components, verbose = verbose)
+    if (stream_text) {
+        if (verbose) {
+            message("Qwen3-VL streams layer by layer")
+        }
+        pipe$staging <- c(pipe$staging,
+                          list(text_encoder = .flux3_text_stream(pipe$text_encoder, pin)))
+    }
 
     structure(pipe, class = "flux3_pipeline")
 }
@@ -398,7 +439,11 @@ txt2img_flux3 <- function(prompt, pipeline = NULL, width = 1024L,
     fp8_manual <- isTRUE(pipeline$fp8_resident) &&
     is.null(staging[["transformer"]])
     if (fp8_manual) {
-        .flux_fp8_to_device(transformer, device)
+        if (is.null(pipeline$fp8_split)) {
+            .flux_fp8_to_device(transformer, device)
+        } else {
+            .flux3_fp8_to_device(pipeline$fp8_split$resident, device)
+        }
     }
     if (verbose) {
         message(sprintf("Denoising: %d steps at %dx%d...", n_steps, width,
