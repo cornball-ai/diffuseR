@@ -466,7 +466,10 @@ Measured on the RTX 5060 Ti 16 GB (fp8 resident, phase offload):
 1 MP edit ~50 s (13.8 / 14.1 GB); 4 MP edit (2048x2048 out) ~285 s
 (14.1 / 14.8 GB); pipeline load ~36 s. The 4 MP edit needed the VAE
 mid-block attention on fused SDPA (the manual form allocated an 8 GiB
-score matrix).
+score matrix). GPU check against diffusers, 1 MP edit with each side's
+own text encoder: R bf16 52.2 dB PSNR, R fp8 36.7 dB. Edits that change
+little (no snow from a "covered in snow" caption) reproduce in
+diffusers; they come from the model without its prompt upsampler.
 
 Gotchas that bit once: HF's last `hidden_states` entry carries the final
 norm (the Qwen3 encoder now matches for k = num_layers); building 5.6B

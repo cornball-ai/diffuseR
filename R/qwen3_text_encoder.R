@@ -47,14 +47,14 @@ NULL
     self$num_heads <- num_heads
     self$num_kv_heads <- num_kv_heads
     self$head_dim <- head_dim
-    self$q_proj <- torch::nn_linear(hidden_size, num_heads * head_dim,
-                                    bias = FALSE)
-    self$k_proj <- torch::nn_linear(hidden_size, num_kv_heads * head_dim,
-                                    bias = FALSE)
-    self$v_proj <- torch::nn_linear(hidden_size, num_kv_heads * head_dim,
-                                    bias = FALSE)
-    self$o_proj <- torch::nn_linear(num_heads * head_dim, hidden_size,
-                                    bias = FALSE)
+    self$q_proj <- linear_noinit(hidden_size, num_heads * head_dim,
+                                 bias = FALSE)
+    self$k_proj <- linear_noinit(hidden_size, num_kv_heads * head_dim,
+                                 bias = FALSE)
+    self$v_proj <- linear_noinit(hidden_size, num_kv_heads * head_dim,
+                                 bias = FALSE)
+    self$o_proj <- linear_noinit(num_heads * head_dim, hidden_size,
+                                 bias = FALSE)
     self$q_norm <- ltx23_rms_norm(head_dim, eps = eps)
     self$k_norm <- ltx23_rms_norm(head_dim, eps = eps)
 },
@@ -90,12 +90,12 @@ NULL
 .qwen3_mlp <- torch::nn_module(
                                "qwen3_mlp",
                                initialize = function(hidden_size, intermediate_size) {
-    self$gate_proj <- torch::nn_linear(hidden_size, intermediate_size,
-                                       bias = FALSE)
-    self$up_proj <- torch::nn_linear(hidden_size, intermediate_size,
-                                     bias = FALSE)
-    self$down_proj <- torch::nn_linear(intermediate_size, hidden_size,
-                                       bias = FALSE)
+    self$gate_proj <- linear_noinit(hidden_size, intermediate_size,
+                                    bias = FALSE)
+    self$up_proj <- linear_noinit(hidden_size, intermediate_size,
+                                  bias = FALSE)
+    self$down_proj <- linear_noinit(intermediate_size, hidden_size,
+                                    bias = FALSE)
 },
                                forward = function(x) {
     self$down_proj(torch::nnf_silu(self$gate_proj(x)) * self$up_proj(x))
@@ -262,8 +262,11 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
         args$rms_norm_eps <- as.numeric(config$rms_norm_eps)
     }
     args <- utils::modifyList(args, list(...))
-    model <- do.call(qwen3_encoder, args)
-    model$to(dtype = .flux_dtype(dtype))
+    # Build at the target dtype: a 4B fp32 build before the bf16 cast
+    # needs 16 GB of host RAM
+    model <- do.call(.construct_skeleton,
+                     c(list(qwen3_encoder), args,
+                       list(dtype = .flux_dtype(dtype))))
 
     opened <- .flux_open_sharded_dir(model_path, "model")
     ckpt <- structure(

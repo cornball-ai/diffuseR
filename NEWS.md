@@ -17,7 +17,9 @@
     `flux3_schedule()`, `flux3_is_quant_key()`.
 * `load_qwen3_text_encoder()` also loads Qwen3-VL text models, and the
   encoder takes explicit `position_ids`. Requesting the last layer now
-  returns the post-norm state, as transformers does.
+  returns the post-norm state, as transformers does. The loader builds
+  the model at the target dtype, so a bf16 load no longer passes
+  through a 16 GB fp32 copy.
 * The VAE mid-block attention (shared by the SD, SDXL, FLUX.1 and
   FLUX.2/FLUX 3 VAEs) uses fused scaled-dot-product attention when
   torch provides it. A 2048x2048 image no longer allocates an 8 GiB
