@@ -5,7 +5,7 @@
 \usage{
 txt2img(
   prompt,
-  model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage"),
+  model_name = c("sd21", "sdxl", "flux1", "flux2", "zimage", "flux3"),
   ...
 )
 }

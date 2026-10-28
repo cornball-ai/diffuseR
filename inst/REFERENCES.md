@@ -48,6 +48,18 @@ module; this file documents the actual lineage, idea by idea.
 | Qwen2 byte-level BPE tokenization (GPT-2 byte table, GPT-4-style split regex, rank-based merges) | GPT-2 BPE (Radford et al. 2019; openai/gpt-2 `encoder.py`, MIT); format facts from HuggingFace tokenizers documentation |
 | Weights | black-forest-labs/FLUX.2-klein-4B (Apache-2.0, ungated; downloaded by the user, never redistributed) |
 
+## FLUX 3 Image Klein
+
+| What | Source |
+|---|---|
+| Transformer: per-mode blocks (image, reference image, text each self-attend within the mode), joint blocks over [text; content], parallel attention + SwiGLU from one modulated input, per-token timestep modulation per mode, QK RMS norm and RoPE in float32, flow-map target-timestep embedder, AdaLayerNorm output on image tokens | Ported from HuggingFace **diffusers** (Apache-2.0): `models/transformers/transformer_flux3.py` |
+| Pipeline flow: position ids (image H/W scaled by 0.5, references at L = -1 - i, text along L), static-shift (6.93) linspace sigma schedule, flow-map step (timestep and the next one, 0 last), latents held in the compute dtype with float32 Euler steps, packed-space noise, BN de-normalize + unpatchify decode | diffusers `modular_pipelines/flux3/` (`before_denoise.py`, `denoise.py`, `decoders.py`) (Apache-2.0) |
+| Prompt encoding contract: chat template with generation prompt (no thinking block), right-padding to a multiple of 80 (cap 8192), padding at position id 1, hidden states of layers 4, 8, ..., 32 stacked per token | diffusers `modular_pipelines/flux3/encoders.py` (Apache-2.0) |
+| Qwen3-VL text model (same layers as Qwen3; interleaved MRoPE reduces to plain RoPE for text-only 1D positions; nested `text_config`, `model.language_model.*` keys) | HuggingFace **transformers** (Apache-2.0): `models/qwen3_vl/modeling_qwen3_vl.py`, loaded with the Qwen3 port above |
+| Reference preprocessing ("fill"): canvas = size rounded up to the 16 px grid and clamped to [64, 4096], downscale until the canvas fits 4 MP (0.5% back-off), numpy reflect / symmetric padding, crop box for the output | diffusers `modular_pipelines/flux3/image_processor.py` (Apache-2.0), following BFL's `reference_canvas` (described there); numpy `pad` mode semantics |
+| VAE (`AutoencoderKLFlux2`) encode and decode | The FLUX.2 klein ports above, unchanged |
+| Weights | black-forest-labs/flux-3-image-klein (FLUX Kommunity License, gated; downloaded by the user, never redistributed) |
+
 ## Z-Image Turbo
 
 | What | Source |

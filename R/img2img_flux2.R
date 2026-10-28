@@ -69,33 +69,7 @@ img2img_flux2 <- function(prompt, image, pipeline = NULL, width = NULL,
 #'
 #' @export
 flux2_preprocess_image <- function(image, max_area = 1024 * 1024) {
-    if (is.character(image)) {
-        if (!file.exists(image)) {
-            stop("image file not found: ", image, call. = FALSE)
-        }
-        image <- if (grepl("\\.png$", image, ignore.case = TRUE)) {
-            png::readPNG(image)
-        } else if (grepl("\\.jpe?g$", image, ignore.case = TRUE)) {
-            jpeg::readJPEG(image)
-        } else {
-            stop("image must be a .png, .jpg or .jpeg file", call. = FALSE)
-        }
-    }
-    if (!is.array(image) && !is.matrix(image)) {
-        stop("image must be a file path or an [H, W, 3] array", call. = FALSE)
-    }
-    if (length(dim(image)) == 2L) {
-        image <- array(rep(image, 3L), dim = c(dim(image), 3L))
-    }
-    if (length(dim(image)) != 3L) {
-        stop("image must be an [H, W, 3] array", call. = FALSE)
-    }
-    if (dim(image)[3] == 4L) {
-        image <- image[,, 1:3, drop = FALSE]
-    }
-    if (dim(image)[3] != 3L) {
-        stop("image must have 3 colour channels", call. = FALSE)
-    }
+    image <- .read_rgb_image(image)
 
     h <- dim(image)[1]
     w <- dim(image)[2]
@@ -124,6 +98,40 @@ flux2_preprocess_image <- function(image, max_area = 1024 * 1024) {
     left <- (w - crop_w) %/% 2L
     x <- x$narrow(2L, top + 1L, crop_h)$narrow(3L, left + 1L, crop_w)
     x$unsqueeze(1L)$mul(2)$sub(1)
+}
+
+# Read a PNG/JPEG path or take an array; return an [H, W, 3] array in
+# [0, 1]. Grayscale is replicated to 3 channels; alpha is dropped (as
+# PIL's convert("RGB") does).
+.read_rgb_image <- function(image) {
+    if (is.character(image)) {
+        if (!file.exists(image)) {
+            stop("image file not found: ", image, call. = FALSE)
+        }
+        image <- if (grepl("\\.png$", image, ignore.case = TRUE)) {
+            png::readPNG(image)
+        } else if (grepl("\\.jpe?g$", image, ignore.case = TRUE)) {
+            jpeg::readJPEG(image)
+        } else {
+            stop("image must be a .png, .jpg or .jpeg file", call. = FALSE)
+        }
+    }
+    if (!is.array(image) && !is.matrix(image)) {
+        stop("image must be a file path or an [H, W, 3] array", call. = FALSE)
+    }
+    if (length(dim(image)) == 2L) {
+        image <- array(rep(image, 3L), dim = c(dim(image), 3L))
+    }
+    if (length(dim(image)) != 3L) {
+        stop("image must be an [H, W, 3] array", call. = FALSE)
+    }
+    if (dim(image)[3] == 4L) {
+        image <- image[,, 1:3, drop = FALSE]
+    }
+    if (dim(image)[3] != 3L) {
+        stop("image must have 3 colour channels", call. = FALSE)
+    }
+    image
 }
 
 # PIL's Lanczos-3 resampling weights for one axis (ImagingResample

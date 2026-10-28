@@ -179,6 +179,35 @@ NULL
     args
 }
 
+.flux3_transformer_args <- function(config) {
+    if (is.null(config)) {
+        return(list())
+    }
+    args <- list(
+                 in_channels = config$in_channels,
+                 cond_in_channels = config$cond_in_channels,
+                 num_layers = config$num_layers,
+                 num_single_layers = config$num_single_layers,
+                 attention_head_dim = config$attention_head_dim,
+                 num_attention_heads = config$num_attention_heads,
+                 joint_attention_dim = config$joint_attention_dim,
+                 timestep_channels = config$timestep_channels,
+                 axes_dims_rope = config$axes_dims_rope
+    )
+    args <- Filter(function(x) !is.null(x) && length(x) > 0L, args)
+    args <- lapply(args, function(x) if (is.numeric(x)) as.integer(x) else x)
+    for (field in c("mlp_ratio", "rope_theta", "eps")) {
+        v <- config[[field]]
+        if (!is.null(v) && length(v) == 1L) {
+            args[[field]] <- as.numeric(v)
+        }
+    }
+    if (!is.null(config$flow_map)) {
+        args$flow_map <- isTRUE(config$flow_map)
+    }
+    args
+}
+
 .zimage_transformer_args <- function(config) {
     if (is.null(config)) {
         return(list())
@@ -282,6 +311,12 @@ NULL
     if (family == "flux2") {
         list(model_fn = flux2_transformer, args_fn = .flux2_transformer_args,
              is_quant_key = flux2_is_quant_key, shard_prefix = "flux2-klein")
+    } else if (family == "flux3") {
+        # skeleton: built uninitialized in the compute dtype (5.6B params
+        # would otherwise init in float32, ~22 GB, before the cast)
+        list(model_fn = flux3_transformer, args_fn = .flux3_transformer_args,
+             is_quant_key = flux3_is_quant_key, shard_prefix = "flux3-klein",
+             skeleton = TRUE)
     } else if (family == "zimage") {
         list(model_fn = zimage_transformer,
              args_fn = .zimage_transformer_args,
@@ -500,7 +535,13 @@ flux_load_transformer <- function(ckpt, device = "cuda", dtype = "bfloat16",
     hooks <- .flux_family_hooks(ckpt$config)
 
     args <- utils::modifyList(hooks$args_fn(ckpt$config), list(...))
-    model <- do.call(hooks$model_fn, args)
+    model <- if (isTRUE(hooks$skeleton)) {
+        # Every parameter is filled below (unfilled ones are an error)
+        do.call(.construct_skeleton, c(list(hooks$model_fn), args,
+                                       list(dtype = .flux_dtype(dtype))))
+    } else {
+        do.call(hooks$model_fn, args)
+    }
 
     if (format == "full") {
         model$to(dtype = .flux_dtype(dtype))

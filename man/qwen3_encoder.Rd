@@ -26,10 +26,13 @@ qwen3_encoder(
 }
 \value{
 Module whose forward(input_ids, attention_mask = NULL,
-  out_layers) returns a list of hidden-state tensors [B, S, hidden],
-  one per requested layer (a value of k means the state after k
-  layers, matching HF \code{output.hidden_states[k]}). Runs only to
-  \code{max(out_layers)}. \code{input_ids} are 1-based.
+  out_layers, position_ids = NULL) returns a list of hidden-state
+  tensors [B, S, hidden], one per requested layer (a value of k means
+  the state after k layers, matching HF \code{output.hidden_states[k]},
+  which carries the final norm when k is the last layer).
+  Runs only to \code{max(out_layers)}. \code{input_ids} are 1-based;
+  \code{position_ids} (0-based integers, length S, shared by the batch)
+  override the default 0..S-1 rotary positions.
 }
 \description{
 Defaults are the Qwen3-4B configuration used by FLUX.2 klein. The

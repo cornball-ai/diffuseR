@@ -84,6 +84,32 @@ zimage_is_quant_key <- function(key) {
     grepl(.zimage_quant_cast_pattern, key)
 }
 
+# FLUX 3 cast set: the six block linears (q/k/v/out, SwiGLU in/out) in
+# the per-mode and joint stacks, the six per-mode modulation projections
+# and the context embedder (20480 x 3072). Embedders, the timestep MLPs,
+# norm_out, proj_out and the q/k norms stay in the resident dtype. Full
+# Image Klein census: (5 x 3 mode + 28 joint blocks) x 6 + 6
+# modulations + context_embedder = 265 cast weights.
+.flux3_quant_cast_pattern <- paste0(
+                                    "^(",
+                                    "(mode_blocks\\.(image|image_cond)|txt_mode_blocks|single_transformer_blocks)",
+                                    "\\.[0-9]+\\.(attn\\.(to_q|to_k|to_v|to_out\\.0)|ff\\.(linear_in|linear_out))",
+                                    "|(early|single)_stream_modulations\\.(image|image_cond|txt)\\.linear",
+                                    "|context_embedder",
+                                    ")\\.weight$"
+)
+
+#' Test whether a FLUX 3 key is in the quantization cast set
+#'
+#' @param key Character vector of parameter names (diffusers-style).
+#'
+#' @return Logical vector.
+#'
+#' @export
+flux3_is_quant_key <- function(key) {
+    grepl(.flux3_quant_cast_pattern, key)
+}
+
 #' Test whether a FLUX.2 key is in the quantization cast set
 #'
 #' @param key Character vector of parameter names (diffusers-style).
@@ -100,6 +126,8 @@ flux2_is_quant_key <- function(key) {
     cls <- config$`_class_name` %||% "FluxTransformer2DModel"
     if (identical(cls, "Flux2Transformer2DModel")) {
         "flux2"
+    } else if (identical(cls, "Flux3Transformer2DModel")) {
+        "flux3"
     } else if (identical(cls, "ZImageTransformer2DModel")) {
         "zimage"
     } else {

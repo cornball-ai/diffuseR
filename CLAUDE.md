@@ -321,6 +321,7 @@ See cornyverse CLAUDE.md for safetensors package setup. CRAN safetensors
 - [x] Add FLUX model support (FLUX.1-schnell, see below)
 - [x] Add FLUX.2 support (klein-4B, see below)
 - [x] Add Z-Image-Turbo support (text rendering, see below)
+- [x] Add FLUX 3 Image Klein support (text-to-image + editing, see below)
 - [ ] Add SD3 model support
 - [ ] ControlNet integration
 
@@ -429,6 +430,52 @@ Gotchas that bit once: the caption's RoPE ramp is built over the PADDED
 length (pads continue the ramp; the (0,0,0) pad ids in the reference
 are dead code), and the checkpoint scheduler uses static shift 3.0 —
 the pipeline's calculate_shift/mu path is dead for this model.
+
+### FLUX 3 Image Klein
+
+Step-distilled flow map (16 steps, no CFG): 5.6B transformer with
+per-mode blocks (image, reference image and text each self-attend within
+the mode, 5 blocks each) then 28 joint blocks, per-token timestep
+modulation, plus a target-timestep embedder (the step it jumps to) +
+Qwen3-VL-4B text model (layers 4, 8, ..., 32 stacked; prompt padded to
+a multiple of 80 with pad position ids 1) + the FLUX.2 VAE. FlowMatch
+with static shift 6.93. Gated, FLUX Kommunity License (non-commercial;
+commercial outputs for Qualifying Users under US$5M revenue who filter
+or review outputs). Weights never redistributed.
+
+```r
+download_flux3_klein()   # gated: accept the license + HF_TOKEN; ~20 GB
+                         # download, one-time fp8 quantize to 5.3 GB
+pipe <- flux3_load_pipeline()
+txt2img_flux3(caption, pipeline = pipe, seed = 7)
+img2img_flux3(caption, image = "photo.png", pipeline = pipe, seed = 7)
+```
+
+The model wants full scene captions (BFL: "do not use the model without
+a prompt upsampler"); diffuseR takes the caption as given, expansion is
+the caller's job. One reference is kept whole: scaled so its canvas fits
+4 MP (`max_area`), reflect-padded to the 16 px grid, output cropped back.
+
+Verified against diffusers on the real weights (CPU): Qwen3-VL embeds
+bit-identical (fp32); transformer forward max abs 2.9e-6 (fp32,
+depth-reduced to 4 joint blocks, all code paths); 256 px end to end in
+bf16: edit 46 dB PSNR, text-to-image same composition at 24.5 dB (bf16
+trajectory noise over 16 steps). fp8 census exactly 265 weights.
+Measured on the RTX 5060 Ti 16 GB (fp8 resident, phase offload):
+1024x1024 text-to-image ~44 s (peak 11.7 GB alloc / 12.0 GB reserved);
+1 MP edit ~50 s (13.8 / 14.1 GB); 4 MP edit (2048x2048 out) ~285 s
+(14.1 / 14.8 GB); pipeline load ~36 s. The 4 MP edit needed the VAE
+mid-block attention on fused SDPA (the manual form allocated an 8 GiB
+score matrix). GPU check against diffusers, 1 MP edit with each side's
+own text encoder: R bf16 52.2 dB PSNR, R fp8 36.7 dB. Edits that change
+little (no snow from a "covered in snow" caption) reproduce in
+diffusers; they come from the model without its prompt upsampler.
+
+Gotchas that bit once: HF's last `hidden_states` entry carries the final
+norm (the Qwen3 encoder now matches for k = num_layers); building 5.6B
+params in fp32 before the bf16 cast needs 22 GB of host RAM, so the
+loader constructs a `.construct_skeleton()` (FLUX 3 opts in via
+`skeleton = TRUE` in `.flux_family_hooks`).
 
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 

@@ -1,0 +1,22 @@
+{
+  "_class_name": "Flux3Transformer2DModel",
+  "_diffusers_version": "0.42.0.dev0",
+  "attention_head_dim": 16,
+  "axes_dims_rope": [
+    4,
+    4,
+    4,
+    4
+  ],
+  "cond_in_channels": 8,
+  "eps": 1e-06,
+  "flow_map": true,
+  "in_channels": 8,
+  "joint_attention_dim": 32,
+  "mlp_ratio": 3.0,
+  "num_attention_heads": 2,
+  "num_layers": 1,
+  "num_single_layers": 2,
+  "rope_theta": 10000,
+  "timestep_channels": 256
+}
