@@ -20,24 +20,52 @@ NULL
 #' (tiled VAE decode, in-place feed-forward GELU, and the default
 #' \code{diffuseR.attn_budget} of 1.5e8 all required at that size).
 #'
+#' Below 14 GB the NF4 transformer keeps \code{resident_gb} on the GPU
+#' and streams its remaining blocks from pinned host memory every step
+#' (pass it to \code{\link{ltx23_load_pipeline}}), and below 12 GB the
+#' Gemma 4 encoder streams its layers (\code{stream_text}; pass it as
+#' \code{stream} to \code{\link{load_gemma4_text_encoder}}). Measured
+#' with the rest of a 16 GB card held back: LTX-2.5 768x512x121 renders
+#' in ~84 s on both 12 GB (8 GB resident) and 8 GB (4 GB resident), the
+#' same as on the full card.
+#'
 #' \describe{
-#'   \item{precision "nf4"}{Weights resident on the GPU; fastest steps;
-#'     about 9 percent weight round-trip error.}
+#'   \item{precision "nf4"}{Weights resident on the GPU (or partly
+#'     streamed); fastest steps; about 9 percent weight round-trip error.}
 #'   \item{precision "fp8"}{Weights CPU-resident, streamed per linear;
 #'     near-bf16 quality; each step pays the PCIe transfer.}
 #' }
 #'
+#' Host RAM decides two more fields for the GPU tiers. \code{split_text}
+#' asks the caller to encode in its own phase (Gemma, then the
+#' connectors, each freed before the next loads; see
+#' \code{\link{ltx23_text_embeds}}) instead of holding the encoder next
+#' to the render pipeline. \code{resident_from} is passed to
+#' \code{\link{ltx23_load_pipeline}}: \code{"disk"} drops the host copy
+#' of the GPU-resident transformer blocks. Below 32 GB available the
+#' text phase splits off; below 22 GB the resident blocks come from
+#' disk (measured on LTX-2.5 at 768x512x121 with an 8 GB card: the
+#' render phase peaks at 20.1 GB of host RAM with host copies and 16.0
+#' GB without, for ~8 s more per render).
+#'
 #' @param vram_gb Numeric or NULL (auto-detect free VRAM).
+#' @param host_ram_gb Numeric or NULL (auto-detect available RAM; NA
+#'   when undetectable, which keeps the all-in-RAM defaults).
 #'
 #' @return Named list with device/dtype placement, \code{attn_chunk},
-#'   \code{pin_weights}, and resolution caps.
+#'   \code{pin_weights}, \code{resident_gb}, \code{stream_text},
+#'   \code{split_text}, \code{resident_from}, and resolution caps.
 #'
 #' @export
-ltx23_memory_profile <- function(vram_gb = NULL) {
+ltx23_memory_profile <- function(vram_gb = NULL, host_ram_gb = NULL) {
     if (is.null(vram_gb)) {
         vram_gb <- .detect_vram(use_free = TRUE)
         message(sprintf("Detected %.1f GB free VRAM", vram_gb))
     }
+    if (is.null(host_ram_gb)) {
+        host_ram_gb <- .detect_host_ram()
+    }
+    ram_known <- isTRUE(is.finite(host_ram_gb))
 
     profile <- if (vram_gb >= 14) {
         "high"
@@ -49,35 +77,44 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
         "cpu_only"
     }
 
+    # Streamed tiers keep vram_gb - 4 GB of the transformer resident:
+    # 768x512x121 activations, connectors and decode fit in the rest
+    resident <- max(0, vram_gb - 4)
     profiles <- list(
                      high = list(name = "high", device = "cuda", dtype = "bfloat16",
                                  precision = "nf4", phase_offload = TRUE,
                                  pin_weights = FALSE, attn_chunk = NULL,
-                                 text_device = "cpu", max_resolution = c(704L, 1280L),
+                                 text_device = "cpu", resident_gb = Inf,
+                                 stream_text = FALSE,
+                                 max_resolution = c(704L, 1280L),
                                  max_frames = 121L),
                      medium = list(
                                    name = "medium",
                                    device = "cuda",
                                    dtype = "bfloat16",
-                                   precision = "fp8",
+                                   precision = "nf4",
                                    phase_offload = TRUE,
                                    pin_weights = TRUE,
-                                   attn_chunk = 4096L,
-                                   text_device = "cpu",
-                                   max_resolution = c(576L, 1024L),
+                                   attn_chunk = NULL,
+                                   text_device = "cuda",
+                                   resident_gb = resident,
+                                   stream_text = vram_gb < 12,
+                                   max_resolution = c(512L, 768L),
                                    max_frames = 121L
         ),
                      low = list(
                                 name = "low",
                                 device = "cuda",
                                 dtype = "bfloat16",
-                                precision = "fp8",
+                                precision = "nf4",
                                 phase_offload = TRUE,
                                 pin_weights = TRUE,
-                                attn_chunk = 2048L,
-                                text_device = "cpu",
+                                attn_chunk = NULL,
+                                text_device = "cuda",
+                                resident_gb = resident,
+                                stream_text = TRUE,
                                 max_resolution = c(512L, 768L),
-                                max_frames = 65L
+                                max_frames = 121L
         ),
                      cpu_only = list(
                                      name = "cpu_only",
@@ -88,13 +125,32 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
                                      pin_weights = FALSE,
                                      attn_chunk = NULL,
                                      text_device = "cpu",
+                                     resident_gb = Inf,
+                                     stream_text = FALSE,
                                      max_resolution = c(384L, 640L),
                                      max_frames = 33L
         )
     )
 
-    profiles[[profile]]
+    out <- profiles[[profile]]
+    gpu <- out$device == "cuda"
+    out$split_text <- gpu && ram_known && host_ram_gb < .ltx23_ram_one_process
+    out$resident_from <- if (gpu && ram_known &&
+                             host_ram_gb < .ltx23_ram_host_resident) {
+        "disk"
+    } else {
+        "host"
+    }
+    out
 }
+
+# Host RAM (GB) for the LTX GPU tiers: the render pipeline plus the
+# Gemma 4 encoder in one process, and the render pipeline alone with
+# its resident blocks kept in host memory (LTX-2.5 768x512x121 on a
+# simulated 8 GB card, high-water marks: 20.1 GB with host copies,
+# 16.0 GB re-reading from disk, 12.4 GB for the split text phase)
+.ltx23_ram_one_process <- 32
+.ltx23_ram_host_resident <- 22
 
 #' Tune the torch CUDA allocator for large-resident inference
 #'

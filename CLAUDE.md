@@ -495,6 +495,34 @@ params in fp32 before the bf16 cast needs 22 GB of host RAM, so the
 loader constructs a `.construct_skeleton()` (FLUX 3 opts in via
 `skeleton = TRUE` in `.flux_family_hooks`).
 
+### LTX on 8 and 12 GB cards
+
+`ltx23_load_pipeline(resident_gb = )` keeps the leading NF4 blocks on
+the GPU and streams the rest from pinned memory one block per
+TorchScript call (`.ltx23_block_stream`); under 7 GB the text
+connectors stream too. `load_gemma4_nf4(stream = TRUE)` streams Gemma 4
+layers. `ltx23_memory_profile()` picks `resident_gb = vram - 4` below
+14 GB. Simulated (ballast tensor) at 768x512x121: 12 GB and 8 GB both
+~84 s, same as 16 GB; PCIe 5 hides 6.7 GB/step of streaming.
+
+Gotcha that cost an hour: the first render in a process differs from
+later ones with the same seed (TorchScript's profiling executor swaps
+graphs after its first calls; max latent diff ~3), so compare streamed
+vs resident only after a warm-up run. Host RAM: the pipeline's pinned
+staging plus Gemma 4 need ~31 GB in one process. Low-RAM flow: encode
+with Gemma, free it, `ltx23_text_embeds()` on a connectors-only
+pipeline loaded `pin = FALSE`, free it, then load the render pipeline
+without connectors, optionally `resident_from = "disk"` (no host copy
+of the resident blocks; re-read at ~1 GB/s). Measured high-water marks
+at 768x512x121: text 12.4 GB; render 20.1 GB (host) / 16.0 GB (disk)
+on 8 GB, 14.9 GB (disk) on 12 GB. Set `MALLOC_MMAP_THRESHOLD_=1048576`
+so freed tensors return to the OS.
+
+Gotchas that bit once (host RAM): freed PINNED memory stays in torch's
+CachingHostAllocator, not the OS, so a pipeline you plan to drop must
+load unpinned (RSS stayed 9 GB after freeing pinned connectors). Pinned
+pages show up as RssShmem in /proc/self/status, not RssAnon.
+
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 
 The original LTX-2.0 port was removed and is being replaced by a ground-up

@@ -47,3 +47,53 @@ clear()
 expect_equal(ltx23_tune_gc(footprint_gb = 12, total_gb = 12), 0.92)
 
 options(old)
+
+# Profiles: small cards stream NF4 transformer blocks (vram - 4 GB
+# resident) and, below 12 GB, the Gemma 4 layers
+p16 <- ltx23_memory_profile(16)
+expect_equal(p16$name, "high")
+expect_equal(p16$resident_gb, Inf)
+expect_false(p16$stream_text)
+p12 <- ltx23_memory_profile(12)
+expect_equal(p12$name, "medium")
+expect_equal(p12$precision, "nf4")
+expect_equal(p12$resident_gb, 8)
+expect_false(p12$stream_text)
+p8 <- ltx23_memory_profile(8)
+expect_equal(p8$name, "low")
+expect_equal(p8$precision, "nf4")
+expect_equal(p8$resident_gb, 4)
+expect_true(p8$stream_text)
+expect_true(ltx23_memory_profile(11)$stream_text)
+expect_equal(ltx23_memory_profile(4)$name, "cpu_only")
+
+# Host RAM: plenty keeps everything in one process with host copies;
+# less splits the text phase off, then drops the resident host copy
+big <- ltx23_memory_profile(8, host_ram_gb = 64)
+expect_false(big$split_text)
+expect_equal(big$resident_from, "host")
+mid <- ltx23_memory_profile(8, host_ram_gb = 24)
+expect_true(mid$split_text)
+expect_equal(mid$resident_from, "host")
+small <- ltx23_memory_profile(12, host_ram_gb = 16)
+expect_true(small$split_text)
+expect_equal(small$resident_from, "disk")
+# Unknown RAM keeps the defaults; the CPU tier never stages
+unknown <- ltx23_memory_profile(8, host_ram_gb = NA)
+expect_false(unknown$split_text)
+expect_equal(unknown$resident_from, "host")
+cpu <- ltx23_memory_profile(4, host_ram_gb = 8)
+expect_false(cpu$split_text)
+expect_equal(cpu$resident_from, "host")
+
+# The loader refuses block streaming it cannot do
+expect_error(ltx23_load_pipeline("unused", device = "cpu", resident_gb = 4),
+             "phase_offload")
+expect_error(ltx23_load_pipeline("unused", device = "cpu",
+                                 resident_from = "disk"), "phase_offload")
+
+# The split text phase needs connectors, and an encoder or raw states
+no_conn <- structure(list(), class = "ltx23_pipeline")
+expect_error(ltx23_text_embeds("p", no_conn), "connectors")
+fake <- structure(list(connectors = list()), class = "ltx23_pipeline")
+expect_error(ltx23_text_embeds("p", fake), "prompt_embeds")

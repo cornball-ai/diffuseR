@@ -368,23 +368,58 @@ ltx23_transformer <- torch::nn_module(
     !is.null(video_ca_rotary_emb) && !is.null(audio_ca_rotary_emb) &&
     .ltx23_jit_block_ok(self$transformer_blocks[[1]])
 
+    # Block streaming (see .ltx23_block_stream): blocks past n_resident
+    # live in pinned host memory and visit the device one at a time
+    stream <- self$block_stream
+    n_blocks <- length(self$transformer_blocks)
+    n_resident <- if (is.null(stream)) n_blocks else stream$n_resident
+    stream_on <- function(i) {
+        if (i > n_resident) {
+            .staged_onload(stream$staging[[i - n_resident]],
+                           hidden_states$device)
+        }
+    }
+    stream_off <- function(i) {
+        if (i > n_resident) {
+            .staged_offload(stream$staging[[i - n_resident]])
+            # The onload's R-side copies hold the device storage until
+            # collected
+            gc(verbose = FALSE, full = FALSE)
+        }
+    }
+
     if (use_jit) {
-        res <- .ltx23_jit_run_stack(
-                                    self$transformer_blocks,
-                                    hidden_states, audio_hidden_states,
-                                    encoder_hidden_states, audio_encoder_hidden_states,
-                                    temb, temb_audio,
-                                    video_ca_scale_shift, audio_ca_scale_shift,
-                                    video_ca_a2v_gate, audio_ca_v2a_gate,
-                                    temb_prompt, temb_prompt_audio,
-                                    video_rotary_emb, audio_rotary_emb,
-                                    video_ca_rotary_emb, audio_ca_rotary_emb,
-                                    encoder_attention_mask,
-                                    audio_encoder_attention_mask,
-                                    cond_token_index = cond_token_index
-        )
-        hidden_states <- res[[1]]
-        audio_hidden_states <- res[[2]]
+        run_stack <- function(blocks) {
+            res <- .ltx23_jit_run_stack(
+                                        blocks,
+                                        hidden_states, audio_hidden_states,
+                                        encoder_hidden_states, audio_encoder_hidden_states,
+                                        temb, temb_audio,
+                                        video_ca_scale_shift, audio_ca_scale_shift,
+                                        video_ca_a2v_gate, audio_ca_v2a_gate,
+                                        temb_prompt, temb_prompt_audio,
+                                        video_rotary_emb, audio_rotary_emb,
+                                        video_ca_rotary_emb, audio_ca_rotary_emb,
+                                        encoder_attention_mask,
+                                        audio_encoder_attention_mask,
+                                        cond_token_index = cond_token_index
+            )
+            hidden_states <<- res[[1]]
+            audio_hidden_states <<- res[[2]]
+        }
+        if (n_resident == n_blocks) {
+            run_stack(self$transformer_blocks)
+        } else {
+            if (n_resident > 0L) {
+                run_stack(lapply(seq_len(n_resident),
+                                 function(i) self$transformer_blocks[[i]]))
+            }
+            for (i in seq(n_resident + 1L, n_blocks)) {
+                stream_on(i)
+                run_stack(list(self$transformer_blocks[[i]]))
+                stream_off(i)
+            }
+        }
     }
 
     block_gc <- isTRUE(getOption("diffuseR.block_gc"))
@@ -402,6 +437,7 @@ ltx23_transformer <- torch::nn_module(
     eager_blocks <- if (use_jit) integer(0) else seq_along(self$transformer_blocks)
     for (block_idx in eager_blocks) {
         is_stg_block <- (block_idx - 1L) %in% stg_blocks # reference indices are 0-based
+        stream_on(block_idx)
         res <- self$transformer_blocks[[block_idx]](
                                       hidden_states = hidden_states,
                                       audio_hidden_states = audio_hidden_states,
@@ -429,6 +465,7 @@ ltx23_transformer <- torch::nn_module(
         )
         hidden_states <- res[[1]]
         audio_hidden_states <- res[[2]]
+        stream_off(block_idx)
         if (isTRUE(getOption("diffuseR.debug"))) {
             ms <- torch::cuda_memory_stats()
             message(sprintf("    block %d: %.2f GB allocated, %.2f GB reserved",

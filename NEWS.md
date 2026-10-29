@@ -1,3 +1,49 @@
+# diffuseR 0.2.2.18
+
+* **LTX-2.5 on 8 and 12 GB cards.** The NF4 transformer can keep part
+  of itself on the GPU and stream the rest from pinned host memory, one
+  block per call, every step:
+  - `ltx23_load_pipeline(resident_gb = )` sets how much stays resident
+    (default `Inf`, all of it). Under 7 GB the text connectors (5.9 GB)
+    stream too: their two projections as units, their blocks one at a
+    time.
+  - `load_gemma4_nf4(stream = TRUE)` / `load_gemma4_text_encoder()`
+    stage Gemma 4 layer by layer, so an encode holds the embeddings and
+    one layer at a time (3 GB peak instead of 8.8 GB).
+  - `ltx23_memory_profile()` now returns `resident_gb` and
+    `stream_text`; its 10-14 GB and 7-10 GB tiers use NF4 with
+    streaming instead of fp8, which LTX-2.5 has no artifact for.
+  - Measured with the rest of a 16 GB card held back, 768x512x121:
+    ~84 s on 12 GB (8 GB resident, pipeline peak 9.6 GB) and on 8 GB
+    (4 GB resident, peak 5.7 GB), the same as the full card.
+* **LTX with less host RAM.** The full small-card flow in one process
+  needs about 31 GB (the pinned render pipeline plus Gemma 4). Two ways
+  to need less:
+  - `ltx23_text_embeds()` runs the connectors on a connectors-only
+    pipeline and returns the embeddings for `txt2vid_ltx2(connector_embeds = )`.
+    It takes raw `prompt_embeds`, so you encode with Gemma, free it, run
+    the connectors, free them, and only then load the render pipeline
+    (`components` without `"connectors"`). The text phase peaks at
+    12.4 GB.
+  - `ltx23_load_pipeline(resident_from = "disk")` keeps no host copy of
+    the GPU-resident NF4 blocks and re-reads them from the artifact each
+    render (~1 GB/s through safetensors).
+  - `ltx23_load_pipeline(pin = FALSE)` now also leaves the staging
+    buffers unpinned. Freed pinned memory stays in torch's host cache,
+    so a pipeline you will drop should load unpinned.
+  - `ltx23_memory_profile(host_ram_gb = )` (detected by default) returns
+    `split_text` (below 32 GB) and `resident_from` (`"disk"` below
+    22 GB).
+  - Measured at 768x512x121 under a 20 GB cgroup cap, split text phase,
+    second render. 8 GB card: host copies 20.1 GB high-water, 82 s;
+    disk 16.0 GB, 90 s. 12 GB card, disk: 14.9 GB (the load), 10.4 GB
+    while rendering, 92 s. Host and disk renders are bit-identical.
+* Streaming keeps the output: once TorchScript has warmed up, streamed
+  and resident renders are bit-identical. The first render in a process
+  still differs from later ones with the same seed (the profiling
+  executor switches graphs after its first calls); that predates this
+  release.
+
 # diffuseR 0.2.2.17
 
 * **FLUX 3 on 8 and 12 GB cards.** `flux3_load_pipeline()` plans from

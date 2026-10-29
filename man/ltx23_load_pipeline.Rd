@@ -12,6 +12,8 @@ ltx23_load_pipeline(
   pin = TRUE,
   attn_chunk = NULL,
   phase_offload = TRUE,
+  resident_gb = Inf,
+  resident_from = c("host", "disk"),
   verbose = TRUE
 )
 }
@@ -34,7 +36,10 @@ weights when loading the plain (non-fp8) checkpoint.}
 
 \item{components}{Character vector. Which components to load.}
 
-\item{pin}{Logical. Pin fp8 host memory (fp8 artifact only).}
+\item{pin}{Logical. Pin host memory: the fp8 weights, and the
+phase-offload staging buffers (with \code{options(diffuseR.pin_staging)}).
+Freed pinned memory stays in torch's host cache, so pass
+\code{FALSE} for a pipeline that will be dropped to make room.}
 
 \item{attn_chunk}{Integer or NULL. Query-chunk size for attention
 (see \code{\link{ltx23_set_attn_chunk}}).}
@@ -42,6 +47,22 @@ weights when loading the plain (non-fp8) checkpoint.}
 \item{phase_offload}{Logical. Load the small components (connectors,
 VAEs, vocoder) to the CPU; the pipeline moves each onto the compute
 device only for its phase.}
+
+\item{resident_gb}{Numeric. GB of the transformer kept on the GPU
+during denoising (default \code{Inf}: all of it). With less, its
+leading blocks stay resident and the rest stream from (pinned) host
+memory one block at a time every step, for cards that cannot hold
+the ~12.5 GB NF4 transformer; under 7 GB the text connectors
+stream too. Needs \code{phase_offload} on CUDA. See
+\code{\link{ltx23_memory_profile}}.}
+
+\item{resident_from}{Where the GPU-resident part of an NF4
+transformer comes back from after each render's decode phase:
+\code{"host"} (default) keeps a pinned host copy, \code{"disk"}
+keeps none and re-reads it from the artifact at the next onload
+(the OS page cache serves it when RAM allows). \code{"disk"} saves
+host RAM equal to the resident part (up to ~12 GB) for a re-read
+per render. Needs \code{phase_offload} on CUDA.}
 
 \item{verbose}{Logical.}
 }
