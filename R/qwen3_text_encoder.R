@@ -229,9 +229,14 @@ qwen3_encoder <- torch::nn_module(
 #' input with 1D positions, Qwen3-VL's interleaved MRoPE reduces to the
 #' plain Qwen3 rotary (all three axes carry the same position).
 #'
+#' A directory written by \code{\link{qwen3_quantize}} loads with fp8 or
+#' NF4 projection linears that dequantize per forward. fp8 weights are
+#' plain module fields, not parameters: they move with \code{device}
+#' here, but \code{$to()} on the returned model moves only the residents.
+#'
 #' @param model_path Directory with \code{config.json} and
 #'   \code{model*.safetensors} (FLUX.2-klein's or FLUX 3's
-#'   \code{text_encoder}).
+#'   \code{text_encoder}), or a \code{\link{qwen3_quantize}} artifact.
 #' @param device Character. Target device.
 #' @param dtype Character. "bfloat16" (GPU) or "float32" (CPU).
 #' @param verbose Logical.
@@ -243,6 +248,9 @@ qwen3_encoder <- torch::nn_module(
 load_qwen3_text_encoder <- function(model_path, device = "cpu",
                                     dtype = "float32", verbose = TRUE, ...) {
     model_path <- path.expand(model_path)
+    if (.is_qwen3_artifact(model_path)) {
+        return(.load_qwen3_quantized(model_path, device, dtype, verbose, ...))
+    }
     config <- NULL
     config_path <- file.path(model_path, "config.json")
     if (file.exists(config_path)) {
@@ -254,6 +262,33 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
         config <- config$text_config
     }
 
+    args <- utils::modifyList(.qwen3_args(config), list(...))
+    # Build at the target dtype: a 4B fp32 build before the bf16 cast
+    # needs 16 GB of host RAM
+    model <- do.call(.construct_skeleton,
+                     c(list(qwen3_encoder), args, list(dtype = .flux_dtype(dtype))))
+
+    opened <- .flux_open_sharded_dir(model_path, "model")
+    ckpt <- structure(
+                      list(handle = opened$handle, keys = opened$keys,
+                           version = NULL, config = config, path = model_path),
+                      class = "ltx23_checkpoint"
+    )
+    res <- ltx23_load_group(ckpt, ckpt$keys, model,
+                            map_key = function(key) .qwen3_map_key(key, vl),
+                            verbose = verbose)
+    if (length(res$unmapped) || length(res$unfilled)) {
+        stop("Qwen3 encoder load: ", length(res$unmapped),
+             " unmapped keys, ", length(res$unfilled), " unfilled params")
+    }
+
+    model$to(device = device)
+    model$eval()
+    model
+}
+
+# qwen3_encoder constructor arguments from a (text) config
+.qwen3_args <- function(config) {
     args <- list(vocab_size = config$vocab_size,
                  hidden_size = config$hidden_size,
                  intermediate_size = config$intermediate_size,
@@ -271,40 +306,7 @@ load_qwen3_text_encoder <- function(model_path, device = "cpu",
     if (!is.null(config$rms_norm_eps)) {
         args$rms_norm_eps <- as.numeric(config$rms_norm_eps)
     }
-    args <- utils::modifyList(args, list(...))
-    # Build at the target dtype: a 4B fp32 build before the bf16 cast
-    # needs 16 GB of host RAM
-    model <- do.call(.construct_skeleton,
-                     c(list(qwen3_encoder), args, list(dtype = .flux_dtype(dtype))))
-
-    opened <- .flux_open_sharded_dir(model_path, "model")
-    ckpt <- structure(
-                      list(handle = opened$handle, keys = opened$keys,
-                           version = NULL, config = config, path = model_path),
-                      class = "ltx23_checkpoint"
-    )
-    map_key <- function(key) {
-        if (identical(key, "lm_head.weight")) {
-            return(NA_character_) # tied to embed_tokens
-        }
-        if (vl) {
-            if (startsWith(key, "model.visual.")) {
-                return(NA_character_)
-            }
-            key <- sub("^model\\.language_model\\.", "model.", key)
-        }
-        key
-    }
-    res <- ltx23_load_group(ckpt, ckpt$keys, model, map_key = map_key,
-                            verbose = verbose)
-    if (length(res$unmapped) || length(res$unfilled)) {
-        stop("Qwen3 encoder load: ", length(res$unmapped),
-             " unmapped keys, ", length(res$unfilled), " unfilled params")
-    }
-
-    model$to(device = device)
-    model$eval()
-    model
+    args
 }
 
 #' Encode prompts with the Qwen3 encoder for FLUX.2

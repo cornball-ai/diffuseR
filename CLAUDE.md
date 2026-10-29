@@ -479,6 +479,16 @@ ballast tensor on the 16 GB card: 8 GB runs 1024^2 t2i in ~30 s and a
 1 MP edit in ~56 s; 12 GB (no streaming) ~27 s / ~53 s. 16 GB: t2i
 ~27 s (peak 9.1 GB), 1 MP edit ~53 s (10.7 GB).
 
+Host RAM: `download_flux3_klein()` also quantizes the Qwen3-VL text
+model to fp8 (`qwen3_quantize()`, 4.4 GB artifact
+`flux3-klein-qwen3vl-fp8`), which `flux3_load_pipeline(text_precision
+= "auto")` picks up. Host high-water at 1024^2: bf16 text 20.2 GB, fp8
+15.5 GB, NF4 13.5 GB; same speed. fp8 text keeps the bf16 image (27 dB
+PSNR, embeddings 2.7% rel. error); NF4 text (5%) changes the
+composition for the same seed, so it is opt-in. Pinned host memory
+rounds up in torch's CachingHostAllocator: RssShmem is 13.2 GB for
+~9.7 GB of fp8 weights.
+
 Gotchas that bit once (gc on small cards): torch for R runs R's gc only
 on an allocator miss, and not at all while reserved memory is below
 `torch.cuda_allocator_reserved_rate` x total; `ltx23_tune_gc` sets

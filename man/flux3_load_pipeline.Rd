@@ -17,6 +17,7 @@ flux3_load_pipeline(
   vram_gb = NULL,
   stream_text = NULL,
   resident_gb = NULL,
+  text_precision = c("auto", "fp8", "nf4", "bf16"),
   verbose = TRUE
 )
 }
@@ -64,6 +65,11 @@ kept on the GPU; the rest stays in (pinned) host memory and streams
 in inside each forward. NULL: all of it from 12 GB up, else
 \code{vram_gb - 6.5} (1.5 GB on an 8 GB card, enough headroom for
 1024x1024 text-to-image and a 1 MP edit). fp8 only.}
+
+\item{text_precision}{Qwen3-VL weights: "auto" (default: the fp8,
+then NF4, artifact built by \code{\link{download_flux3_klein}},
+else bf16), "fp8" (~4.4 GB of host memory instead of ~8 GB),
+"nf4" (~2.8 GB), or "bf16" (the cached source).}
 
 \item{verbose}{Logical.}
 }

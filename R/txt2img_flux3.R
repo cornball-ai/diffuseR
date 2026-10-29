@@ -26,6 +26,24 @@ NULL
     file.path(tools::R_user_dir("diffuseR", "data"), "flux3-klein-")
 }
 
+# Quantized Qwen3-VL text model (see qwen3_quantize)
+.flux3_text_artifact <- function(format) {
+    paste0(.flux3_artifact_prefix(), "qwen3vl-", format)
+}
+
+# text_precision = "auto": a built artifact (fp8 first), else bf16
+.flux3_resolve_text_precision <- function(text_precision) {
+    if (!identical(text_precision, "auto")) {
+        return(text_precision)
+    }
+    for (p in c("fp8", "nf4")) {
+        if (.is_qwen3_artifact(.flux3_text_artifact(p), p)) {
+            return(p)
+        }
+    }
+    "bf16"
+}
+
 # Resolve a FLUX 3 file from the HuggingFace cache
 .flux3_cached <- function(file, revision = .flux3_revision) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
@@ -83,6 +101,10 @@ NULL
 #'   in inside each forward. NULL: all of it from 12 GB up, else
 #'   \code{vram_gb - 6.5} (1.5 GB on an 8 GB card, enough headroom for
 #'   1024x1024 text-to-image and a 1 MP edit). fp8 only.
+#' @param text_precision Qwen3-VL weights: "auto" (default: the fp8,
+#'   then NF4, artifact built by \code{\link{download_flux3_klein}},
+#'   else bf16), "fp8" (~4.4 GB of host memory instead of ~8 GB),
+#'   "nf4" (~2.8 GB), or "bf16" (the cached source).
 #' @param verbose Logical.
 #'
 #' @return A \code{flux3_pipeline} list.
@@ -95,6 +117,7 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 encoder = TRUE, revision = .flux3_revision,
                                 dtype = NULL, vram_gb = NULL,
                                 stream_text = NULL, resident_gb = NULL,
+                                text_precision = c("auto", "fp8", "nf4", "bf16"),
                                 verbose = TRUE) {
     .flux2_rev(revision)
     precision <- match.arg(precision)
@@ -199,11 +222,23 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading Qwen3-VL text encoder...")
     }
-    te_dir <- dirname(.flux3_cached("text_encoder/config.json", revision))
-    for (f in c("text_encoder/model.safetensors.index.json",
-                sprintf("text_encoder/model-%05d-of-00002.safetensors", 1:2))) {
-        .flux3_cached(f, revision)
+    text_precision <- .flux3_resolve_text_precision(match.arg(text_precision))
+    te_dir <- if (text_precision == "bf16") {
+        for (f in c("text_encoder/model.safetensors.index.json",
+                    sprintf("text_encoder/model-%05d-of-00002.safetensors", 1:2))) {
+            .flux3_cached(f, revision)
+        }
+        dirname(.flux3_cached("text_encoder/config.json", revision))
+    } else {
+        dir <- .flux3_text_artifact(text_precision)
+        if (!.is_qwen3_artifact(dir, text_precision)) {
+            stop("No ", text_precision, " Qwen3-VL artifact at ", dir,
+                 "; run download_flux3_klein(text_precision = \"",
+                 text_precision, "\") first.", call. = FALSE)
+        }
+        dir
     }
+    pipe$text_precision <- text_precision
     pipe$text_encoder <- load_qwen3_text_encoder(
         te_dir, device = if (phase_offload) "cpu" else text_device,
         dtype = if (text_device == "cpu") "float32" else "bfloat16",

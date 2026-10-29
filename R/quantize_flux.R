@@ -228,6 +228,15 @@ NULL
     args
 }
 
+# float8_e4m3fn weight with a per-tensor absmax/448 float32 scale
+.fp8_quantize <- function(tensor) {
+    scale <- tensor$abs()$max()$to(dtype = torch::torch_float32())$
+    clamp(min = 1e-12) / 448
+    list(weight = (tensor$to(dtype = torch::torch_float32()) / scale)$
+         to(dtype = torch::torch_float8_e4m3fn()),
+         scale = scale)
+}
+
 # Move plain-field fp8 weights (and their scales) onto a device; used
 # for resident fp8 where the whole quantized model fits on the GPU
 .flux_fp8_to_device <- function(module, device) {
@@ -294,6 +303,9 @@ NULL
             } else {
                 .flux3_fp8_fields(pipe$fp8_split$resident)
             }
+        } else if (identical(nm, "text_encoder")) {
+            # An fp8 Qwen3 artifact's weights (empty list otherwise)
+            .flux_fp8_collect(module)
         } else {
             NULL
         }
@@ -404,9 +416,6 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
 
     ckpt <- flux_open_checkpoint(transformer_dir)
     hooks <- .flux_family_hooks(ckpt$config)
-    if (format == "fp8") {
-        fp8 <- torch::torch_float8_e4m3fn()
-    }
 
     shard <- list()
     shard_size <- 0
@@ -443,10 +452,9 @@ flux_quantize <- function(transformer_dir, output_dir = NULL,
                     shard[[paste0(key, "_absmax")]] <- q$absmax
                     shard_size <- shard_size + prod(tensor$shape) * 0.5625
                 } else {
-                    scale <- tensor$abs()$max()$to(dtype = torch::torch_float32())$
-                    clamp(min = 1e-12) / 448
-                    shard[[key]] <- (tensor$to(dtype = torch::torch_float32()) / scale)$to(dtype = fp8)
-                    shard[[paste0(key, "_scale")]] <- scale
+                    q <- .fp8_quantize(tensor)
+                    shard[[key]] <- q$weight
+                    shard[[paste0(key, "_scale")]] <- q$scale
                     shard_size <- shard_size + prod(tensor$shape)
                 }
             })

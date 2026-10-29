@@ -74,17 +74,26 @@ NULL
 #' @param output_dir Directory for the quantized artifact.
 #' @param text_encoders Logical. Also fetch the Qwen3-VL text encoder,
 #'   tokenizer and VAE (~9.2 GB).
+#' @param text_precision Quantize the Qwen3-VL text model too (with
+#'   \code{quantize}): "fp8" (default; a 4.4 GB artifact, host memory at
+#'   1024x1024 20.2 -> 15.5 GB, images close to bf16 text: 27 dB PSNR),
+#'   "nf4" (2.8 GB, 13.5 GB host, but a visibly different image for the
+#'   same seed), or "bf16" (keep only the cached source).
+#'   \code{\link{flux3_load_pipeline}} picks the artifact up.
 #' @param verbose Logical.
 #'
 #' @return Invisibly, a list with \code{transformer_dir},
-#'   \code{artifact_dir}, and \code{support} (named file paths).
+#'   \code{artifact_dir}, \code{support} (named file paths), and
+#'   \code{text_artifact_dir} when the text model was quantized.
 #'
 #' @export
 download_flux3_klein <- function(quantize = TRUE,
                                  precision = c("auto", "fp8", "nf4"),
                                  output_dir = NULL, text_encoders = TRUE,
+                                 text_precision = c("fp8", "nf4", "bf16"),
                                  verbose = TRUE) {
     precision <- match.arg(precision)
+    text_precision <- match.arg(text_precision)
     precision <- .flux_resolve_precision(precision, .flux3_artifact_prefix())
     precision <- .st_graceful_precision(precision, mode = "write")
     output_dir <- output_dir %||% paste0(.flux3_artifact_prefix(), precision)
@@ -151,6 +160,14 @@ download_flux3_klein <- function(quantize = TRUE,
         }
         result$support <- vapply(.flux3_support_files, .flux3_download,
                                  character(1))
+        if (quantize && text_precision != "bf16") {
+            text_precision <- .st_graceful_precision(text_precision,
+                                                     mode = "write")
+            result$text_artifact_dir <- .flux3_text_artifact(text_precision)
+            qwen3_quantize(dirname(result$support[["text_encoder/config.json"]]),
+                           result$text_artifact_dir, format = text_precision,
+                           verbose = verbose)
+        }
     }
 
     invisible(result)

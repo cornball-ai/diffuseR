@@ -40,7 +40,8 @@
 .flux3_text_stream <- function(encoder, pin) {
     layers <- encoder$model$layers
     encoder$layer_stream <- lapply(seq_along(layers), function(i) {
-        .stage_pairs(c(layers[[i]]$parameters, layers[[i]]$buffers), pin)
+        .stage_pairs(c(layers[[i]]$parameters, layers[[i]]$buffers,
+                       .flux_fp8_collect(layers[[i]])), pin)
     })
     .stage_pairs(c(encoder$model$embed_tokens$parameters,
                    encoder$model$norm$parameters), pin)
