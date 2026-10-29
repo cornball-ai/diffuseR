@@ -1,3 +1,20 @@
+# diffuseR 0.2.2.22
+
+* **FLUX 3 in less host RAM: fp8 Qwen3-VL.** `qwen3_quantize()` writes
+  a Qwen3 or Qwen3-VL text model as an fp8 or NF4 artifact (the 252
+  projection linears quantized; embeddings and norms bf16; vision tower
+  dropped), and `load_qwen3_text_encoder()` loads one.
+  `download_flux3_klein(text_precision = "fp8")` builds it by default
+  and `flux3_load_pipeline(text_precision = "auto")` uses it.
+  - Measured at 1024x1024 on the 16 GB card: host high-water 20.2 GB
+    with the bf16 encoder, 15.5 GB with fp8, 13.5 GB with NF4, at the
+    same ~24 s per image.
+  - fp8 text keeps the image: 27.2 dB PSNR against bf16 text, prompt
+    embeddings within 2.7%. NF4 text (5%) gives a different composition
+    for the same seed, so it is opt-in.
+  - The 8 GB layer-streaming plan stages the fp8 weights too: GPU peak
+    4.9 GB, the same image as the resident encoder.
+
 # diffuseR 0.2.2.21
 
 * **LTX-2.5 in 10 GB of host RAM.** `stage_from = "disk"` on
