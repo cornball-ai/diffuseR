@@ -25,6 +25,18 @@
 #' pipeline uses \code{\link{ltx23_memory_profile}} for frame-aware
 #' placement.
 #'
+#' \code{"ltx"} is LTX-2.3, which has fp8 and nf4 artifacts: 10-14 GB
+#' cards get fp8 streamed per linear. \code{"ltx25"} is LTX-2.5, which
+#' has only the nf4 artifact: below 14 GB it keeps part of the nf4
+#' transformer resident and streams the rest, and the result carries
+#' the \code{\link{ltx23_memory_profile}} fields that configure that
+#' (\code{resident_gb}, \code{stream_text}, \code{split_text},
+#' \code{resident_from}). Its staging is always pinned on the GPU
+#' tiers: block streaming from pageable memory is slow, and the
+#' host-RAM fields already bound the footprint (measured at 768x512x121
+#' on an 8 GB card: 20.1 GB high-water with resident host copies, 16.0
+#' GB with \code{resident_from = "disk"}).
+#'
 #' The pinning decision: phase-swapped weights are page-locked host
 #' copies (see \code{\link{staging}}) that transfer at DMA rate -
 #' but pinned pages are unswappable, so on small-RAM machines they turn
@@ -38,7 +50,8 @@
 #' components statically and do not phase-swap, so \code{pin} is inert
 #' for them. \code{options(diffuseR.pin_staging)} is the global switch.
 #'
-#' @param model "sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".
+#' @param model "sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"
+#'   (LTX-2.3), or "ltx25" (LTX-2.5).
 #' @param vram_gb Numeric or NULL. Free VRAM in GB; auto-detected via
 #'   nvidia-smi when NULL.
 #' @param st_caps NULL or a named logical list with \code{bfloat16}
@@ -55,7 +68,10 @@
 #'   copies), \code{pinned_set_gb} (estimated pinned bytes),
 #'   \code{host_ram_gb}, \code{fork_suggested} (logical: the installed
 #'   safetensors cannot read the tier the card could otherwise run), and
-#'   \code{note} (the suggestion string, or NULL). The field name is
+#'   \code{note} (the suggestion string, or NULL). For \code{"ltx25"} it
+#'   also has \code{resident_gb}, \code{stream_text}, \code{split_text}
+#'   and \code{resident_from} (see \code{\link{ltx23_memory_profile}}).
+#'   The \code{fork_suggested} field name is
 #'   historical -- the remedy used to be the cornball-ai fork and is now
 #'   \code{install.packages("safetensors")}, since the fixes reached CRAN
 #'   in 0.3.0 -- and is kept because it is part of the returned contract.
@@ -77,8 +93,13 @@
 #'
 #' # Auto-detect VRAM and probe the installed safetensors
 #' str(recommend("flux2"))
+#'
+#' # LTX-2.5 on an 8 GB card with 24 GB of RAM: nf4, 3.6 GB resident,
+#' # text phase split off
+#' recommend("ltx25", vram_gb = 7.6, host_ram_gb = 24)[c("precision",
+#'           "resident_gb", "split_text", "resident_from")]
 recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
-                                "ltx"),
+                                "ltx", "ltx25"),
                       vram_gb = NULL, st_caps = NULL, host_ram_gb = NULL) {
     model <- match.arg(model)
     if (is.null(vram_gb)) {
@@ -124,10 +145,14 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
         host_ram_gb <- .detect_host_ram()
     }
     pinned_set <- .pinned_set_gb(model, chosen$precision)
-    pin <- .pin_decision(model, chosen$precision, host_ram_gb,
-                         cpu = isTRUE(chosen$cpu))
+    if (model == "ltx25") {
+        pin <- !isTRUE(chosen$cpu)
+    } else {
+        pin <- .pin_decision(model, chosen$precision, host_ram_gb,
+                             cpu = isTRUE(chosen$cpu))
+    }
 
-    list(
+    out <- list(
          model = model,
          precision = chosen$precision,
          devices = chosen$devices,
@@ -147,6 +172,18 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
             .bf16_note(model, chosen$precision)
         }
     )
+    if (model == "ltx25") {
+        if (isTRUE(chosen$cpu)) {
+            prof <- list(resident_gb = Inf, stream_text = FALSE,
+                         split_text = FALSE, resident_from = "host")
+        } else {
+            prof <- ltx23_memory_profile(vram_gb, host_ram_gb = host_ram_gb)
+        }
+        out[c("resident_gb", "stream_text", "split_text", "resident_from")] <-
+            prof[c("resident_gb", "stream_text", "split_text",
+                   "resident_from")]
+    }
+    out
 }
 
 # bf16 is not a built artifact: it is the unquantized source the
@@ -200,7 +237,8 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                  flux2 = c(bf16 = 17, fp8 = 12, nf4 = 10), # DiT + Qwen3 bf16
                  zimage = c(bf16 = 21, fp8 = 14, nf4 = 12), # DiT + Qwen3 bf16
                  flux3 = c(bf16 = 20, fp8 = 15, nf4 = 12), # DiT + Qwen3-VL text bf16
-                 ltx = c(fp8 = 34, nf4 = 28) # checkpoint + Gemma3 NF4
+                 ltx = c(fp8 = 34, nf4 = 28), # checkpoint + Gemma3 NF4
+                 ltx25 = c(nf4 = 29) # nf4-full checkpoint + Gemma 4 NF4
     )
     v <- unname(sets[[model]][precision])
     if (length(v) != 1L || is.na(v)) {
@@ -361,6 +399,24 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
                          cpu = TRUE, devices = .dev_flux(FALSE),
                          offload = FALSE, max_pixels = px(512),
                          text_device = "cpu", attn_chunk = NULL)
+        ),
+         # LTX-2.5 has only the nf4 artifact. Below 14 GB the transformer
+         # keeps resident_gb on the GPU and streams the rest (see
+         # ltx23_memory_profile); 768x512x121 renders in ~84 s on 8 and
+         # 12 GB, as on 16 GB.
+         ltx25 = list(
+                      list(precision = "nf4", min_vram = 14, needs = NULL,
+                           devices = .dev_flux(TRUE), offload = TRUE,
+                           max_pixels = px(1280), text_device = "cpu",
+                           attn_chunk = NULL),
+                      list(precision = "nf4", min_vram = 8, needs = NULL,
+                           devices = .dev_flux(TRUE), offload = TRUE,
+                           max_pixels = 768L * 512L, text_device = "cuda",
+                           attn_chunk = NULL),
+                      list(precision = "nf4", min_vram = 0, needs = NULL,
+                           cpu = TRUE, devices = .dev_flux(FALSE),
+                           offload = FALSE, max_pixels = px(512),
+                           text_device = "cpu", attn_chunk = NULL)
         )
     )
 }

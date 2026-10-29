@@ -4,14 +4,15 @@
 \title{Recommend a precision and device configuration for a model}
 \usage{
 recommend(
-  model = c("sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"),
+  model = c("sd21", "sdxl", "flux1", "flux2", "zimage", "ltx", "ltx25"),
   vram_gb = NULL,
   st_caps = NULL,
   host_ram_gb = NULL
 )
 }
 \arguments{
-\item{model}{"sd21", "sdxl", "flux1", "flux2", "zimage", or "ltx".}
+\item{model}{"sd21", "sdxl", "flux1", "flux2", "zimage", "ltx"
+(LTX-2.3), or "ltx25" (LTX-2.5).}
 
 \item{vram_gb}{Numeric or NULL. Free VRAM in GB; auto-detected via
 nvidia-smi when NULL.}
@@ -32,7 +33,10 @@ A list with \code{model}, \code{precision}, \code{devices}
   copies), \code{pinned_set_gb} (estimated pinned bytes),
   \code{host_ram_gb}, \code{fork_suggested} (logical: the installed
   safetensors cannot read the tier the card could otherwise run), and
-  \code{note} (the suggestion string, or NULL). The field name is
+  \code{note} (the suggestion string, or NULL). For \code{"ltx25"} it
+  also has \code{resident_gb}, \code{stream_text}, \code{split_text}
+  and \code{resident_from} (see \code{\link{ltx23_memory_profile}}).
+  The \code{fork_suggested} field name is
   historical -- the remedy used to be the cornball-ai fork and is now
   \code{install.packages("safetensors")}, since the fixes reached CRAN
   in 0.3.0 -- and is kept because it is part of the returned contract.
@@ -64,6 +68,18 @@ elsewhere. Video sizing for \code{"ltx"} is coarse here; the LTX
 pipeline uses \code{\link{ltx23_memory_profile}} for frame-aware
 placement.
 
+\code{"ltx"} is LTX-2.3, which has fp8 and nf4 artifacts: 10-14 GB
+cards get fp8 streamed per linear. \code{"ltx25"} is LTX-2.5, which
+has only the nf4 artifact: below 14 GB it keeps part of the nf4
+transformer resident and streams the rest, and the result carries
+the \code{\link{ltx23_memory_profile}} fields that configure that
+(\code{resident_gb}, \code{stream_text}, \code{split_text},
+\code{resident_from}). Its staging is always pinned on the GPU
+tiers: block streaming from pageable memory is slow, and the
+host-RAM fields already bound the footprint (measured at 768x512x121
+on an 8 GB card: 20.1 GB high-water with resident host copies, 16.0
+GB with \code{resident_from = "disk"}).
+
 The pinning decision: phase-swapped weights are page-locked host
 copies (see \code{\link{staging}}) that transfer at DMA rate -
 but pinned pages are unswappable, so on small-RAM machines they turn
@@ -93,4 +109,9 @@ recommend("flux1", vram_gb = 16,
 
 # Auto-detect VRAM and probe the installed safetensors
 str(recommend("flux2"))
+
+# LTX-2.5 on an 8 GB card with 24 GB of RAM: nf4, 3.6 GB resident,
+# text phase split off
+recommend("ltx25", vram_gb = 7.6, host_ram_gb = 24)[c("precision",
+          "resident_gb", "split_text", "resident_from")]
 }
