@@ -16,8 +16,9 @@
 # Port 7812 sits in the cornball serve range (7809-7829): whisper 7809,
 # chatterbox 7810, qwen3 TTS 7811.
 #
-# Video serving (model = "ltx") answers /v1/videos/generations and takes
-# minutes per request - point clients at it with matching timeouts.
+# Video serving (model = "ltx" for LTX-2.3, "ltx25" for LTX-2.5) answers
+# /v1/videos and takes minutes per request - point clients at it with
+# matching timeouts.
 
 [Unit]
 Description=diffuseR generation server (R package, base-socket HTTP)

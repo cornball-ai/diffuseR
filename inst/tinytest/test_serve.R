@@ -227,3 +227,41 @@ local({
   expect_false(file.exists(paths[[1]]))
   expect_true(!is.null(diffuseR:::.dserve_jobs_get(vs, ids[[3]])))
 })
+
+# --- embed cache: LRU, bounded, encodes each prompt once ----------------------------
+calls <- character(0)
+emb <- diffuseR:::.dserve_embed_cache(function(p) {
+  calls <<- c(calls, p)
+  list(prompt = p)
+}, max_prompts = 2L)
+expect_equal(emb("a")$prompt, "a")
+emb("b")
+emb("a")                       # hit; "a" becomes most recent
+expect_equal(calls, c("a", "b"))
+emb("c")                       # evicts "b", the least recent
+emb("a")
+expect_equal(calls, c("a", "b", "c"))
+emb("b")
+expect_equal(calls, c("a", "b", "c", "b"))
+
+# --- artifact validity: manifest with every shard present ---------------------------
+art <- tempfile("art_")
+dir.create(art)
+expect_false(diffuseR:::.dserve_valid_artifact(art))
+writeLines('{"shards": ["s1.safetensors", "s2.safetensors"]}',
+           file.path(art, "manifest.json"))
+file.create(file.path(art, "s1.safetensors"))
+expect_false(diffuseR:::.dserve_valid_artifact(art))  # partial quantize
+file.create(file.path(art, "s2.safetensors"))
+expect_true(diffuseR:::.dserve_valid_artifact(art))
+unlink(art, recursive = TRUE)
+
+# ltx25 is a video model with no warmup, and a missing artifact stops
+# startup with the build pointer instead of downloading
+expect_true("ltx25" %in% eval(formals(serve)$model))
+local({
+  old <- Sys.getenv("R_USER_DATA_DIR")
+  on.exit(Sys.setenv(R_USER_DATA_DIR = old), add = TRUE)
+  Sys.setenv(R_USER_DATA_DIR = tempfile("nodata_"))
+  expect_error(diffuseR:::.dserve_load("ltx25", "cpu"), "ltx25_open_checkpoint")
+})

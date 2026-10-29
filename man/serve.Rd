@@ -5,7 +5,7 @@
 \usage{
 serve(
   port = 7812L,
-  model = c("flux2", "zimage", "flux1", "ltx"),
+  model = c("flux2", "zimage", "flux1", "ltx", "ltx25"),
   device = "cuda",
   token = NULL,
   max_pixels = 1024L^2,
@@ -22,8 +22,14 @@ serve(
 \arguments{
 \item{port}{Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).}
 
-\item{model}{One of "flux2", "zimage", "flux1" (images) or "ltx"
-(video). SD 2.1/SDXL are not served yet.}
+\item{model}{One of "flux2", "zimage", "flux1" (images), "ltx"
+(LTX-2.3 video) or "ltx25" (LTX-2.5 video). SD 2.1/SDXL are not
+served yet. "ltx25" loads the \code{ltx2.5-nf4-full} and
+\code{gemma4-nf4} artifacts and places them by
+\code{\link{recommend}("ltx25")}: on 8-12 GB cards the transformer
+streams blocks and, below 12 GB, Gemma 4 streams layers. The
+encoder and render pipeline share one process, which needs about
+31 GB of host RAM.}
 
 \item{device}{Character. "cuda" or "cpu".}
 
@@ -43,7 +49,8 @@ resolution clips top out at 121 frames and longer clips must
 shrink spatially).}
 
 \item{max_prompts}{Integer. Bound on the per-prompt connector-embed
-cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.}
+cache for the video models (~9 MB per entry, LRU-evicted).
+Default 32.}
 
 \item{timeout}{Integer. Per-connection I/O timeout in seconds.}
 
@@ -56,7 +63,7 @@ Default 8.}
 
 \item{warmup}{Logical. Image models: run one small generation at
 startup so the first request doesn't pay tracing and allocator
-growth. Ignored for "ltx".}
+growth. Ignored for the video models.}
 }
 \value{
 Does not return normally; runs until interrupted.
@@ -77,7 +84,7 @@ single-threaded, so health only answers between requests.
 \code{{prompt, size, seed, steps}} (\code{size} like
 \code{"1024x1024"}; \code{n > 1} is not supported). Returns
 \code{{created, data: [{b64_json}]}} with a base64 PNG.
-\item \code{POST /v1/videos} - \code{model = "ltx"} only, a job that
+\item \code{POST /v1/videos} - video models only, a job that
 matches the wan2gp-api container. JSON body \code{{prompt, width,
 height, num_frames, frame_rate, seed}} returns \code{{id, status}};
 poll \code{GET /v1/videos/{id}} for the status and download the mp4 at
