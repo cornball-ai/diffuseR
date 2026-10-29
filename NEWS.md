@@ -1,3 +1,12 @@
+# diffuseR 0.2.2.20
+
+* `serve(model = "ltx25")` serves LTX-2.5 on `/v1/videos`. It loads
+  the `ltx2.5-nf4-full` and `gemma4-nf4` artifacts and places them by
+  `recommend("ltx25")`, so 8 and 12 GB cards stream transformer blocks
+  and Gemma 4 layers. The encoder and render pipeline share the
+  process: measured on the 16 GB card, 32.9 GB host high-water and
+  26 s for a 512x320x49 clip with a cached prompt (35 s for a new one).
+
 # diffuseR 0.2.2.19
 
 * `recommend("ltx25")` covers LTX-2.5. `recommend("ltx")` (LTX-2.3)
