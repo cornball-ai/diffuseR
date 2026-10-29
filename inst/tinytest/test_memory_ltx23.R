@@ -78,19 +78,31 @@ expect_equal(mid$resident_from, "host")
 small <- ltx23_memory_profile(12, host_ram_gb = 16)
 expect_true(small$split_text)
 expect_equal(small$resident_from, "disk")
+# Below the render pipeline's 16 GB with the resident part on disk, no
+# weights stay in host memory at all
+expect_equal(small$stage_from, "disk")
+expect_equal(mid$stage_from, "host")
+expect_equal(big$stage_from, "host")
+expect_equal(ltx23_memory_profile(8, host_ram_gb = 10)$stage_from, "disk")
 # Unknown RAM keeps the defaults; the CPU tier never stages
 unknown <- ltx23_memory_profile(8, host_ram_gb = NA)
 expect_false(unknown$split_text)
 expect_equal(unknown$resident_from, "host")
+expect_equal(unknown$stage_from, "host")
 cpu <- ltx23_memory_profile(4, host_ram_gb = 8)
 expect_false(cpu$split_text)
 expect_equal(cpu$resident_from, "host")
+expect_equal(cpu$stage_from, "host")
 
 # The loader refuses block streaming it cannot do
 expect_error(ltx23_load_pipeline("unused", device = "cpu", resident_gb = 4),
              "phase_offload")
 expect_error(ltx23_load_pipeline("unused", device = "cpu",
                                  resident_from = "disk"), "phase_offload")
+expect_error(ltx23_load_pipeline("unused", device = "cpu",
+                                 stage_from = "disk"), "phase_offload")
+expect_error(load_gemma4_nf4("unused", device = "cuda", stage_from = "disk"),
+             "device = \"cpu\"")
 
 # The split text phase needs connectors, and an encoder or raw states
 no_conn <- structure(list(), class = "ltx23_pipeline")

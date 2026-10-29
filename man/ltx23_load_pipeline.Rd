@@ -14,6 +14,7 @@ ltx23_load_pipeline(
   phase_offload = TRUE,
   resident_gb = Inf,
   resident_from = c("host", "disk"),
+  stage_from = c("host", "disk"),
   verbose = TRUE
 )
 }
@@ -63,6 +64,19 @@ keeps none and re-reads it from the artifact at the next onload
 (the OS page cache serves it when RAM allows). \code{"disk"} saves
 host RAM equal to the resident part (up to ~12 GB) for a re-read
 per render. Needs \code{phase_offload} on CUDA.}
+
+\item{stage_from}{Where every phase-offloaded weight lives between
+uses: \code{"host"} (default) in host memory; \code{"disk"} nowhere
+but the artifact. Loading then reads no weights, and each onload
+(the transformer's resident part per render, its streamed blocks
+every step, the connectors, VAEs and vocoder per phase) reads from
+the memory-mapped shards, so the pipeline holds almost no host
+RAM and the OS page cache keeps what fits. Implies
+\code{resident_from = "disk"}; the connectors always stream. For
+machines with less host RAM than the model; each step re-reads the
+streamed blocks (~1.4 GB/s cold from NVMe, ~4.5 GB/s from the page
+cache). Needs an NF4 artifact directory and \code{phase_offload}
+on CUDA.}
 
 \item{verbose}{Logical.}
 }

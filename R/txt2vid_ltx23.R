@@ -279,6 +279,18 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   (the OS page cache serves it when RAM allows). \code{"disk"} saves
 #'   host RAM equal to the resident part (up to ~12 GB) for a re-read
 #'   per render. Needs \code{phase_offload} on CUDA.
+#' @param stage_from Where every phase-offloaded weight lives between
+#'   uses: \code{"host"} (default) in host memory; \code{"disk"} nowhere
+#'   but the artifact. Loading then reads no weights, and each onload
+#'   (the transformer's resident part per render, its streamed blocks
+#'   every step, the connectors, VAEs and vocoder per phase) reads from
+#'   the memory-mapped shards, so the pipeline holds almost no host
+#'   RAM and the OS page cache keeps what fits. Implies
+#'   \code{resident_from = "disk"}; the connectors always stream. For
+#'   machines with less host RAM than the model; each step re-reads the
+#'   streamed blocks (~1.4 GB/s cold from NVMe, ~4.5 GB/s from the page
+#'   cache). Needs an NF4 artifact directory and \code{phase_offload}
+#'   on CUDA.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -292,14 +304,17 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 pin = TRUE, attn_chunk = NULL,
                                 phase_offload = TRUE, resident_gb = Inf,
                                 resident_from = c("host", "disk"),
+                                stage_from = c("host", "disk"),
                                 verbose = TRUE) {
     resident_from <- match.arg(resident_from)
-    from_disk <- resident_from == "disk"
+    stage_from <- match.arg(stage_from)
+    stage_disk <- stage_from == "disk"
+    from_disk <- resident_from == "disk" || stage_disk
     if ((is.finite(resident_gb) || from_disk) &&
         !(phase_offload && device == "cuda")) {
-        stop("resident_gb and resident_from = \"disk\" stage the transformer ",
-             "through the GPU; they need device = \"cuda\" and ",
-             "phase_offload = TRUE", call. = FALSE)
+        stop("resident_gb, resident_from = \"disk\" and stage_from = ",
+             "\"disk\" stage the transformer through the GPU; they need ",
+             "device = \"cuda\" and phase_offload = TRUE", call. = FALSE)
     }
     if (phase_offload) {
         component_device <- "cpu"
@@ -380,20 +395,27 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         }
         # Modules arrive as skeletons already at torch_dtype
         res <- ltx23_load_group(ckpt, groups[[name]], module,
-                                map_key = map_key, verbose = verbose)
+                                map_key = map_key, verbose = verbose,
+                                lazy = stage_disk)
         if (length(res$unmapped) || length(res$unfilled)) {
             stop(name, ": incomplete load (", length(res$unmapped), " unmapped, ",
                  length(res$unfilled), " unfilled)")
         }
         module$to(device = dev)
         module$eval()
+        module$weight_source <- list(keys = res$source_keys, handle = ckpt$handle)
         module
     }
 
+    if (stage_disk && !(fp8 && identical(ckpt$format, "nf4"))) {
+        stop("stage_from = \"disk\" needs an NF4 artifact directory",
+             call. = FALSE)
+    }
     if ("dit" %in% components) {
         if (fp8 && identical(ckpt$format, "nf4")) {
             pipe$transformer <- ltx23_load_transformer_nf4(
-                ckpt, device = component_device, verbose = verbose
+                ckpt, device = component_device, verbose = verbose,
+                lazy = stage_disk
             )
         } else if (fp8) {
             pipe$transformer <- ltx23_load_transformer_fp8(
@@ -433,12 +455,16 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         voc <- ltx23_vocoder_with_bwe()
         voc$to(dtype = torch_dtype)
         res <- ltx23_load_group(ckpt, groups$vocoder, voc,
-                                map_key = ltx23_map_vocoder_key, verbose = verbose)
+                                map_key = ltx23_map_vocoder_key, verbose = verbose,
+                                lazy = stage_disk)
         if (length(res$unmapped) || length(res$unfilled)) {
             stop("vocoder: incomplete load")
         }
         voc$to(device = component_device, dtype = torch::torch_float32())
         voc$eval()
+        # Disk reads arrive in the artifact's dtype; the onload casts
+        # them to the live float32
+        voc$weight_source <- list(keys = res$source_keys, handle = ckpt$handle)
         pipe$vocoder <- voc
     }
 
@@ -452,24 +478,37 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         # blocks carry their own staging sets (staged even unpinned, so
         # the phase onload never moves them)
         split <- .ltx23_block_stream(pipe$transformer, resident_gb,
-                                     pin = pin_staging, from_disk = from_disk)
+                                     pin = pin_staging, from_disk = from_disk,
+                                     stream_from_disk = stage_disk)
         staging$transformer <- split$staging
         if (verbose) {
             message(sprintf(paste0("Transformer: %d blocks resident (%.1f GB%s), ",
-                                   "%d streamed (%.1f GB/step)"),
+                                   "%d streamed (%.1f GB/step%s)"),
                             split$n_resident, split$resident_gb,
                             if (from_disk) ", re-read from disk" else "",
-                            split$n_streamed, split$streamed_gb))
+                            split$n_streamed, split$streamed_gb,
+                            if (stage_disk) ", from disk" else ""))
         }
     }
     # The 5.9 GB connector phase does not fit beside an 8 GB card's
     # activations either: stream it for budgets under 7 GB (also when
-    # the connectors load alone, for ltx23_text_embeds)
-    if (resident_gb < 7 && !is.null(pipe$connectors)) {
-        staging$connectors <- .ltx23_connector_stream(pipe$connectors,
-                                                      pin = pin_staging)
+    # the connectors load alone, for ltx23_text_embeds), and whenever
+    # it comes from disk
+    if ((resident_gb < 7 || stage_disk) && !is.null(pipe$connectors)) {
+        staging$connectors <- .ltx23_connector_stream(
+            pipe$connectors, pin = pin_staging,
+            src = if (stage_disk) pipe$connectors$weight_source
+        )
         if (verbose) {
-            message("Text connectors stream block by block")
+            message("Text connectors stream block by block",
+                    if (stage_disk) " from disk" else "")
+        }
+    }
+    if (stage_disk) {
+        for (nm in intersect(c("vae", "audio_vae", "vocoder"), names(pipe))) {
+            m <- pipe[[nm]]
+            staging[[nm]] <- .stage_set(c(m$parameters, m$buffers), pin_staging,
+                                        m$weight_source)
         }
     }
     if (pin_staging) {

@@ -20,18 +20,20 @@
 
 # Stream the text connectors (5.9 GB in bf16): the two input projections
 # (1.5 and 0.8 GB) as units, each connector's blocks one at a time.
-# Returns the staging pairs for the rest (registers, norms, rope).
-.ltx23_connector_stream <- function(connectors, pin) {
+# Returns the staging pairs for the rest (registers, norms, rope). With
+# a weight source `src` (list(keys, handle)) every set re-reads from
+# disk instead of holding a host copy.
+.ltx23_connector_stream <- function(connectors, pin, src = NULL) {
     units <- c("video_text_proj_in", "audio_text_proj_in")
     connectors$unit_stream <- stats::setNames(lapply(units, function(u) {
-        m <- connectors[[u]]
-        .stage_pairs(c(m$parameters, m$buffers), pin)
+        .stage_set(.tensors_under(connectors, paste0(u, ".")), pin, src)
     }), units)
     for (cn in c("video_connector", "audio_connector")) {
         con <- connectors[[cn]]
         con$layer_stream <- lapply(seq_along(con$transformer_blocks), function(i) {
-            b <- con$transformer_blocks[[i]]
-            .stage_pairs(c(b$parameters, b$buffers), pin)
+            .stage_set(.tensors_under(connectors,
+                                      paste0(cn, ".transformer_blocks.", i - 1L, ".")),
+                       pin, src)
         })
     }
     tensors <- c(connectors$parameters, connectors$buffers)
@@ -39,7 +41,7 @@
     startsWith(names(tensors), "audio_text_proj_in.") |
     startsWith(names(tensors), "video_connector.transformer_blocks.") |
     startsWith(names(tensors), "audio_connector.transformer_blocks.")
-    .stage_pairs(tensors[!streamed], pin)
+    .stage_set(tensors[!streamed], pin, src)
 }
 
 # Bytes held by a module's parameters and buffers
@@ -54,9 +56,10 @@
 # consumed by the forward) and returns the staging pairs for everything
 # else, which replace the transformer's whole-module staging set. With
 # `from_disk`, that resident part keeps no host copy: it is re-read from
-# the artifact at each onload (.stage_from_disk).
+# the artifact at each onload (.stage_from_disk); `stream_from_disk`
+# does the same for the streamed blocks, every step.
 .ltx23_block_stream <- function(transformer, resident_gb, pin,
-                                from_disk = FALSE) {
+                                from_disk = FALSE, stream_from_disk = FALSE) {
     blocks <- transformer$transformer_blocks
     n <- length(blocks)
     block_bytes <- vapply(seq_len(n), function(i) .module_bytes(blocks[[i]]), 0)
@@ -64,9 +67,20 @@
     budget <- resident_gb * 1024 ^ 3 - other_bytes
     n_resident <- sum(cumsum(block_bytes) <= budget)
 
+    src <- NULL
+    if (from_disk || stream_from_disk) {
+        src <- transformer$weight_source
+        if (is.null(src)) {
+            stop("Staging from disk needs an NF4 transformer ",
+                 "(ltx23_load_transformer_nf4 records its artifact keys)",
+                 call. = FALSE)
+        }
+    }
     streamed <- if (n_resident < n) seq(n_resident + 1L, n) else integer(0)
     stream_staging <- lapply(streamed, function(i) {
-        .stage_pairs(c(blocks[[i]]$parameters, blocks[[i]]$buffers), pin)
+        .stage_set(.tensors_under(transformer,
+                                  paste0("transformer_blocks.", i - 1L, ".")),
+                   pin, if (stream_from_disk) src)
     })
     # Everything not in a streamed block, by identity of the tensor names
     names_all <- c(names(transformer$parameters), names(transformer$buffers))
@@ -80,17 +94,7 @@
     } else {
         NULL
     }
-    staging <- if (from_disk) {
-        src <- transformer$weight_source
-        if (is.null(src)) {
-            stop("resident_from = \"disk\" needs an NF4 transformer ",
-                 "(ltx23_load_transformer_nf4 records its artifact keys)",
-                 call. = FALSE)
-        }
-        .stage_from_disk(tensors[!in_stream], src$keys, src$handle, pin)
-    } else {
-        .stage_pairs(tensors[!in_stream], pin)
-    }
+    staging <- .stage_set(tensors[!in_stream], pin, if (from_disk) src)
     list(staging = staging,
          n_resident = n_resident, n_streamed = length(streamed),
          resident_gb = (other_bytes + sum(block_bytes[seq_len(n_resident)])) / 1024 ^ 3,

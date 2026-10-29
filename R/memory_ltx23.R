@@ -46,7 +46,13 @@ NULL
 #' text phase splits off; below 22 GB the resident blocks come from
 #' disk (measured on LTX-2.5 at 768x512x121 with an 8 GB card: the
 #' render phase peaks at 20.1 GB of host RAM with host copies and 16.0
-#' GB without, for ~8 s more per render).
+#' GB without, for ~8 s more per render). Below 18 GB,
+#' \code{stage_from = "disk"} (for \code{\link{ltx23_load_pipeline}} and
+#' \code{\link{load_gemma4_nf4}}) keeps no weights in host memory: every
+#' phase reads them from the memory-mapped artifacts. Measured the same
+#' way under a 10 GB memory cap that also counts page cache: the text
+#' phase holds 1.5 GB of anonymous memory, the render phase at most
+#' 4.6 GB, and a warm render takes 127 s instead of 82 s.
 #'
 #' @param vram_gb Numeric or NULL (auto-detect free VRAM).
 #' @param host_ram_gb Numeric or NULL (auto-detect available RAM; NA
@@ -54,7 +60,8 @@ NULL
 #'
 #' @return Named list with device/dtype placement, \code{attn_chunk},
 #'   \code{pin_weights}, \code{resident_gb}, \code{stream_text},
-#'   \code{split_text}, \code{resident_from}, and resolution caps.
+#'   \code{split_text}, \code{resident_from}, \code{stage_from}, and
+#'   resolution caps.
 #'
 #' @export
 ltx23_memory_profile <- function(vram_gb = NULL, host_ram_gb = NULL) {
@@ -141,16 +148,25 @@ ltx23_memory_profile <- function(vram_gb = NULL, host_ram_gb = NULL) {
     } else {
         "host"
     }
+    out$stage_from <- if (gpu && ram_known &&
+                          host_ram_gb < .ltx23_ram_host_staged) {
+        "disk"
+    } else {
+        "host"
+    }
     out
 }
 
 # Host RAM (GB) for the LTX GPU tiers: the render pipeline plus the
-# Gemma 4 encoder in one process, and the render pipeline alone with
-# its resident blocks kept in host memory (LTX-2.5 768x512x121 on a
-# simulated 8 GB card, high-water marks: 20.1 GB with host copies,
-# 16.0 GB re-reading from disk, 12.4 GB for the split text phase)
+# Gemma 4 encoder in one process, the render pipeline alone with its
+# resident blocks kept in host memory, and with only the streamed
+# blocks kept there (LTX-2.5 768x512x121 on a simulated 8 GB card,
+# high-water marks: 20.1 GB with host copies, 16.0 GB re-reading the
+# resident part from disk, 12.4 GB for the split text phase). Below
+# the last, stage_from = "disk" keeps no weights in host memory.
 .ltx23_ram_one_process <- 32
 .ltx23_ram_host_resident <- 22
+.ltx23_ram_host_staged <- 18
 
 #' Tune the torch CUDA allocator for large-resident inference
 #'

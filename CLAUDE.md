@@ -518,6 +518,21 @@ at 768x512x121: text 12.4 GB; render 20.1 GB (host) / 16.0 GB (disk)
 on 8 GB, 14.9 GB (disk) on 12 GB. Set `MALLOC_MMAP_THRESHOLD_=1048576`
 so freed tensors return to the OS.
 
+10 GB machines: `stage_from = "disk"` on `ltx23_load_pipeline()` and
+`load_gemma4_nf4()` loads no weights at all and reads every staged
+tensor (Gemma layers, connectors, transformer resident + streamed
+blocks, VAEs, vocoder) from a private memory map of the shards
+(`.mmap_reader`: bytes -> device -> `torch_view_copy` to the dtype, since
+R torch has no zero-copy `view(dtype)` and the R safetensors writer
+leaves tensor data unaligned). Under a 10 GB cgroup cap (page cache
+counted), 8 GB card: text phase 1.5 GB anon, render <= 4.6 GB anon,
+warm render 127 s (8.3 s/step) vs 82 s with host copies; latents
+bit-identical. Gotchas: offsets past 2^31 need `torch_as_strided(...,
+storage_offset = <double>)` (narrow() overflows R's int; one 2.3 GB
+LTX-2.5 shard silently pushed every read onto the 0.6 GB/s get_tensor
+fallback), and CPU reads must clone (a write to a returned view
+changes later reads of the private map).
+
 Gotchas that bit once (host RAM): freed PINNED memory stays in torch's
 CachingHostAllocator, not the OS, so a pipeline you plan to drop must
 load unpinned (RSS stayed 9 GB after freeing pinned connectors). Pinned

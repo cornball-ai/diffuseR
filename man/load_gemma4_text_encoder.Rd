@@ -9,6 +9,7 @@ load_gemma4_text_encoder(
   dtype = "bfloat16",
   pin = getOption("diffuseR.pin_staging", TRUE),
   stream = FALSE,
+  stage_from = c("host", "disk"),
   verbose = TRUE
 )
 }
@@ -29,6 +30,9 @@ encode at DMA speed. Default follows
 \code{options(diffuseR.pin_staging)}.}
 
 \item{stream}{Logical. Stage layer by layer (see
+\code{\link{load_gemma4_nf4}}).}
+
+\item{stage_from}{"host" or "disk" (NF4 artifacts only; see
 \code{\link{load_gemma4_nf4}}).}
 
 \item{verbose}{Logical.}

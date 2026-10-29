@@ -152,16 +152,20 @@ ltx23_split_keys <- function(keys) {
 #'   parameter/buffer name, or NA to skip the key deliberately.
 #' @param verbose Logical. Report progress and coverage.
 #' @param gc_every Integer. Run \code{gc()} after this many tensors.
+#' @param lazy Logical. Map keys to destinations without reading any
+#'   tensor: the destinations are left as allocated, for a caller that
+#'   stages them from disk (\code{source_keys}) before any forward.
 #'
 #' @return Invisibly, a list with \code{unmapped} (checkpoint keys that
 #'   found no destination), \code{skipped} (keys the mapper declined),
-#'   and \code{unfilled} (module parameters/buffers never written).
-#'   A perfectly loaded group has zero \code{unmapped} and zero
+#'   \code{unfilled} (module parameters/buffers never written), and
+#'   \code{source_keys} (destination name -> checkpoint key). A
+#'   perfectly loaded group has zero \code{unmapped} and zero
 #'   \code{unfilled}.
 #'
 #' @export
 ltx23_load_group <- function(ckpt, keys, module, map_key = identity,
-                             verbose = TRUE, gc_every = 50L) {
+                             verbose = TRUE, gc_every = 50L, lazy = FALSE) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
 
     params <- module$named_parameters()
@@ -171,6 +175,7 @@ ltx23_load_group <- function(ckpt, keys, module, map_key = identity,
     unmapped <- character(0)
     skipped <- character(0)
     filled <- character(0)
+    source_keys <- character(0)
 
     n <- length(keys)
     torch::with_no_grad({
@@ -185,6 +190,11 @@ ltx23_load_group <- function(ckpt, keys, module, map_key = identity,
             dest <- dests[[dest_name]]
             if (is.null(dest)) {
                 unmapped <- c(unmapped, key)
+                next
+            }
+            source_keys[dest_name] <- key
+            if (lazy) {
+                filled <- c(filled, dest_name)
                 next
             }
 
@@ -228,7 +238,8 @@ ltx23_load_group <- function(ckpt, keys, module, map_key = identity,
         }
     }
 
-    invisible(list(unmapped = unmapped, skipped = skipped, unfilled = unfilled))
+    invisible(list(unmapped = unmapped, skipped = skipped, unfilled = unfilled,
+                   source_keys = source_keys))
 }
 
 #' Summarize checkpoint key coverage

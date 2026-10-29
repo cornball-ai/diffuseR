@@ -354,6 +354,8 @@ gemma4_text_model <- torch::nn_module(
 #'   \code{options(diffuseR.pin_staging)}.
 #' @param stream Logical. Stage layer by layer (see
 #'   \code{\link{load_gemma4_nf4}}).
+#' @param stage_from "host" or "disk" (NF4 artifacts only; see
+#'   \code{\link{load_gemma4_nf4}}).
 #' @param verbose Logical.
 #'
 #' @return A \code{gemma4_text_model}.
@@ -361,10 +363,17 @@ gemma4_text_model <- torch::nn_module(
 #' @export
 load_gemma4_text_encoder <- function(path, device = "cpu", dtype = "bfloat16",
                                      pin = getOption("diffuseR.pin_staging", TRUE),
-                                     stream = FALSE, verbose = TRUE) {
+                                     stream = FALSE, stage_from = c("host", "disk"),
+                                     verbose = TRUE) {
+    stage_from <- match.arg(stage_from)
     if (file.exists(file.path(path, "manifest.json"))) {
         return(load_gemma4_nf4(path, device = device, dtype = dtype,
-                               pin = pin, stream = stream, verbose = verbose))
+                               pin = pin, stream = stream,
+                               stage_from = stage_from, verbose = verbose))
+    }
+    if (stage_from == "disk") {
+        stop("stage_from = \"disk\" needs a Gemma 4 NF4 artifact directory",
+             call. = FALSE)
     }
     ckpt <- ltx23_open_checkpoint(path, require_version = NULL)
     meta <- ckpt$handle$metadata[["__metadata__"]]

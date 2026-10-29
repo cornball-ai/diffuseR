@@ -28,8 +28,10 @@ served yet. "ltx25" loads the \code{ltx2.5-nf4-full} and
 \code{gemma4-nf4} artifacts and places them by
 \code{\link{recommend}("ltx25")}: on 8-12 GB cards the transformer
 streams blocks and, below 12 GB, Gemma 4 streams layers. The
-encoder and render pipeline share one process, which needs about
-31 GB of host RAM.}
+encoder and render pipeline share one process: with 32 GB of host
+RAM available they keep their weights there, with less they read
+them from the memory-mapped artifacts as each phase needs them
+(\code{stage_from = "disk"} in \code{\link{ltx23_load_pipeline}}).}
 
 \item{device}{Character. "cuda" or "cpu".}
 
