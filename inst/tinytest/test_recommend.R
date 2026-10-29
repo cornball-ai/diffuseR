@@ -275,5 +275,44 @@ expect_error(diffuseR:::.flux_source_dir("nosuch"), pattern = "No bf16 source")
 # recommend("ltx") is nf4 on any card >= 14 GB, so download_ltx2() has
 # to be able to build nf4, not just fp8.
 expect_equal(recommend("ltx", vram_gb = 16)$precision, "nf4")
+
+# --- LTX-2.5: nf4 only, streamed below 14 GB --------------------------------------
+
+# LTX-2.3 still streams fp8 on 10-14 GB cards; LTX-2.5 has no fp8
+# artifact, so every GPU tier is nf4 and small cards stream blocks
+fork <- list(bfloat16 = TRUE, float8_e4m3fn = TRUE)
+expect_equal(recommend("ltx", 12, fork, host_ram_gb = 64)$precision, "fp8")
+for (v in c(7.6, 12, 16, 24)) {
+  expect_equal(recommend("ltx25", v, fork, host_ram_gb = 64)$precision, "nf4")
+  expect_false(recommend("ltx25", v, fork, host_ram_gb = 64)$fork_suggested)
+}
+r16 <- recommend("ltx25", 16, cran, host_ram_gb = 64)
+expect_equal(r16$resident_gb, Inf)
+expect_false(r16$stream_text)
+expect_equal(r16$text_device, "cpu")
+r12 <- recommend("ltx25", 12, cran, host_ram_gb = 64)
+expect_equal(r12$resident_gb, 8)
+expect_false(r12$stream_text)
+expect_true(r12$offload)
+r8 <- recommend("ltx25", 7.6, cran, host_ram_gb = 64)
+expect_equal(r8$resident_gb, 3.6)
+expect_true(r8$stream_text)
+expect_equal(r8$text_device, "cuda")
+expect_equal(r8$max_pixels, 768L * 512L)
+# Host RAM decides the text-phase split and the resident host copy;
+# staging stays pinned on GPU tiers even below the 2x pinned-set rule
+expect_false(r8$split_text)
+expect_equal(r8$resident_from, "host")
+low <- recommend("ltx25", 7.6, cran, host_ram_gb = 20)
+expect_true(low$split_text)
+expect_equal(low$resident_from, "disk")
+expect_true(low$pin)
+cpu <- recommend("ltx25", 0, cran, host_ram_gb = 64)
+expect_equal(cpu$devices$transformer, "cpu")
+expect_false(cpu$pin)
+expect_false(cpu$split_text)
+expect_equal(cpu$resident_from, "host")
+# Other models do not grow the LTX fields
+expect_false("resident_gb" %in% names(recommend("ltx", 16, cran)))
 expect_true("precision" %in% names(formals(download_ltx2)))
 expect_equal(eval(formals(download_ltx2)$precision), c("nf4", "fp8"))
