@@ -172,8 +172,8 @@ NULL
             # Disk-backed pair (.stage_from_disk): read it again. The host
             # copies are garbage once on the device; collect them as we
             # go so the read never holds more than a slice in RAM
-            pair$live$set_data(pair$read()$to(device = device,
-                                              dtype = pair$live$dtype))
+            pair$live$set_data(pair$read(device)$to(device = device,
+                                                    dtype = pair$live$dtype))
             pair$state$loaded <- TRUE
             n_read <- n_read + 1L
             if (n_read %% 64L == 0L) {
@@ -192,8 +192,10 @@ NULL
 # Staging pairs that keep NO host copy: `keys` names each tensor's
 # artifact key (a model's weight_source$keys) and `handle` reads it.
 # Offload drops the device copy and onload re-reads the tensor from
-# disk (the OS page cache, when RAM allows). Tensors without a key
-# (computed buffers) get ordinary pairs. Releases the host copies now.
+# disk (the OS page cache, when RAM allows): through the handle's
+# memory map when it has one (read_to, see .mmap_reader), else
+# get_tensor. Tensors without a key (computed buffers) get ordinary
+# pairs. Releases the host copies now.
 .stage_from_disk <- function(tensors, keys, handle, pin) {
     on_disk <- names(tensors) %in% names(keys)
     pairs <- vector("list", length(tensors))
@@ -206,13 +208,37 @@ NULL
         pair <- list(live = tensors[[nm]], state = state,
                      read = local({
                          k <- key
-                         function() handle$get_tensor(k)
+                         if (is.function(handle$read_to)) {
+                             function(device) handle$read_to(k, device)
+                         } else {
+                             function(device) handle$get_tensor(k)
+                         }
                      }))
         .release_host(pair$live)
         pairs[[nm]] <- pair
     }
     gc(verbose = FALSE)
     pairs
+}
+
+# Staging pairs for `tensors` (named by their full model names): from
+# disk when `src` is a weight source (list(keys, handle)), else host
+# pairs, pinned when `pin`
+.stage_set <- function(tensors, pin, src = NULL) {
+    if (is.null(src)) {
+        .stage_pairs(tensors, pin)
+    } else {
+        .stage_from_disk(tensors, src$keys, src$handle, pin)
+    }
+}
+
+# The tensors of `module` (parameters and buffers) whose full names
+# start with any of `prefixes`
+.tensors_under <- function(module, prefixes) {
+    tensors <- c(module$parameters, module$buffers)
+    keep <- Reduce(`|`, lapply(prefixes, function(p) startsWith(names(tensors), p)),
+                   FALSE)
+    tensors[keep]
 }
 
 # Point a tensor at a zero-stride placeholder of the same shape and
@@ -228,13 +254,15 @@ NULL
 # (whose parameter names start with `prefix` in the model) gets its own
 # staging set on model$layer_stream, which the encoder's forward swaps
 # in and out around that layer; the returned pairs cover the rest of the
-# model (embeddings, final norm) for the encode-phase onload.
-.stage_layer_stream <- function(model, layers, prefix, pin) {
+# model (embeddings, final norm) for the encode-phase onload. With a
+# weight source `src` (list(keys, handle)) every set re-reads from disk.
+.stage_layer_stream <- function(model, layers, prefix, pin, src = NULL) {
     model$layer_stream <- lapply(seq_along(layers), function(i) {
-        .stage_pairs(c(layers[[i]]$parameters, layers[[i]]$buffers), pin)
+        .stage_set(.tensors_under(model, paste0(prefix, i - 1L, ".")), pin,
+                   src)
     })
     tensors <- c(model$parameters, model$buffers)
-    .stage_pairs(tensors[!startsWith(names(tensors), prefix)], pin)
+    .stage_set(tensors[!startsWith(names(tensors), prefix)], pin, src)
 }
 
 #' Return a pinned component to the CPU

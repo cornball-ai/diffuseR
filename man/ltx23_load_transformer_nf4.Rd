@@ -3,7 +3,13 @@
 \alias{ltx23_load_transformer_nf4}
 \title{Load the LTX-2.3 transformer with resident NF4 weights}
 \usage{
-ltx23_load_transformer_nf4(ckpt, device = "cuda", verbose = TRUE, ...)
+ltx23_load_transformer_nf4(
+  ckpt,
+  device = "cuda",
+  verbose = TRUE,
+  lazy = FALSE,
+  ...
+)
 }
 \arguments{
 \item{ckpt}{An NF4 \code{ltx23_checkpoint}
@@ -12,6 +18,11 @@ ltx23_load_transformer_nf4(ckpt, device = "cuda", verbose = TRUE, ...)
 \item{device}{Character.}
 
 \item{verbose}{Logical.}
+
+\item{lazy}{Logical. Build the model and record each tensor's
+artifact key without reading any weight; every weight is a
+zero-stride placeholder until a disk-backed staging set reads it
+onto the device. Host RAM then never holds the transformer.}
 
 \item{...}{Passed to \code{\link{ltx23_transformer}} (tiny test configs).}
 }

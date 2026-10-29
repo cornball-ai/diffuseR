@@ -250,11 +250,23 @@ ltx23_open_fp8_checkpoint <- function(dir) {
         }
     }
 
+    # Disk-backed staging re-reads through a memory map (.mmap_reader),
+    # built on first use; NULL where this torch cannot map files
+    reader <- NULL
     handle <- list(
                    get_tensor = function(key) {
         h <- key_to_handle[[key]]
         if (is.null(h)) stop("Key not found in fp8 shards: ", key)
         .st_read_or_breadcrumb(function() h$get_tensor(key), key_to_path[[key]])
+    },
+                   read_to = function(key, device) {
+        if (is.null(reader)) {
+            reader <<- .mmap_reader(shard_paths) %||% FALSE
+        }
+        if (isFALSE(reader)) {
+            return(handle$get_tensor(key)$to(device = device))
+        }
+        reader$read(key, device)
     }
     )
 

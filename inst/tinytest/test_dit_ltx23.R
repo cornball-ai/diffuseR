@@ -245,6 +245,33 @@ if (requireNamespace("safetensors", quietly = TRUE)) {
   # Back again for later tests
   diffuseR:::.staged_onload(split_disk$staging, "cpu")
   model$block_stream <- NULL
+
+  # stage_from = "disk": the streamed block re-reads too, through the
+  # memory-mapped reader (read_to), every forward
+  reader <- diffuseR:::.mmap_reader(st_file)
+  if (!is.null(reader)) {
+    model$weight_source <- list(keys = stats::setNames(names(tensors), names(tensors)),
+      handle = list(get_tensor = function(k) stop("mapped reads only"),
+        read_to = reader$read))
+    split_all_disk <- diffuseR:::.ltx23_block_stream(model, other_gb + 1.5 * blk_gb,
+      pin = FALSE, from_disk = TRUE, stream_from_disk = TRUE)
+    w2 <- model$transformer_blocks[[2]]$parameters[[1]]
+    expect_equal(w2$stride(), rep(0L, w2$dim()))
+    diffuseR:::.staged_onload(split_all_disk$staging, "cpu")
+    res_mm <- run_model(
+      encoder_attention_mask = fx$m_enc_mask,
+      audio_encoder_attention_mask = fx$m_enc_mask
+    )
+    expect_true(max_abs_diff(res_mm$sample, res$sample) == 0)
+    expect_true(max_abs_diff(res_mm$audio_sample, res$audio_sample) == 0)
+    # The streamed block went back to its placeholder after the forward
+    expect_equal(w2$stride(), rep(0L, w2$dim()))
+    model$block_stream <- NULL
+    # Host copies for later tests
+    for (nm in names(tensors)) {
+      tensors[[nm]]$set_data(reader$read(nm, "cpu"))
+    }
+  }
   model$weight_source <- NULL
   unlink(st_file)
 }

@@ -1,3 +1,27 @@
+# diffuseR 0.2.2.21
+
+* **LTX-2.5 in 10 GB of host RAM.** `stage_from = "disk"` on
+  `ltx23_load_pipeline()` and `load_gemma4_nf4()` keeps no weights in
+  host memory: loading reads none, and every phase reads what it needs
+  from a private memory map of the artifact shards (Gemma 4 layers,
+  connectors, the transformer's resident part per render and its
+  streamed blocks every step, VAEs, vocoder). The OS page cache keeps
+  what fits.
+  - Measured on a simulated 8 GB card under a 10 GB memory cap that
+    counts page cache, 768x512x121: the text phase holds 1.5 GB of
+    anonymous memory (was 12.4 GB), the render phase at most 4.6 GB
+    (was 16.0 GB), and a warm render takes 127 s (82 s with host
+    copies). Output is bit-identical.
+  - `ltx23_memory_profile()` and `recommend("ltx25")` return
+    `stage_from`, `"disk"` below 18 GB of available RAM.
+    `serve(model = "ltx25")` uses it wherever the profile would split
+    the text phase off, which a persistent server cannot do.
+  - Reads go through the mapped bytes at 4.5-6.4 GB/s from the page
+    cache (safetensors' reader: ~0.7 GB/s), including shards past
+    2 GB.
+* `ltx23_load_group()` gains `lazy` and returns `source_keys`;
+  `ltx23_load_transformer_nf4()` gains `lazy`.
+
 # diffuseR 0.2.2.20
 
 * `serve(model = "ltx25")` serves LTX-2.5 on `/v1/videos`. It loads

@@ -397,13 +397,17 @@ ltx23_quantize_nf4 <- function(checkpoint_path, output_dir = NULL,
 #'   (\code{\link{ltx23_open_fp8_checkpoint}} reads any shard artifact).
 #' @param device Character.
 #' @param verbose Logical.
+#' @param lazy Logical. Build the model and record each tensor's
+#'   artifact key without reading any weight; every weight is a
+#'   zero-stride placeholder until a disk-backed staging set reads it
+#'   onto the device. Host RAM then never holds the transformer.
 #' @param ... Passed to \code{\link{ltx23_transformer}} (tiny test configs).
 #'
 #' @return The loaded \code{ltx23_transformer}.
 #'
 #' @export
 ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
-                                       ...) {
+                                       lazy = FALSE, ...) {
     stopifnot(inherits(ckpt, "ltx23_checkpoint"))
     args <- utils::modifyList(ltx23_dit_config_args(ckpt$config), list(...))
     model <- do.call(.construct_skeleton, c(list(ltx23_transformer), args))
@@ -446,10 +450,15 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                     # loads through the pre-swap destination map
                     nf4_mod$bias <- old$bias
                 }
-                nf4_mod$set_nf4_weight(
-                                       ckpt$handle$get_tensor(key),
-                                       ckpt$handle$get_tensor(paste0(key, "_absmax"))
-                )
+                if (lazy) {
+                    .release_host(nf4_mod$weight_nf4)
+                    .release_host(nf4_mod$weight_absmax)
+                } else {
+                    nf4_mod$set_nf4_weight(
+                                           ckpt$handle$get_tensor(key),
+                                           ckpt$handle$get_tensor(paste0(key, "_absmax"))
+                    )
+                }
                 do.call(`$<-`, list(parent, leaf, nf4_mod))
                 filled <- c(filled, mapped)
             } else {
@@ -458,7 +467,11 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                     unmapped <- c(unmapped, key)
                     next
                 }
-                dest$copy_(ckpt$handle$get_tensor(key))
+                if (lazy) {
+                    .release_host(dest)
+                } else {
+                    dest$copy_(ckpt$handle$get_tensor(key))
+                }
                 filled <- c(filled, mapped)
                 source_keys[mapped] <- key
             }
@@ -493,7 +506,11 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
     # ~1.5GB per block at high resolution; per-block gc keeps them bounded
     options(diffuseR.block_gc = TRUE)
     if (verbose) {
-        message("Transformer ready: NF4 weights resident on ", device)
+        if (lazy) {
+            message("Transformer ready: NF4 weights left on disk until staged")
+        } else {
+            message("Transformer ready: NF4 weights resident on ", device)
+        }
     }
     model
 }

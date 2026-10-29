@@ -9,7 +9,8 @@ ltx23_load_group(
   module,
   map_key = identity,
   verbose = TRUE,
-  gc_every = 50L
+  gc_every = 50L,
+  lazy = FALSE
 )
 }
 \arguments{
@@ -26,12 +27,17 @@ parameter/buffer name, or NA to skip the key deliberately.}
 \item{verbose}{Logical. Report progress and coverage.}
 
 \item{gc_every}{Integer. Run \code{gc()} after this many tensors.}
+
+\item{lazy}{Logical. Map keys to destinations without reading any
+tensor: the destinations are left as allocated, for a caller that
+stages them from disk (\code{source_keys}) before any forward.}
 }
 \value{
 Invisibly, a list with \code{unmapped} (checkpoint keys that
   found no destination), \code{skipped} (keys the mapper declined),
-  and \code{unfilled} (module parameters/buffers never written).
-  A perfectly loaded group has zero \code{unmapped} and zero
+  \code{unfilled} (module parameters/buffers never written), and
+  \code{source_keys} (destination name -> checkpoint key). A
+  perfectly loaded group has zero \code{unmapped} and zero
   \code{unfilled}.
 }
 \description{

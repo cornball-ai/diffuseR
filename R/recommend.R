@@ -31,11 +31,12 @@
 #' transformer resident and streams the rest, and the result carries
 #' the \code{\link{ltx23_memory_profile}} fields that configure that
 #' (\code{resident_gb}, \code{stream_text}, \code{split_text},
-#' \code{resident_from}). Its staging is always pinned on the GPU
-#' tiers: block streaming from pageable memory is slow, and the
-#' host-RAM fields already bound the footprint (measured at 768x512x121
-#' on an 8 GB card: 20.1 GB high-water with resident host copies, 16.0
-#' GB with \code{resident_from = "disk"}).
+#' \code{resident_from}, \code{stage_from}). Its staging is always
+#' pinned on the GPU tiers: block streaming from pageable memory is
+#' slow, and the host-RAM fields already bound the footprint (measured
+#' at 768x512x121 on an 8 GB card: 20.1 GB high-water with resident
+#' host copies, 16.0 GB with \code{resident_from = "disk"}; with
+#' \code{stage_from = "disk"} no weights are held in host memory).
 #'
 #' The pinning decision: phase-swapped weights are page-locked host
 #' copies (see \code{\link{staging}}) that transfer at DMA rate -
@@ -69,8 +70,9 @@
 #'   \code{host_ram_gb}, \code{fork_suggested} (logical: the installed
 #'   safetensors cannot read the tier the card could otherwise run), and
 #'   \code{note} (the suggestion string, or NULL). For \code{"ltx25"} it
-#'   also has \code{resident_gb}, \code{stream_text}, \code{split_text}
-#'   and \code{resident_from} (see \code{\link{ltx23_memory_profile}}).
+#'   also has \code{resident_gb}, \code{stream_text}, \code{split_text},
+#'   \code{resident_from} and \code{stage_from} (see
+#'   \code{\link{ltx23_memory_profile}}).
 #'   The \code{fork_suggested} field name is
 #'   historical -- the remedy used to be the cornball-ai fork and is now
 #'   \code{install.packages("safetensors")}, since the fixes reached CRAN
@@ -175,13 +177,14 @@ recommend <- function(model = c("sd21", "sdxl", "flux1", "flux2", "zimage",
     if (model == "ltx25") {
         if (isTRUE(chosen$cpu)) {
             prof <- list(resident_gb = Inf, stream_text = FALSE,
-                         split_text = FALSE, resident_from = "host")
+                         split_text = FALSE, resident_from = "host",
+                         stage_from = "host")
         } else {
             prof <- ltx23_memory_profile(vram_gb, host_ram_gb = host_ram_gb)
         }
-        out[c("resident_gb", "stream_text", "split_text", "resident_from")] <-
-            prof[c("resident_gb", "stream_text", "split_text",
-                   "resident_from")]
+        fields <- c("resident_gb", "stream_text", "split_text",
+                    "resident_from", "stage_from")
+        out[fields] <- prof[fields]
     }
     out
 }

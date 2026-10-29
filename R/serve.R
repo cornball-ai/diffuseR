@@ -66,8 +66,10 @@
 #'   \code{gemma4-nf4} artifacts and places them by
 #'   \code{\link{recommend}("ltx25")}: on 8-12 GB cards the transformer
 #'   streams blocks and, below 12 GB, Gemma 4 streams layers. The
-#'   encoder and render pipeline share one process, which needs about
-#'   31 GB of host RAM.
+#'   encoder and render pipeline share one process: with 32 GB of host
+#'   RAM available they keep their weights there, with less they read
+#'   them from the memory-mapped artifacts as each phase needs them
+#'   (\code{stage_from = "disk"} in \code{\link{ltx23_load_pipeline}}).
 #' @param device Character. "cuda" or "cpu".
 #' @param token Character or NULL. Shared secret; when set, requests
 #'   must send \code{Authorization: Bearer <token>}.
@@ -322,7 +324,8 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx",
 # the GPU and streams the rest; below 12 GB Gemma 4 streams its layers.
 # The server holds the encoder and the render pipeline in one process
 # (~31 GB of host RAM with pinned staging); the split text phase of
-# ltx23_text_embeds() does not apply to a persistent server.
+# ltx23_text_embeds() does not apply to a persistent server, so with
+# less RAM than that it stages every weight from disk instead.
 .dserve_load_ltx25 <- function(device, max_prompts) {
     data_dir <- tools::R_user_dir("diffuseR", "data")
     ckpt <- file.path(data_dir, "ltx2.5-nf4-full")
@@ -338,18 +341,21 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx",
     }
     gpu <- identical(device, "cuda") && torch::cuda_is_available()
     rec <- recommend("ltx25", vram_gb = if (gpu) NULL else 0)
-    if (isTRUE(rec$split_text)) {
+    # A persistent server cannot split the text phase off, so where the
+    # profile asks for that it keeps no weights in host memory at all
+    stage_from <- if (isTRUE(rec$split_text)) "disk" else rec$stage_from
+    if (stage_from == "disk") {
         message(sprintf(paste0(
-            "%.0f GB of host RAM available; serving LTX-2.5 holds Gemma 4 ",
-            "and the render pipeline together (~31 GB measured)."),
-            rec$host_ram_gb))
+            "%.0f GB of host RAM available; LTX-2.5 weights are read from ",
+            "disk as each phase needs them."), rec$host_ram_gb))
     }
     pipe <- ltx23_load_pipeline(ckpt, device = device, pin = rec$pin,
                                 resident_gb = rec$resident_gb,
                                 resident_from = rec$resident_from,
-                                verbose = FALSE)
+                                stage_from = stage_from, verbose = FALSE)
     te <- load_gemma4_nf4(gem, device = "cpu", pin = rec$pin,
-                          stream = rec$stream_text, verbose = FALSE)
+                          stream = rec$stream_text, stage_from = stage_from,
+                          verbose = FALSE)
     tok <- gemma4_tokenizer(gem)
     enc_dev <- if (gpu) "cuda" else "cpu"
     embeds <- .dserve_embed_cache(function(prompt) {

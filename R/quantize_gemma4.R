@@ -168,6 +168,10 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
 #'   layer by layer instead of whole: an encode on the GPU then holds
 #'   only the embeddings and one layer at a time, for cards that cannot
 #'   hold the ~8 GB NF4 model.
+#' @param stage_from "host" keeps the staged weights in host memory;
+#'   "disk" keeps none and reads each layer from the artifact (memory
+#'   mapped) when the encode needs it, so the encoder costs almost no
+#'   host RAM. "disk" needs \code{device = "cpu"} and a CUDA encode.
 #' @param verbose Logical.
 #'
 #' @return A \code{gemma4_text_model}.
@@ -175,7 +179,14 @@ gemma4_quantize_nf4 <- function(path, output_dir = NULL, shard_bytes = 1.9e9,
 #' @export
 load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
                             pin = getOption("diffuseR.pin_staging", TRUE),
-                            stream = FALSE, verbose = TRUE) {
+                            stream = FALSE, stage_from = c("host", "disk"),
+                            verbose = TRUE) {
+    stage_from <- match.arg(stage_from)
+    lazy <- stage_from == "disk"
+    if (lazy && device != "cpu") {
+        stop("stage_from = \"disk\" stages through the GPU from a CPU ",
+             "model; use device = \"cpu\"", call. = FALSE)
+    }
     ckpt <- ltx23_open_fp8_checkpoint(artifact_dir)
     manifest <- jsonlite::fromJSON(file.path(artifact_dir, "manifest.json"),
                                    simplifyVector = FALSE)
@@ -194,6 +205,8 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
     model <- .construct_skeleton(gemma4_text_model, config, dtype = torch_dtype)
 
     cast_keys <- sub("_absmax$", "", grep("_absmax$", ckpt$keys, value = TRUE))
+    # Model tensor name -> artifact key, for disk-backed staging
+    source_keys <- character(0)
     torch::with_no_grad({
         for (key in cast_keys) {
             # layers.<l>.<self_attn|mlp>.<proj>.weight
@@ -202,8 +215,16 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
             old <- parent[[segs[4]]]
             nf4 <- ltx23_nf4_linear(old$weight$shape[1], old$weight$shape[2],
                                     bias = FALSE)
-            nf4$set_nf4_weight(ckpt$handle$get_tensor(key),
-                               ckpt$handle$get_tensor(paste0(key, "_absmax")))
+            stem <- sub("\\.weight$", "", key)
+            source_keys[paste0(stem, c(".weight_nf4", ".weight_absmax"))] <-
+                c(key, paste0(key, "_absmax"))
+            if (lazy) {
+                .release_host(nf4$weight_nf4)
+                .release_host(nf4$weight_absmax)
+            } else {
+                nf4$set_nf4_weight(ckpt$handle$get_tensor(key),
+                                   ckpt$handle$get_tensor(paste0(key, "_absmax")))
+            }
             do.call(`$<-`, list(parent, segs[4], nf4))
         }
 
@@ -216,7 +237,12 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
             if (is.null(dest)) {
                 next # e.g. text_embedding_projection.*, for the connectors
             }
-            dest$copy_(ckpt$handle$get_tensor(key))
+            source_keys[key] <- key
+            if (lazy) {
+                .release_host(dest)
+            } else {
+                dest$copy_(ckpt$handle$get_tensor(key))
+            }
             filled <- c(filled, key)
         }
         unfilled <- setdiff(names(dests), filled)
@@ -229,7 +255,17 @@ load_gemma4_nf4 <- function(artifact_dir, device = "cuda", dtype = "bfloat16",
 
     model$to(device = device)
     model$eval()
-    if (stream && device == "cpu") {
+    if (lazy) {
+        src <- list(keys = source_keys, handle = ckpt$handle)
+        attr(model, "staging") <- if (stream) {
+            .stage_layer_stream(model, model$layers, "layers.", pin, src)
+        } else {
+            .stage_set(c(model$parameters, model$buffers), pin, src)
+        }
+        if (verbose) {
+            message("Gemma 4 weights staged from disk")
+        }
+    } else if (stream && device == "cpu") {
         attr(model, "staging") <- .stage_layer_stream(model, model$layers,
                                                       "layers.", pin)
         if (verbose) {

@@ -14,7 +14,8 @@ when undetectable, which keeps the all-in-RAM defaults).}
 \value{
 Named list with device/dtype placement, \code{attn_chunk},
   \code{pin_weights}, \code{resident_gb}, \code{stream_text},
-  \code{split_text}, \code{resident_from}, and resolution caps.
+  \code{split_text}, \code{resident_from}, \code{stage_from}, and
+  resolution caps.
 }
 \description{
 Selects transformer precision, component placement, and attention
@@ -53,6 +54,12 @@ of the GPU-resident transformer blocks. Below 32 GB available the
 text phase splits off; below 22 GB the resident blocks come from
 disk (measured on LTX-2.5 at 768x512x121 with an 8 GB card: the
 render phase peaks at 20.1 GB of host RAM with host copies and 16.0
-GB without, for ~8 s more per render).
+GB without, for ~8 s more per render). Below 18 GB,
+\code{stage_from = "disk"} (for \code{\link{ltx23_load_pipeline}} and
+\code{\link{load_gemma4_nf4}}) keeps no weights in host memory: every
+phase reads them from the memory-mapped artifacts. Measured the same
+way under a 10 GB memory cap that also counts page cache: the text
+phase holds 1.5 GB of anonymous memory, the render phase at most
+4.6 GB, and a warm render takes 127 s instead of 82 s.
 
 }
