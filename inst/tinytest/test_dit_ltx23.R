@@ -219,6 +219,39 @@ split_all <- diffuseR:::.ltx23_block_stream(model, Inf, pin = FALSE)
 expect_equal(split_all$n_streamed, 0L)
 expect_true(is.null(model$block_stream))
 
+# Resident part re-read from disk (resident_from = "disk"): staging drops
+# the host copies, the onload reads them back, same output
+if (requireNamespace("safetensors", quietly = TRUE)) {
+  tensors <- c(model$parameters, model$buffers)
+  st_file <- tempfile(fileext = ".safetensors")
+  safetensors::safe_save_file(lapply(tensors, function(t) t$clone()), st_file)
+  handle <- safetensors::safetensors$new(st_file, framework = "torch")
+  model$weight_source <- list(keys = stats::setNames(names(tensors), names(tensors)),
+    handle = handle)
+  split_disk <- diffuseR:::.ltx23_block_stream(model, other_gb + 1.5 * blk_gb,
+    pin = FALSE, from_disk = TRUE)
+  expect_equal(split_disk$n_streamed, 1L)
+  w1 <- model$transformer_blocks[[1]]$parameters[[1]]
+  expect_equal(w1$stride(), rep(0L, w1$dim()))
+  diffuseR:::.staged_onload(split_disk$staging, "cpu")
+  res_disk <- run_model(
+    encoder_attention_mask = fx$m_enc_mask,
+    audio_encoder_attention_mask = fx$m_enc_mask
+  )
+  expect_true(max_abs_diff(res_disk$sample, res$sample) == 0)
+  expect_true(max_abs_diff(res_disk$audio_sample, res$audio_sample) == 0)
+  diffuseR:::.staged_offload(split_disk$staging)
+  expect_equal(w1$stride(), rep(0L, w1$dim()))
+  # Back again for later tests
+  diffuseR:::.staged_onload(split_disk$staging, "cpu")
+  model$block_stream <- NULL
+  model$weight_source <- NULL
+  unlink(st_file)
+}
+# Disk staging needs the artifact keys only the NF4 loader records
+expect_error(diffuseR:::.ltx23_block_stream(model, Inf, pin = FALSE,
+  from_disk = TRUE), "NF4")
+
 # --- Key mapper ------------------------------------------------------------------
 
 expect_equal(

@@ -256,7 +256,10 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #' @param transformer_device Character. Device for the transformer
 #'   weights when loading the plain (non-fp8) checkpoint.
 #' @param components Character vector. Which components to load.
-#' @param pin Logical. Pin fp8 host memory (fp8 artifact only).
+#' @param pin Logical. Pin host memory: the fp8 weights, and the
+#'   phase-offload staging buffers (with \code{options(diffuseR.pin_staging)}).
+#'   Freed pinned memory stays in torch's host cache, so pass
+#'   \code{FALSE} for a pipeline that will be dropped to make room.
 #' @param attn_chunk Integer or NULL. Query-chunk size for attention
 #'   (see \code{\link{ltx23_set_attn_chunk}}).
 #' @param phase_offload Logical. Load the small components (connectors,
@@ -269,6 +272,13 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   the ~12.5 GB NF4 transformer; under 7 GB the text connectors
 #'   stream too. Needs \code{phase_offload} on CUDA. See
 #'   \code{\link{ltx23_memory_profile}}.
+#' @param resident_from Where the GPU-resident part of an NF4
+#'   transformer comes back from after each render's decode phase:
+#'   \code{"host"} (default) keeps a pinned host copy, \code{"disk"}
+#'   keeps none and re-reads it from the artifact at the next onload
+#'   (the OS page cache serves it when RAM allows). \code{"disk"} saves
+#'   host RAM equal to the resident part (up to ~12 GB) for a re-read
+#'   per render. Needs \code{phase_offload} on CUDA.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -281,10 +291,15 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 components = c("dit", "connectors", "vae", "audio_vae", "vocoder"),
                                 pin = TRUE, attn_chunk = NULL,
                                 phase_offload = TRUE, resident_gb = Inf,
+                                resident_from = c("host", "disk"),
                                 verbose = TRUE) {
-    if (is.finite(resident_gb) && !(phase_offload && device == "cuda")) {
-        stop("resident_gb streams transformer blocks to the GPU; it needs ",
-             "device = \"cuda\" and phase_offload = TRUE", call. = FALSE)
+    resident_from <- match.arg(resident_from)
+    from_disk <- resident_from == "disk"
+    if ((is.finite(resident_gb) || from_disk) &&
+        !(phase_offload && device == "cuda")) {
+        stop("resident_gb and resident_from = \"disk\" stage the transformer ",
+             "through the GPU; they need device = \"cuda\" and ",
+             "phase_offload = TRUE", call. = FALSE)
     }
     if (phase_offload) {
         component_device <- "cpu"
@@ -427,30 +442,34 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         pipe$vocoder <- voc
     }
 
-    pin_staging <- phase_offload && device == "cuda" &&
+    # Pinned pages go to torch's host cache when freed, not back to the
+    # OS: a pipeline that will be dropped (the text phase) loads unpinned
+    pin_staging <- phase_offload && device == "cuda" && isTRUE(pin) &&
     isTRUE(getOption("diffuseR.pin_staging", TRUE))
     staging <- list()
-    if (is.finite(resident_gb) && !is.null(pipe$transformer)) {
+    if ((is.finite(resident_gb) || from_disk) && !is.null(pipe$transformer)) {
         # The transformer stages only its resident part; the streamed
         # blocks carry their own staging sets (staged even unpinned, so
         # the phase onload never moves them)
         split <- .ltx23_block_stream(pipe$transformer, resident_gb,
-                                     pin = pin_staging)
+                                     pin = pin_staging, from_disk = from_disk)
         staging$transformer <- split$staging
         if (verbose) {
-            message(sprintf(paste0("Transformer: %d blocks resident (%.1f GB), ",
+            message(sprintf(paste0("Transformer: %d blocks resident (%.1f GB%s), ",
                                    "%d streamed (%.1f GB/step)"),
                             split$n_resident, split$resident_gb,
+                            if (from_disk) ", re-read from disk" else "",
                             split$n_streamed, split$streamed_gb))
         }
-        # The 5.9 GB connector phase does not fit beside an 8 GB card's
-        # activations either: stream it for budgets under 7 GB
-        if (resident_gb < 7 && !is.null(pipe$connectors)) {
-            staging$connectors <- .ltx23_connector_stream(pipe$connectors,
-                                                          pin = pin_staging)
-            if (verbose) {
-                message("Text connectors stream block by block")
-            }
+    }
+    # The 5.9 GB connector phase does not fit beside an 8 GB card's
+    # activations either: stream it for budgets under 7 GB (also when
+    # the connectors load alone, for ltx23_text_embeds)
+    if (resident_gb < 7 && !is.null(pipe$connectors)) {
+        staging$connectors <- .ltx23_connector_stream(pipe$connectors,
+                                                      pin = pin_staging)
+        if (verbose) {
+            message("Text connectors stream block by block")
         }
     }
     if (pin_staging) {
@@ -475,6 +494,127 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
     }
 
     structure(pipe, class = "ltx23_pipeline")
+}
+
+# Run the (onloaded) text connectors on raw encoder states; returns the
+# connector outputs on `device`. A streamed projection sits on the host
+# between calls, so streamed connectors always compute on the device.
+.ltx23_run_connectors <- function(connectors, prompt_embeds, device,
+                                  compute_dtype) {
+    conn_device <- if (is.null(connectors$unit_stream)) {
+        connectors$video_text_proj_in$weight$device
+    } else {
+        device
+    }
+    torch::with_no_grad({
+        conn <- connectors(
+            prompt_embeds$prompt_embeds$to(device = conn_device,
+                                           dtype = compute_dtype),
+            prompt_embeds$prompt_attention_mask$to(device = conn_device)
+        )
+        list(video_text_embedding = conn$video_text_embedding$to(device = device),
+             audio_text_embedding = conn$audio_text_embedding$to(device = device),
+             attention_mask = conn$attention_mask$to(device = device))
+    })
+}
+
+#' Encode an LTX prompt to connector embeddings
+#'
+#' Runs the text encoder and the text connectors and returns their
+#' output on the CPU, ready for the \code{connector_embeds} argument of
+#' \code{\link{txt2vid_ltx2}}. This splits a render into phases that
+#' never share host RAM: encode with Gemma and drop it, run a
+#' connectors-only pipeline (loaded with \code{pin = FALSE}) and drop
+#' it, then load the render pipeline without connectors.
+#'
+#' @param prompt Character. The prompt.
+#' @param pipeline An \code{ltx23_pipeline} holding the connectors, e.g.
+#'   \code{ltx23_load_pipeline(path, components = "connectors")}.
+#' @param text_encoder,tokenizer The Gemma 3 or Gemma 4 model and
+#'   tokenizer (see \code{\link{txt2vid_ltx2}}). Ignored when
+#'   \code{prompt_embeds} is supplied.
+#' @param prompt_embeds Optional raw encoder output (the result of
+#'   \code{\link{encode_with_gemma4}} or \code{\link{encode_with_gemma3}}),
+#'   so the encoder can be freed before the connectors load.
+#' @param device Character. Compute device.
+#' @param dtype Character. Compute dtype.
+#' @param max_sequence_length Integer. Text token length.
+#' @param verbose Logical.
+#'
+#' @return A list with \code{video_text_embedding},
+#'   \code{audio_text_embedding} and \code{attention_mask}, on the CPU.
+#'
+#' @examples
+#' \dontrun{
+#' ckpt <- file.path(tools::R_user_dir("diffuseR", "data"), "ltx2.5-nf4-full")
+#' gemma <- file.path(tools::R_user_dir("diffuseR", "data"), "gemma4-nf4")
+#' prompt <- "A red fox in fresh snow"
+#' te <- load_gemma4_nf4(gemma, device = "cpu", stream = TRUE, pin = FALSE)
+#' raw <- encode_with_gemma4(prompt, te, gemma4_tokenizer(gemma))
+#' rm(te); gc()
+#' text <- ltx23_load_pipeline(ckpt, components = "connectors",
+#'                             resident_gb = 4, pin = FALSE)
+#' emb <- ltx23_text_embeds(prompt, text, prompt_embeds = raw)
+#' rm(text, raw); gc()
+#' pipe <- ltx23_load_pipeline(ckpt, components = c("dit", "vae",
+#'                             "audio_vae", "vocoder"), resident_gb = 4,
+#'                             resident_from = "disk")
+#' txt2vid_ltx2(prompt, pipe, connector_embeds = emb, filename = "fox.mp4")
+#' }
+#'
+#' @export
+ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
+                              tokenizer = NULL, prompt_embeds = NULL,
+                              device = "cuda", dtype = "bfloat16",
+                              max_sequence_length = 1024L, verbose = TRUE) {
+    stopifnot(inherits(pipeline, "ltx23_pipeline"))
+    if (is.null(pipeline$connectors)) {
+        stop("pipeline has no connectors; load it with components ",
+             "including \"connectors\"", call. = FALSE)
+    }
+    compute_dtype <- switch(dtype, bfloat16 = torch::torch_bfloat16(),
+                            float16 = torch::torch_float16(),
+                            float32 = torch::torch_float32(),
+                            stop("Unsupported dtype: ", dtype))
+    raw <- prompt_embeds
+    if (is.null(raw)) {
+        if (is.null(text_encoder) || is.null(tokenizer)) {
+            stop("Supply text_encoder + tokenizer, or prompt_embeds.",
+                 call. = FALSE)
+        }
+        encode <- if (inherits(tokenizer, "gemma4_tokenizer")) {
+            encode_with_gemma4
+        } else {
+            encode_with_gemma3
+        }
+        raw <- encode(prompt, model = text_encoder, tokenizer = tokenizer,
+                      max_sequence_length = max_sequence_length,
+                      device = .ltx23_text_encode_device(text_encoder, device),
+                      verbose = verbose)
+    }
+    st <- pipeline$staging$connectors
+    on_gpu <- device != "cpu"
+    if (on_gpu) {
+        if (is.null(st)) {
+            pipeline$connectors$to(device = device)
+        } else {
+            .staged_onload(st, device)
+        }
+    }
+    conn <- .ltx23_run_connectors(pipeline$connectors, raw, device,
+                                  compute_dtype)
+    rm(raw)
+    out <- lapply(conn, function(t) t$to(device = "cpu"))
+    rm(conn)
+    if (on_gpu) {
+        if (is.null(st)) {
+            pipeline$connectors$to(device = "cpu")
+        } else {
+            .staged_offload(st)
+        }
+    }
+    gc(verbose = FALSE)
+    out
 }
 
 # The device the prompt encode runs on, for the text_encoder txt2vid_ltx2
@@ -807,22 +947,11 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         text_mask <- connector_embeds$attention_mask$to(device = device)
     } else {
         onload("connectors")
-        # A streamed projection sits on the host between calls; the
-        # streamed connectors always compute on the device
-        connectors_device <- if (is.null(pipeline$connectors$unit_stream)) {
-            pipeline$connectors$video_text_proj_in$weight$device
-        } else {
-            device
-        }
-        torch::with_no_grad({
-            conn <- pipeline$connectors(
-                                        prompt_embeds$prompt_embeds$to(device = connectors_device, dtype = compute_dtype),
-                                        prompt_embeds$prompt_attention_mask$to(device = connectors_device)
-            )
-            video_text_embeds <- conn$video_text_embedding$to(device = device)
-            audio_text_embeds <- conn$audio_text_embedding$to(device = device)
-            text_mask <- conn$attention_mask$to(device = device)
-        })
+        conn <- .ltx23_run_connectors(pipeline$connectors, prompt_embeds,
+                                      device, compute_dtype)
+        video_text_embeds <- conn$video_text_embedding
+        audio_text_embeds <- conn$audio_text_embedding
+        text_mask <- conn$attention_mask
         rm(conn)
         offload("connectors")
     }

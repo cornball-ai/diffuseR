@@ -416,6 +416,9 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
     dests <- c(model$named_parameters(), model$named_buffers())
     filled <- character(0)
     unmapped <- character(0)
+    # Model tensor name -> artifact key, so a staging set can re-read a
+    # tensor from disk instead of keeping a host copy (.stage_from_disk)
+    source_keys <- character(0)
 
     torch::with_no_grad({
         for (i in seq_along(main_keys)) {
@@ -424,6 +427,9 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
 
             if (ltx23_is_fp8_cast_key(mapped) &&
                         paste0(key, "_absmax") %in% absmax_keys) {
+                stem <- sub("\\.weight$", "", mapped)
+                source_keys[paste0(stem, c(".weight_nf4", ".weight_absmax"))] <-
+                    c(key, paste0(key, "_absmax"))
                 segments <- strsplit(mapped, ".", fixed = TRUE)[[1]]
                 parent <- .ltx23_walk_module(model, utils::head(segments, -2L))
                 leaf <- segments[length(segments) - 1L]
@@ -454,6 +460,7 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
                 }
                 dest$copy_(ckpt$handle$get_tensor(key))
                 filled <- c(filled, mapped)
+                source_keys[mapped] <- key
             }
 
             if (i %% 100L == 0L) {
@@ -481,6 +488,7 @@ ltx23_load_transformer_nf4 <- function(ckpt, device = "cuda", verbose = TRUE,
     # Everything (packed weights included, as buffers) onto the GPU
     model$to(device = device)
     model$eval()
+    model$weight_source <- list(keys = source_keys, handle = ckpt$handle)
     # Block intermediates (norms, projections, FF activations) are still
     # ~1.5GB per block at high resolution; per-block gc keeps them bounded
     options(diffuseR.block_gc = TRUE)

@@ -162,13 +162,66 @@ NULL
 #' @keywords internal
 .staged_onload <- function(staging, device) {
     spec <- .device_spec(device)
+    n_read <- 0L
     for (pair in staging) {
-        if (.on_device(pair$live, spec)) {
+        disk <- is.null(pair$pinned)
+        if (.on_device(pair$live, spec) && (!disk || pair$state$loaded)) {
+            next
+        }
+        if (disk) {
+            # Disk-backed pair (.stage_from_disk): read it again. The host
+            # copies are garbage once on the device; collect them as we
+            # go so the read never holds more than a slice in RAM
+            pair$live$set_data(pair$read()$to(device = device,
+                                              dtype = pair$live$dtype))
+            pair$state$loaded <- TRUE
+            n_read <- n_read + 1L
+            if (n_read %% 64L == 0L) {
+                gc(verbose = FALSE, full = FALSE)
+            }
             next
         }
         pair$live$set_data(pair$pinned$to(device = device, non_blocking = TRUE))
     }
+    if (n_read) {
+        gc(verbose = FALSE, full = FALSE)
+    }
     invisible(NULL)
+}
+
+# Staging pairs that keep NO host copy: `keys` names each tensor's
+# artifact key (a model's weight_source$keys) and `handle` reads it.
+# Offload drops the device copy and onload re-reads the tensor from
+# disk (the OS page cache, when RAM allows). Tensors without a key
+# (computed buffers) get ordinary pairs. Releases the host copies now.
+.stage_from_disk <- function(tensors, keys, handle, pin) {
+    on_disk <- names(tensors) %in% names(keys)
+    pairs <- vector("list", length(tensors))
+    names(pairs) <- names(tensors)
+    pairs[!on_disk] <- .stage_pairs(tensors[!on_disk], pin)
+    for (nm in names(tensors)[on_disk]) {
+        key <- keys[[nm]]
+        state <- new.env(parent = emptyenv())
+        state$loaded <- FALSE
+        pair <- list(live = tensors[[nm]], state = state,
+                     read = local({
+                         k <- key
+                         function() handle$get_tensor(k)
+                     }))
+        .release_host(pair$live)
+        pairs[[nm]] <- pair
+    }
+    gc(verbose = FALSE)
+    pairs
+}
+
+# Point a tensor at a zero-stride placeholder of the same shape and
+# dtype: its storage is a single element, so the old data is freed
+.release_host <- function(t) {
+    shape <- as.integer(t$shape)
+    stub <- torch::torch_zeros(1L, dtype = t$dtype)
+    stub <- if (length(shape)) stub$expand(shape) else stub$squeeze()
+    t$set_data(stub)
 }
 
 # Layer streaming for a CPU-resident encoder: each layer of `layers`
@@ -192,7 +245,12 @@ NULL
 #' @keywords internal
 .staged_offload <- function(staging) {
     for (pair in staging) {
-        pair$live$set_data(pair$pinned)
+        if (is.null(pair$pinned)) {
+            .release_host(pair$live)
+            pair$state$loaded <- FALSE
+        } else {
+            pair$live$set_data(pair$pinned)
+        }
     }
     invisible(NULL)
 }

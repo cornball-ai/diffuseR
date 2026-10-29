@@ -67,6 +67,33 @@ expect_true(p8$stream_text)
 expect_true(ltx23_memory_profile(11)$stream_text)
 expect_equal(ltx23_memory_profile(4)$name, "cpu_only")
 
+# Host RAM: plenty keeps everything in one process with host copies;
+# less splits the text phase off, then drops the resident host copy
+big <- ltx23_memory_profile(8, host_ram_gb = 64)
+expect_false(big$split_text)
+expect_equal(big$resident_from, "host")
+mid <- ltx23_memory_profile(8, host_ram_gb = 24)
+expect_true(mid$split_text)
+expect_equal(mid$resident_from, "host")
+small <- ltx23_memory_profile(12, host_ram_gb = 16)
+expect_true(small$split_text)
+expect_equal(small$resident_from, "disk")
+# Unknown RAM keeps the defaults; the CPU tier never stages
+unknown <- ltx23_memory_profile(8, host_ram_gb = NA)
+expect_false(unknown$split_text)
+expect_equal(unknown$resident_from, "host")
+cpu <- ltx23_memory_profile(4, host_ram_gb = 8)
+expect_false(cpu$split_text)
+expect_equal(cpu$resident_from, "host")
+
 # The loader refuses block streaming it cannot do
 expect_error(ltx23_load_pipeline("unused", device = "cpu", resident_gb = 4),
              "phase_offload")
+expect_error(ltx23_load_pipeline("unused", device = "cpu",
+                                 resident_from = "disk"), "phase_offload")
+
+# The split text phase needs connectors, and an encoder or raw states
+no_conn <- structure(list(), class = "ltx23_pipeline")
+expect_error(ltx23_text_embeds("p", no_conn), "connectors")
+fake <- structure(list(connectors = list()), class = "ltx23_pipeline")
+expect_error(ltx23_text_embeds("p", fake), "prompt_embeds")

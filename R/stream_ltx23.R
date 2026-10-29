@@ -52,8 +52,11 @@
 # plus its leading blocks) stays with the phase onload. Sets
 # transformer$block_stream (per-block staging for the streamed blocks,
 # consumed by the forward) and returns the staging pairs for everything
-# else, which replace the transformer's whole-module staging set.
-.ltx23_block_stream <- function(transformer, resident_gb, pin) {
+# else, which replace the transformer's whole-module staging set. With
+# `from_disk`, that resident part keeps no host copy: it is re-read from
+# the artifact at each onload (.stage_from_disk).
+.ltx23_block_stream <- function(transformer, resident_gb, pin,
+                                from_disk = FALSE) {
     blocks <- transformer$transformer_blocks
     n <- length(blocks)
     block_bytes <- vapply(seq_len(n), function(i) .module_bytes(blocks[[i]]), 0)
@@ -77,7 +80,18 @@
     } else {
         NULL
     }
-    list(staging = .stage_pairs(tensors[!in_stream], pin),
+    staging <- if (from_disk) {
+        src <- transformer$weight_source
+        if (is.null(src)) {
+            stop("resident_from = \"disk\" needs an NF4 transformer ",
+                 "(ltx23_load_transformer_nf4 records its artifact keys)",
+                 call. = FALSE)
+        }
+        .stage_from_disk(tensors[!in_stream], src$keys, src$handle, pin)
+    } else {
+        .stage_pairs(tensors[!in_stream], pin)
+    }
+    list(staging = staging,
          n_resident = n_resident, n_streamed = length(streamed),
          resident_gb = (other_bytes + sum(block_bytes[seq_len(n_resident)])) / 1024 ^ 3,
          streamed_gb = sum(block_bytes[streamed]) / 1024 ^ 3)

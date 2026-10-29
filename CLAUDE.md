@@ -509,8 +509,19 @@ Gotcha that cost an hour: the first render in a process differs from
 later ones with the same seed (TorchScript's profiling executor swaps
 graphs after its first calls; max latent diff ~3), so compare streamed
 vs resident only after a warm-up run. Host RAM: the pipeline's pinned
-staging (~21 GB) plus Gemma 4 do not fit this host's free RAM in one
-process; set `MALLOC_MMAP_THRESHOLD_=1048576` and encode separately.
+staging plus Gemma 4 need ~31 GB in one process. Low-RAM flow: encode
+with Gemma, free it, `ltx23_text_embeds()` on a connectors-only
+pipeline loaded `pin = FALSE`, free it, then load the render pipeline
+without connectors, optionally `resident_from = "disk"` (no host copy
+of the resident blocks; re-read at ~1 GB/s). Measured high-water marks
+at 768x512x121: text 12.4 GB; render 20.1 GB (host) / 16.0 GB (disk)
+on 8 GB, 14.9 GB (disk) on 12 GB. Set `MALLOC_MMAP_THRESHOLD_=1048576`
+so freed tensors return to the OS.
+
+Gotchas that bit once (host RAM): freed PINNED memory stays in torch's
+CachingHostAllocator, not the OS, so a pipeline you plan to drop must
+load unpinned (RSS stayed 9 GB after freeing pinned connectors). Pinned
+pages show up as RssShmem in /proc/self/status, not RssAnon.
 
 ### LTX-2.3 Video Generation (clean-room rewrite in progress)
 

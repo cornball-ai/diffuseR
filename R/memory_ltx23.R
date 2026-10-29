@@ -36,18 +36,36 @@ NULL
 #'     near-bf16 quality; each step pays the PCIe transfer.}
 #' }
 #'
+#' Host RAM decides two more fields for the GPU tiers. \code{split_text}
+#' asks the caller to encode in its own phase (Gemma, then the
+#' connectors, each freed before the next loads; see
+#' \code{\link{ltx23_text_embeds}}) instead of holding the encoder next
+#' to the render pipeline. \code{resident_from} is passed to
+#' \code{\link{ltx23_load_pipeline}}: \code{"disk"} drops the host copy
+#' of the GPU-resident transformer blocks. Below 32 GB available the
+#' text phase splits off; below 22 GB the resident blocks come from
+#' disk (measured on LTX-2.5 at 768x512x121 with an 8 GB card: the
+#' render phase peaks at 20.1 GB of host RAM with host copies and 16.0
+#' GB without, for ~8 s more per render).
+#'
 #' @param vram_gb Numeric or NULL (auto-detect free VRAM).
+#' @param host_ram_gb Numeric or NULL (auto-detect available RAM; NA
+#'   when undetectable, which keeps the all-in-RAM defaults).
 #'
 #' @return Named list with device/dtype placement, \code{attn_chunk},
-#'   \code{pin_weights}, \code{resident_gb}, \code{stream_text}, and
-#'   resolution caps.
+#'   \code{pin_weights}, \code{resident_gb}, \code{stream_text},
+#'   \code{split_text}, \code{resident_from}, and resolution caps.
 #'
 #' @export
-ltx23_memory_profile <- function(vram_gb = NULL) {
+ltx23_memory_profile <- function(vram_gb = NULL, host_ram_gb = NULL) {
     if (is.null(vram_gb)) {
         vram_gb <- .detect_vram(use_free = TRUE)
         message(sprintf("Detected %.1f GB free VRAM", vram_gb))
     }
+    if (is.null(host_ram_gb)) {
+        host_ram_gb <- .detect_host_ram()
+    }
+    ram_known <- isTRUE(is.finite(host_ram_gb))
 
     profile <- if (vram_gb >= 14) {
         "high"
@@ -114,8 +132,25 @@ ltx23_memory_profile <- function(vram_gb = NULL) {
         )
     )
 
-    profiles[[profile]]
+    out <- profiles[[profile]]
+    gpu <- out$device == "cuda"
+    out$split_text <- gpu && ram_known && host_ram_gb < .ltx23_ram_one_process
+    out$resident_from <- if (gpu && ram_known &&
+                             host_ram_gb < .ltx23_ram_host_resident) {
+        "disk"
+    } else {
+        "host"
+    }
+    out
 }
+
+# Host RAM (GB) for the LTX GPU tiers: the render pipeline plus the
+# Gemma 4 encoder in one process, and the render pipeline alone with
+# its resident blocks kept in host memory (LTX-2.5 768x512x121 on a
+# simulated 8 GB card, high-water marks: 20.1 GB with host copies,
+# 16.0 GB re-reading from disk, 12.4 GB for the split text phase)
+.ltx23_ram_one_process <- 32
+.ltx23_ram_host_resident <- 22
 
 #' Tune the torch CUDA allocator for large-resident inference
 #'
