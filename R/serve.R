@@ -29,7 +29,7 @@
 #'     \code{{prompt, size, seed, steps}} (\code{size} like
 #'     \code{"1024x1024"}; \code{n > 1} is not supported). Returns
 #'     \code{{created, data: [{b64_json}]}} with a base64 PNG.
-#'   \item \code{POST /v1/videos} - \code{model = "ltx"} only, a job that
+#'   \item \code{POST /v1/videos} - video models only, a job that
 #'     matches the wan2gp-api container. JSON body \code{{prompt, width,
 #'     height, num_frames, frame_rate, seed}} returns \code{{id, status}};
 #'     poll \code{GET /v1/videos/{id}} for the status and download the mp4 at
@@ -60,8 +60,14 @@
 #' state rather than serving on with stranded components.
 #'
 #' @param port Integer. TCP port. Default 7812 (cornball serve range: whisper 7809, chatterbox 7810, qwen3 TTS 7811).
-#' @param model One of "flux2", "zimage", "flux1" (images) or "ltx"
-#'   (video). SD 2.1/SDXL are not served yet.
+#' @param model One of "flux2", "zimage", "flux1" (images), "ltx"
+#'   (LTX-2.3 video) or "ltx25" (LTX-2.5 video). SD 2.1/SDXL are not
+#'   served yet. "ltx25" loads the \code{ltx2.5-nf4-full} and
+#'   \code{gemma4-nf4} artifacts and places them by
+#'   \code{\link{recommend}("ltx25")}: on 8-12 GB cards the transformer
+#'   streams blocks and, below 12 GB, Gemma 4 streams layers. The
+#'   encoder and render pipeline share one process, which needs about
+#'   31 GB of host RAM.
 #' @param device Character. "cuda" or "cpu".
 #' @param token Character or NULL. Shared secret; when set, requests
 #'   must send \code{Authorization: Bearer <token>}.
@@ -74,7 +80,8 @@
 #'   resolution clips top out at 121 frames and longer clips must
 #'   shrink spatially).
 #' @param max_prompts Integer. Bound on the per-prompt connector-embed
-#'   cache for "ltx" (~9 MB per entry, LRU-evicted). Default 32.
+#'   cache for the video models (~9 MB per entry, LRU-evicted).
+#'   Default 32.
 #' @param timeout Integer. Per-connection I/O timeout in seconds.
 #' @param max_body Integer. Maximum request body bytes. Default 1 MB
 #'   (bodies are JSON).
@@ -83,11 +90,12 @@
 #'   Default 8.
 #' @param warmup Logical. Image models: run one small generation at
 #'   startup so the first request doesn't pay tracing and allocator
-#'   growth. Ignored for "ltx".
+#'   growth. Ignored for the video models.
 #'
 #' @return Does not return normally; runs until interrupted.
 #' @export
-serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
+serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx",
+                                          "ltx25"),
                   device = "cuda", token = NULL, max_pixels = 1024L ^ 2,
                   max_frames = 161L, max_steps = 50L,
                   max_pixel_frames = NULL, max_prompts = 32L, timeout = 300L,
@@ -115,7 +123,7 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
     state$jobs[["__order__"]] <- character(0)
     message("Model loaded.")
 
-    if (isTRUE(warmup) && model != "ltx") {
+    if (isTRUE(warmup) && !model %in% c("ltx", "ltx25")) {
         message("Warming up...")
         tryCatch({
             invisible(state$generate("a red square", width = 256L,
@@ -190,17 +198,9 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         # built, follow the machine-aware recommendation - on a card
         # too small for resident nf4, recommend() prescribes streamed
         # fp8 (which is also what download_ltx2() produces by default)
-        valid_artifact <- function(d) {
-            mp <- file.path(d, "manifest.json")
-            file.exists(mp) && isTRUE(tryCatch({
-                m <- jsonlite::fromJSON(mp)
-                length(m$shards) > 0 &&
-                all(file.exists(file.path(d, m$shards)))
-            }, error = function(e) FALSE))
-        }
         dirs <- c(nf4 = file.path(data_dir, "ltx2.3-nf4"),
                   fp8 = file.path(data_dir, "ltx2.3-fp8"))
-        avail <- dirs[vapply(dirs, valid_artifact, logical(1))]
+        avail <- dirs[vapply(dirs, .dserve_valid_artifact, logical(1))]
         if (!length(avail)) {
             stop("No complete LTX-2.3 artifact under ", data_dir,
                  "; run download_ltx2() (fp8) or ltx23_quantize_nf4() first.",
@@ -239,17 +239,7 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         } else {
             "cpu"
         }
-        # Bounded LRU of CONNECTOR outputs (~9 MB each): the raw Gemma
-        # stack (~0.4 GB) is encoded, projected, and dropped per prompt
-        cache <- new.env(parent = emptyenv())
-        order <- character(0)
-        embeds <- function(prompt) {
-            key <- paste0("p:", prompt)
-            e <- cache[[key]]
-            if (!is.null(e)) {
-                order <<- c(setdiff(order, key), key)
-                return(e)
-            }
+        embeds <- .dserve_embed_cache(function(prompt) {
             raw <- encode_with_gemma3(prompt, model = te, tokenizer = tok,
                                       max_sequence_length = 1024L,
                                       device = enc_dev, verbose = FALSE)
@@ -257,21 +247,14 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
                     raw$prompt_embeds$to(device = "cpu",
                         dtype = torch::torch_bfloat16()),
                     raw$prompt_attention_mask$to(device = "cpu")))
-            e <- list(video_text_embedding = conn$video_text_embedding,
-                      audio_text_embedding = conn$audio_text_embedding,
-                      attention_mask = conn$attention_mask)
-            rm(raw, conn)
-            cache[[key]] <- e
-            order <<- c(order, key)
-            while (length(order) > max_prompts) {
-                rm(list = order[[1]], envir = cache)
-                order <<- order[-1]
-            }
-            gc(verbose = FALSE)
-            e
-        }
+            list(video_text_embedding = conn$video_text_embedding,
+                 audio_text_embedding = conn$audio_text_embedding,
+                 attention_mask = conn$attention_mask)
+        }, max_prompts)
         list(model = model, video = TRUE, pipe = pipe, embeds = embeds,
              device = device)
+    } else if (model == "ltx25") {
+        .dserve_load_ltx25(device, max_prompts)
     } else {
         loader <- switch(model, flux1 = flux_load_pipeline,
                          flux2 = flux2_load_pipeline,
@@ -297,6 +280,89 @@ serve <- function(port = 7812L, model = c("flux2", "zimage", "flux1", "ltx"),
         }
         list(model = model, video = FALSE, generate = generate, device = device)
     }
+}
+
+# Bounded LRU of CONNECTOR outputs (~9 MB each): the raw Gemma stack
+# (~0.4 GB) is encoded, projected, and dropped per prompt. `encode`
+# maps a prompt to the connector-output list.
+.dserve_embed_cache <- function(encode, max_prompts) {
+    cache <- new.env(parent = emptyenv())
+    order <- character(0)
+    function(prompt) {
+        key <- paste0("p:", prompt)
+        e <- cache[[key]]
+        if (!is.null(e)) {
+            order <<- c(setdiff(order, key), key)
+            return(e)
+        }
+        e <- encode(prompt)
+        cache[[key]] <- e
+        order <<- c(order, key)
+        while (length(order) > max_prompts) {
+            rm(list = order[[1]], envir = cache)
+            order <<- order[-1]
+        }
+        gc(verbose = FALSE)
+        e
+    }
+}
+
+# A complete quantized artifact: a manifest whose shards all exist (a
+# partial or interrupted quantize must not be served)
+.dserve_valid_artifact <- function(d) {
+    mp <- file.path(d, "manifest.json")
+    file.exists(mp) && isTRUE(tryCatch({
+        m <- jsonlite::fromJSON(mp)
+        length(m$shards) > 0 && all(file.exists(file.path(d, m$shards)))
+    }, error = function(e) FALSE))
+}
+
+# LTX-2.5: the nf4-full artifact with Gemma 4, placed by
+# recommend("ltx25"). Below 14 GB the transformer keeps resident_gb on
+# the GPU and streams the rest; below 12 GB Gemma 4 streams its layers.
+# The server holds the encoder and the render pipeline in one process
+# (~31 GB of host RAM with pinned staging); the split text phase of
+# ltx23_text_embeds() does not apply to a persistent server.
+.dserve_load_ltx25 <- function(device, max_prompts) {
+    data_dir <- tools::R_user_dir("diffuseR", "data")
+    ckpt <- file.path(data_dir, "ltx2.5-nf4-full")
+    gem <- file.path(data_dir, "gemma4-nf4")
+    if (!.dserve_valid_artifact(ckpt)) {
+        stop("No complete LTX-2.5 artifact at ", ckpt, "; build it with ",
+             "ltx23_quantize_nf4(ltx25_open_checkpoint(...), output_dir = ",
+             "\"", ckpt, "\") first.", call. = FALSE)
+    }
+    if (!.dserve_valid_artifact(gem)) {
+        stop("No complete Gemma 4 NF4 artifact at ", gem,
+             "; build it with gemma4_quantize_nf4() first.", call. = FALSE)
+    }
+    gpu <- identical(device, "cuda") && torch::cuda_is_available()
+    rec <- recommend("ltx25", vram_gb = if (gpu) NULL else 0)
+    if (isTRUE(rec$split_text)) {
+        message(sprintf(paste0(
+            "%.0f GB of host RAM available; serving LTX-2.5 holds Gemma 4 ",
+            "and the render pipeline together (~31 GB measured)."),
+            rec$host_ram_gb))
+    }
+    pipe <- ltx23_load_pipeline(ckpt, device = device, pin = rec$pin,
+                                resident_gb = rec$resident_gb,
+                                resident_from = rec$resident_from,
+                                verbose = FALSE)
+    te <- load_gemma4_nf4(gem, device = "cpu", pin = rec$pin,
+                          stream = rec$stream_text, verbose = FALSE)
+    tok <- gemma4_tokenizer(gem)
+    enc_dev <- if (gpu) "cuda" else "cpu"
+    embeds <- .dserve_embed_cache(function(prompt) {
+        raw <- torch::with_no_grad(encode_with_gemma4(prompt, te, tok,
+                                                      device = enc_dev,
+                                                      verbose = FALSE))
+        torch::with_no_grad(ltx23_text_embeds(prompt, pipe,
+                                              prompt_embeds = raw,
+                                              device = enc_dev,
+                                              verbose = FALSE))
+    }, max_prompts)
+    list(model = "ltx25", video = TRUE, pipe = pipe, embeds = embeds,
+         device = device)
 }
 
 .dserve_route <- function(req, state) {
