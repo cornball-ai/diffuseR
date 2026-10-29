@@ -1,3 +1,13 @@
+# diffuseR 0.2.2.19
+
+* `recommend("ltx25")` covers LTX-2.5. `recommend("ltx")` (LTX-2.3)
+  still prescribes streamed fp8 on 10-14 GB cards, which LTX-2.5 has no
+  artifact for. The `"ltx25"` ladder is nf4 on every GPU tier: resident
+  at 14 GB and up, streamed blocks below (768x512 cap). The result adds
+  the `ltx23_memory_profile()` fields `resident_gb`, `stream_text`,
+  `split_text` and `resident_from`, and keeps staging pinned on the GPU
+  tiers.
+
 # diffuseR 0.2.2.18
 
 * **LTX-2.5 on 8 and 12 GB cards.** The NF4 transformer can keep part
