@@ -1,3 +1,17 @@
+# diffuseR 0.2.2.23
+
+* `resident_load("ltx", stream_text = TRUE)` streams the Gemma 4
+  encoder's layers, so a serving handle can take the small-card
+  placement: pass `resident_gb` too (forwarded to
+  `ltx23_load_pipeline()`). The handle's `pinned_bytes` now counts the
+  streamed transformer blocks, connector sets and encoder layers.
+  - Measured through `resident_load()`, `resident_activate()` and
+    `resident_generate()` with a 16 GB card held to a 12 GB board's free
+    memory: at `resident_gb = 5.38`, 768x512x121 renders in 74 s
+    (allocated peak 8.8 GiB). 960x960x145 needs `resident_gb` below 7.38
+    on the GPU, and more than 37 GiB of host RAM in decode. The full
+    card, all resident: 768x512x121 in 81 s, allocated peak 13.6 GiB.
+
 # diffuseR 0.2.2.22
 
 * **FLUX 3 in less host RAM: fp8 Qwen3-VL.** `qwen3_quantize()` writes
