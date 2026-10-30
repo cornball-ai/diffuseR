@@ -75,6 +75,14 @@ first activation lands on GPU 1. Wrap the call in
 The pipeline is left \emph{inactive} (weights pinned on the host, no
 VRAM held). Call \code{\link{resident_activate}} before generating.
 
+For \code{ltx}, \code{stage_from = "disk"} (through \code{...}) keeps
+no weights in host memory: the pipeline and a Gemma 4
+\code{text_encoder} both read every onload from their memory-mapped
+NF4 artifacts, and \code{pinned_bytes} counts only the small computed
+buffers. It saves ~26 GB of host RAM for a re-read per phase (and per
+step for the streamed blocks), which the OS page cache serves when it
+can. A Gemma 3 \code{text_encoder} is refused.
+
 }
 \examples{
 \dontrun{

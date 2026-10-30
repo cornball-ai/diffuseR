@@ -11,6 +11,25 @@
     (allocated peak 8.8 GiB). 960x960x145 needs `resident_gb` below 7.38
     on the GPU, and more than 37 GiB of host RAM in decode. The full
     card, all resident: 768x512x121 in 81 s, allocated peak 13.6 GiB.
+  - On an RTX 3060 12 GB, `resident_gb = 5.38` with
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (the native
+    allocator OOMed at 960 with 0.9 GiB reserved but unallocated):
+    960x960x145 in 382 s (allocated peak 10.5 GiB, cgroup peak 48.8
+    GiB), 768x512x121 in 140 s (7.9 GiB, 44.9 GiB).
+* `resident_load("ltx", stage_from = "disk")` now stages the Gemma 4
+  encoder from disk too, so the handle keeps no weights in host memory
+  (`pinned_bytes` 0). A Gemma 3 encoder is refused.
+* LTX decode copies the video to the R array eight frames at a time
+  instead of converting the whole clip to float32 first: the host peak
+  above the result drops from about 5x to 1.3x its size, and the GPU
+  no longer holds a float32 copy of the clip.
+  - Both together, a 16 GB card held to the 3060's free 11692 MiB,
+    expandable segments, `resident_gb = 5.38`, `stream_text`, under a
+    16 GB cgroup cap: 768x512x121 in 116 s (host RSS 1.1 GiB after
+    load, 3.4 GiB at the end; same output sd as host staging),
+    960x960x145 in 235 s (RSS 5.3 GiB, allocated peak 9.2 GiB). Host
+    staging needed 29.7 GiB after load and was killed in decode at 960
+    under a 37 GiB cap.
 
 # diffuseR 0.2.2.22
 

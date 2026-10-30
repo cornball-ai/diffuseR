@@ -244,6 +244,14 @@
 #' The pipeline is left \emph{inactive} (weights pinned on the host, no
 #' VRAM held). Call \code{\link{resident_activate}} before generating.
 #'
+#' For \code{ltx}, \code{stage_from = "disk"} (through \code{...}) keeps
+#' no weights in host memory: the pipeline and a Gemma 4
+#' \code{text_encoder} both read every onload from their memory-mapped
+#' NF4 artifacts, and \code{pinned_bytes} counts only the small computed
+#' buffers. It saves ~26 GB of host RAM for a re-read per phase (and per
+#' step for the streamed blocks), which the OS page cache serves when it
+#' can. A Gemma 3 \code{text_encoder} is refused.
+#'
 #' @param model One of "flux1", "flux2", "zimage", "ltx", "sdxl".
 #' @param device Target CUDA device, e.g. "cuda" or "cuda:1".
 #' @param ... Passed to the family loader (\code{\link{flux_load_pipeline}},
@@ -309,6 +317,14 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         (is.null(text_encoder) || !.is_gemma4_artifact(text_encoder))) {
         stop("stream_text needs a Gemma 4 NF4 text_encoder artifact",
              call. = FALSE)
+    }
+    # stage_from goes to ltx23_load_pipeline through `...`; the Gemma 4
+    # encoder loaded here follows it
+    stage_disk <- identical(list(...)$stage_from, "disk")
+    if (stage_disk && !is.null(text_encoder) &&
+        !.is_gemma4_artifact(text_encoder)) {
+        stop("stage_from = \"disk\" with a text_encoder needs a Gemma 4 ",
+             "NF4 artifact", call. = FALSE)
     }
     if (!torch::cuda_is_available()) {
         stop("resident_load() requires CUDA", call. = FALSE)
@@ -385,10 +401,15 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         # LTX-2.5 encodes with Gemma 4; its NF4 artifact carries the
         # tokenizer too. txt2vid_ltx2() picks the encode by tokenizer class.
         if (.is_gemma4_artifact(text_encoder)) {
-            if (verbose) message("Loading the Gemma 4 text encoder (pinned)...")
+            if (verbose) {
+                message("Loading the Gemma 4 text encoder (",
+                        if (stage_disk) "from disk" else "pinned", ")...")
+            }
             res$text_encoder <- load_gemma4_text_encoder(
                 text_encoder, device = "cpu", pin = TRUE,
-                stream = isTRUE(stream_text), verbose = verbose)
+                stream = isTRUE(stream_text),
+                stage_from = if (stage_disk) "disk" else "host",
+                verbose = verbose)
             res$tokenizer <- gemma4_tokenizer(tokenizer)
         } else {
             if (verbose) message("Loading the Gemma3 text encoder (pinned)...")

@@ -18,6 +18,11 @@ expect_error(resident_load("ltx", stream_text = TRUE,
                            text_encoder = not_gemma4, tokenizer = not_gemma4),
              "Gemma 4")
 expect_error(resident_load("flux2", stream_text = TRUE), "Gemma 4")
+# stage_from = "disk" covers the encoder too, which only Gemma 4 can do
+expect_error(resident_load("ltx", stage_from = "disk",
+                           checkpoint_path = tempdir(),
+                           text_encoder = not_gemma4, tokenizer = not_gemma4),
+             "Gemma 4")
 
 # pinned_bytes counts the streamed sets that live on the modules
 if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) {
