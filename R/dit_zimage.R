@@ -119,9 +119,16 @@ zimage_transformer <- torch::nn_module(
         pad_rows <- self$x_pad_token$unsqueeze(1L)$expand(c(1L, img_pad, self$dim))
         x_emb <- torch::torch_cat(list(x_emb, pad_rows), dim = 2L)
     }
+    # Each block leaves GBs of temporaries (rotary in float32, fp8
+    # dequant) that only R's gc frees; collect per block as FLUX 3 does,
+    # or a tight card fills with garbage first
+    block_gc <- isTRUE(getOption("diffuseR.block_gc"))
     for (i in seq_len(length(self$noise_refiner))) {
         x_emb <- self$noise_refiner[[i]](x_emb, img_freqs, adaln_input = adaln,
                                        chunk_size = chunk_size)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
 
     # Caption tokens: embed, pad, refine
@@ -135,6 +142,9 @@ zimage_transformer <- torch::nn_module(
     for (i in seq_len(length(self$context_refiner))) {
         cap_emb <- self$context_refiner[[i]](cap_emb, cap_freqs,
                                        chunk_size = chunk_size)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
 
     # Unified sequence, image first
@@ -147,6 +157,9 @@ zimage_transformer <- torch::nn_module(
         unified <- self$layers[[i]](unified, unified_freqs,
                                        adaln_input = adaln,
                                        chunk_size = chunk_size)
+        if (block_gc) {
+            gc(verbose = FALSE, full = FALSE)
+        }
     }
 
     out <- self$all_final_layer[[patch_key]](unified, adaln)

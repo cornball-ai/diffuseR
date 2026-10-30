@@ -1,3 +1,27 @@
+# diffuseR 0.2.2.24
+
+* Image models in a ~10.5 GiB GPU budget (a 16 GB card that keeps a
+  speech pair resident beside them):
+  - `flux2_load_pipeline(stream_text = TRUE)` and
+    `zimage_load_pipeline(stream_text = TRUE)` stream the bf16 Qwen3
+    layers through the encode, whose ~8 GB whole-encoder onload set
+    both models' GPU peak. `resident_load()` passes `stream_text` to
+    the flux2, flux3 and zimage loaders (it was LTX-only).
+  - `zimage_load_pipeline(resident_gb =)` keeps that many GB of fp8
+    linears on the GPU and streams the rest per forward, as FLUX 3 does.
+  - Z-Image's transformer runs a minor gc after each block (the
+    `diffuseR.block_gc` option its loader already set): each block left
+    2-3 GB of rotary and dequant temporaries until R collected them.
+  - A streamed fp8 linear copies its weight into a persistent per-shape
+    device buffer instead of a fresh tensor per call.
+  - Measured on a 16 GB card held to 10.5 GiB free, expandable
+    segments, 1024x1024, two renders each, same image every time:
+    FLUX.2 klein 9-10 s (allocated peak 6.2 GiB; it ran out of memory
+    in the encode before), Z-Image 16-18 s all resident (9.9 GiB),
+    18 s at `resident_gb = 4` (8.3 GiB) or 3 (7.3 GiB). FLUX 3 on its
+    8 GB plan, unchanged: 26-28 s, 4.5 GiB. LTX-2.5 960x960x145 at
+    `resident_gb = 4.38`, `stage_from = "disk"`: 242 s, 8.3 GiB.
+
 # diffuseR 0.2.2.23
 
 * `resident_load("flux3")` serves FLUX 3 Image Klein text-to-image

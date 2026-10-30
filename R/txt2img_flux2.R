@@ -89,6 +89,11 @@ NULL
 #' @param encoder Logical. Also load the VAE encoder, which
 #'   \code{\link{img2img_flux2}} needs (FALSE keeps a text-to-image
 #'   pipeline's memory unchanged).
+#' @param stream_text Logical. Stream the bf16 Qwen3 layers through the
+#'   GPU one at a time during the encode instead of onloading the ~8 GB
+#'   encoder whole, whose encode then dominates the GPU peak. For a
+#'   budget under ~11 GB (a 12 GB card, or a 16 GB card shared with
+#'   other models). Needs \code{phase_offload} on CUDA.
 #'
 #' @return A \code{flux2_pipeline} list.
 #'
@@ -98,7 +103,7 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 text_device = NULL, attn_chunk = NULL,
                                 phase_offload = TRUE, pin = NULL,
                                 verbose = TRUE, revision = NULL,
-                                encoder = FALSE) {
+                                encoder = FALSE, stream_text = FALSE) {
     ## Checked before any device work, where a configuration mistake is
     ## cheapest to report.
     .flux2_rev(revision)
@@ -213,15 +218,24 @@ flux2_load_pipeline <- function(model_dir = NULL, device = "cuda",
     pipe$tokenizer <- qwen_bpe_tokenizer(
         .flux2_cached("tokenizer/tokenizer.json", revision))
 
+    stream_text <- isTRUE(stream_text) && device == "cuda" && phase_offload &&
+        !identical(text_device, "cpu")
     components <- c("transformer", "decoder")
     if (encoder) {
         components <- c(components, "encoder")
     }
-    if (!identical(text_device, "cpu")) {
+    if (!identical(text_device, "cpu") && !stream_text) {
         components <- c(components, "text_encoder")
     }
     pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
                                         components, verbose = verbose)
+    if (stream_text) {
+        if (verbose) {
+            message("Qwen3 streams layer by layer")
+        }
+        pipe$staging <- c(pipe$staging,
+                          list(text_encoder = .flux3_text_stream(pipe$text_encoder, pin)))
+    }
 
     structure(pipe, class = "flux2_pipeline")
 }

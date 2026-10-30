@@ -50,6 +50,12 @@ lin <- function(n) {
 pipe <- list(text_encoder = te,
              fp8_split = list(resident = list(lin(100)),
                               streamed = list(lin(7), lin(5))))
-expect_equal(diffuseR:::.resident_flux3_stream_bytes(pipe), 2 * 20 + 12)
-expect_equal(diffuseR:::.resident_flux3_stream_bytes(
+expect_equal(diffuseR:::.resident_qwen_stream_bytes(pipe), 2 * 20 + 12)
+expect_equal(diffuseR:::.resident_qwen_stream_bytes(
     list(text_encoder = torch::nn_linear(2, 2))), 0)
+# FLUX.2 klein and Z-Image stream the same Qwen3 layers (stream_text)
+expect_true("stream_text" %in% names(formals(flux2_load_pipeline)))
+expect_true("stream_text" %in% names(formals(zimage_load_pipeline)))
+expect_false(formals(flux2_load_pipeline)$stream_text)
+expect_false(formals(zimage_load_pipeline)$stream_text)
+expect_equal(formals(zimage_load_pipeline)$resident_gb, quote(Inf))

@@ -17,7 +17,7 @@ expect_error(resident_load("ltx", stream_text = TRUE,
                            checkpoint_path = tempdir(),
                            text_encoder = not_gemma4, tokenizer = not_gemma4),
              "Gemma 4")
-expect_error(resident_load("flux2", stream_text = TRUE), "Gemma 4")
+expect_error(resident_load("sdxl", stream_text = TRUE), "applies to ltx")
 # stage_from = "disk" covers the encoder too, which only Gemma 4 can do
 expect_error(resident_load("ltx", stage_from = "disk",
                            checkpoint_path = tempdir(),

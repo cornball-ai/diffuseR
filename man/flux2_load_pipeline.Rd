@@ -13,7 +13,8 @@ flux2_load_pipeline(
   pin = NULL,
   verbose = TRUE,
   revision = NULL,
-  encoder = FALSE
+  encoder = FALSE,
+  stream_text = FALSE
 )
 }
 \arguments{
@@ -50,6 +51,12 @@ transformer comes from \code{model_dir} and is unaffected.}
 \item{encoder}{Logical. Also load the VAE encoder, which
 \code{\link{img2img_flux2}} needs (FALSE keeps a text-to-image
 pipeline's memory unchanged).}
+
+\item{stream_text}{Logical. Stream the bf16 Qwen3 layers through the
+GPU one at a time during the encode instead of onloading the ~8 GB
+encoder whole, whose encode then dominates the GPU peak. For a
+budget under ~11 GB (a 12 GB card, or a 16 GB card shared with
+other models). Needs \code{phase_offload} on CUDA.}
 }
 \value{
 A \code{flux2_pipeline} list.

@@ -12,7 +12,9 @@ zimage_load_pipeline(
   phase_offload = TRUE,
   pin = NULL,
   verbose = TRUE,
-  revision = NULL
+  revision = NULL,
+  stream_text = FALSE,
+  resident_gb = Inf
 )
 }
 \arguments{
@@ -45,6 +47,16 @@ scheduler config, Qwen3 encoder, tokenizer) this pulls from the
 \code{snapshots/<revision>/}, so the load works against a cache holding
 only that snapshot -- no \code{refs/} entry and no network. The
 transformer comes from \code{model_dir} and is unaffected.}
+
+\item{stream_text}{Logical. Stream the bf16 Qwen3 layers through the
+GPU one at a time during the encode instead of onloading the ~8 GB
+encoder whole (see \code{\link{flux2_load_pipeline}}). Needs
+\code{phase_offload} on CUDA.}
+
+\item{resident_gb}{Numeric. GB of fp8 transformer weights kept on the
+GPU through the denoise; the rest stay in (pinned) host memory and
+copy in inside each forward (as \code{\link{flux3_load_pipeline}}).
+\code{Inf} (default) keeps all ~5.9 GB resident. fp8 on CUDA only.}
 }
 \value{
 A \code{zimage_pipeline} list.

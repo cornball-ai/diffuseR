@@ -141,11 +141,11 @@
     .resident_pinned_bytes(sets)
 }
 
-# Host bytes of a FLUX 3 pipeline's streamed sets, also off
-# pipeline$staging: the Qwen3-VL layers (stream_text) and the fp8
-# linears past resident_gb, which stay on the host and copy in per
-# forward
-.resident_flux3_stream_bytes <- function(pipeline) {
+# Host bytes of a Qwen3-encoded pipeline's streamed sets (FLUX.2 klein,
+# Z-Image, FLUX 3), also off pipeline$staging: the Qwen3 layers
+# (stream_text) and FLUX 3's fp8 linears past resident_gb, which stay
+# on the host and copy in per forward
+.resident_qwen_stream_bytes <- function(pipeline) {
     total <- .resident_pinned_bytes(pipeline$text_encoder$layer_stream)
     for (m in pipeline$fp8_split$streamed) {
         total <- total + m$weight_fp8$numel() * .dtype_bytes(m$weight_fp8$dtype)
@@ -288,13 +288,16 @@
 #'   generate; the encoder rides to the card for its phase and back off, the
 #'   way the pipeline's own components do, so it is never resident beside the
 #'   transformer.
-#' @param stream_text \code{ltx} with a Gemma 4 \code{text_encoder} only:
-#'   stream the encoder's layers to the card one at a time instead of
-#'   onloading it whole for the encode (\code{\link{load_gemma4_nf4}}'s
-#'   \code{stream}). \code{\link{recommend}("ltx25")} asks for it below
-#'   12 GB. On small cards pass \code{resident_gb} too (through \code{...}
-#'   to \code{\link{ltx23_load_pipeline}}), so the transformer keeps that
-#'   many GB on the card and streams the rest of its blocks.
+#' @param stream_text Stream the text encoder's layers to the card one at
+#'   a time instead of onloading it whole for the encode. \code{ltx} with
+#'   a Gemma 4 \code{text_encoder} (\code{\link{load_gemma4_nf4}}'s
+#'   \code{stream}): \code{\link{recommend}("ltx25")} asks for it below
+#'   12 GB; on small cards pass \code{resident_gb} too (through
+#'   \code{...} to \code{\link{ltx23_load_pipeline}}), so the transformer
+#'   keeps that many GB on the card and streams the rest of its blocks.
+#'   \code{flux2}, \code{flux3} and \code{zimage}: passed to the loader
+#'   as its \code{stream_text} when TRUE (FALSE leaves FLUX 3's own
+#'   \code{vram_gb} plan in charge). Refused for the other families.
 #'
 #' @return A \code{diffuseR_resident} handle (an environment). Inspect it
 #'   with \code{\link{resident_status}}; the fields of interest are the
@@ -330,7 +333,12 @@ resident_load <- function(model = c("flux2", "flux1", "flux3", "zimage",
         stop("text_encoder/tokenizer apply to the ltx family only; ",
              model, " loads its own", call. = FALSE)
     }
-    if (isTRUE(stream_text) &&
+    qwen <- model %in% c("flux2", "flux3", "zimage")
+    if (isTRUE(stream_text) && !qwen && !identical(model, "ltx")) {
+        stop("stream_text applies to ltx, flux2, flux3 and zimage",
+             call. = FALSE)
+    }
+    if (isTRUE(stream_text) && identical(model, "ltx") &&
         (is.null(text_encoder) || !.is_gemma4_artifact(text_encoder))) {
         stop("stream_text needs a Gemma 4 NF4 text_encoder artifact",
              call. = FALSE)
@@ -376,14 +384,19 @@ resident_load <- function(model = c("flux2", "flux1", "flux3", "zimage",
     } else {
         isTRUE(dots$phase_offload)
     }
-    if (identical(model, "flux3") && is.null(dots$pin)) {
+    extra <- list()
+    if (qwen && is.null(dots$pin)) {
         # Pin in the loader, so its streamed sets (stream_text,
         # resident_gb) are the pinned copies; .resident_pin would
         # otherwise pin the modules again beside them
-        pipeline <- loader(device = "cuda", verbose = verbose, pin = TRUE, ...)
-    } else {
-        pipeline <- loader(device = "cuda", verbose = verbose, ...)
+        extra$pin <- TRUE
     }
+    if (qwen && isTRUE(stream_text)) {
+        # Only when asked: FLUX 3 plans its own default from vram_gb
+        extra$stream_text <- TRUE
+    }
+    pipeline <- do.call(loader, c(list(device = "cuda", verbose = verbose),
+                                  extra, dots))
 
     staging <- .resident_pin(pipeline, verbose = verbose)
     # Pinning also evicted anything the loader had left resident, so the
@@ -404,9 +417,9 @@ resident_load <- function(model = c("flux2", "flux1", "flux3", "zimage",
     if (identical(model, "ltx")) {
         res$pinned_bytes <- res$pinned_bytes + .resident_stream_bytes(pipeline)
     }
-    if (identical(model, "flux3")) {
+    if (model %in% c("flux2", "flux3", "zimage")) {
         res$pinned_bytes <- res$pinned_bytes +
-            .resident_flux3_stream_bytes(pipeline)
+            .resident_qwen_stream_bytes(pipeline)
     }
 
     ## THE LTX TEXT ENCODER, LOADED ONCE AND KEPT OFF THE HANDLE'S STAGING.
