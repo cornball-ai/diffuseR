@@ -115,11 +115,29 @@
     total <- 0
     for (st in staging) {
         for (pair in st) {
+            # Disk-staged pairs hold no host copy
+            if (is.null(pair$pinned)) {
+                next
+            }
             total <- total + prod(as.numeric(pair$pinned$shape)) *
             .dtype_bytes(pair$pinned$dtype)
         }
     }
     total
+}
+
+# Host bytes of an LTX pipeline's streamed sets, which live on the
+# modules rather than in pipeline$staging: the transformer's streamed
+# blocks (resident_gb) and, below 7 GB, the connectors' projections and
+# blocks
+.resident_stream_bytes <- function(pipeline) {
+    sets <- pipeline$transformer$block_stream$staging
+    con <- pipeline$connectors
+    if (!is.null(con)) {
+        sets <- c(sets, con$unit_stream, con$video_connector$layer_stream,
+                  con$audio_connector$layer_stream)
+    }
+    .resident_pinned_bytes(sets)
 }
 
 # Bytes per element, keyed by the libtorch dtype name that
@@ -342,12 +360,8 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     res$gpu_components <- pipeline$gpu_components
     res$components <- names(.resident_components(pipeline))
     res$pinned_bytes <- .resident_pinned_bytes(staging)
-    # Streamed LTX blocks (resident_gb) keep their pinned sets on the
-    # transformer, outside `staging`
-    block_stream <- pipeline$transformer$block_stream
-    if (!is.null(block_stream)) {
-        res$pinned_bytes <- res$pinned_bytes +
-            .resident_pinned_bytes(block_stream$staging)
+    if (identical(model, "ltx")) {
+        res$pinned_bytes <- res$pinned_bytes + .resident_stream_bytes(pipeline)
     }
 
     ## THE LTX TEXT ENCODER, LOADED ONCE AND KEPT OFF THE HANDLE'S STAGING.

@@ -18,3 +18,23 @@ expect_error(resident_load("ltx", stream_text = TRUE,
                            text_encoder = not_gemma4, tokenizer = not_gemma4),
              "Gemma 4")
 expect_error(resident_load("flux2", stream_text = TRUE), "Gemma 4")
+
+# pinned_bytes counts the streamed sets that live on the modules
+if (!requireNamespace("torch", quietly = TRUE) || !torch::torch_is_installed()) {
+    exit_file("torch not fully installed")
+}
+pair <- function(n) {
+    list(live = NULL, pinned = torch::torch_zeros(n, dtype = torch::torch_bfloat16()))
+}
+tr <- torch::nn_linear(2, 2)
+tr$block_stream <- list(n_resident = 1L, staging = list(list(pair(10)), list(pair(6))))
+con <- torch::nn_module(initialize = function() {
+    self$video_connector <- torch::nn_linear(2, 2)
+    self$audio_connector <- torch::nn_linear(2, 2)
+})()
+con$unit_stream <- list(video_text_proj_in = list(pair(4)))
+con$video_connector$layer_stream <- list(list(pair(3)))
+con$audio_connector$layer_stream <- list(list(pair(2), list(live = NULL, pinned = NULL)))
+bytes <- diffuseR:::.resident_stream_bytes(list(transformer = tr, connectors = con))
+expect_equal(bytes, 2 * (10 + 6 + 4 + 3 + 2))
+expect_equal(diffuseR:::.resident_stream_bytes(list(transformer = torch::nn_linear(2, 2))), 0)
