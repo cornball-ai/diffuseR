@@ -9,7 +9,8 @@ resident_load(
   ...,
   verbose = TRUE,
   text_encoder = NULL,
-  tokenizer = NULL
+  tokenizer = NULL,
+  stream_text = FALSE
 )
 }
 \arguments{
@@ -25,6 +26,14 @@ resident_load(
 \code{\link{download_sdxl}} cache).}
 
 \item{verbose}{Print progress messages.}
+
+\item{stream_text}{\code{ltx} with a Gemma 4 \code{text_encoder} only:
+stream the encoder's layers to the card one at a time instead of
+onloading it whole for the encode (\code{\link{load_gemma4_nf4}}'s
+\code{stream}). \code{\link{recommend}("ltx25")} asks for it below
+12 GB. On small cards pass \code{resident_gb} too (through \code{...}
+to \code{\link{ltx23_load_pipeline}}), so the transformer keeps that
+many GB on the card and streams the rest of its blocks.}
 
 \item{text_encoder,tokenizer}{\code{ltx} only: paths to the Gemma3 encoder
 artifact and the tokenizer directory, or for LTX-2.5 the Gemma 4 NF4

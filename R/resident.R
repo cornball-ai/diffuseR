@@ -245,6 +245,13 @@
 #'   generate; the encoder rides to the card for its phase and back off, the
 #'   way the pipeline's own components do, so it is never resident beside the
 #'   transformer.
+#' @param stream_text \code{ltx} with a Gemma 4 \code{text_encoder} only:
+#'   stream the encoder's layers to the card one at a time instead of
+#'   onloading it whole for the encode (\code{\link{load_gemma4_nf4}}'s
+#'   \code{stream}). \code{\link{recommend}("ltx25")} asks for it below
+#'   12 GB. On small cards pass \code{resident_gb} too (through \code{...}
+#'   to \code{\link{ltx23_load_pipeline}}), so the transformer keeps that
+#'   many GB on the card and streams the rest of its blocks.
 #'
 #' @return A \code{diffuseR_resident} handle (an environment). Inspect it
 #'   with \code{\link{resident_status}}; the fields of interest are the
@@ -267,7 +274,8 @@
 resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
                                     "sdxl", "sd21"),
                           device = "cuda", ..., verbose = TRUE,
-                          text_encoder = NULL, tokenizer = NULL) {
+                          text_encoder = NULL, tokenizer = NULL,
+                          stream_text = FALSE) {
     model <- match.arg(model)
     ## NAMED ARGUMENTS RATHER THAN `...`, because `...` goes to the family
     ## loader and `ltx23_load_pipeline` has no `...` of its own -- an unknown
@@ -278,6 +286,11 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         (!is.null(text_encoder) || !is.null(tokenizer))) {
         stop("text_encoder/tokenizer apply to the ltx family only; ",
              model, " loads its own", call. = FALSE)
+    }
+    if (isTRUE(stream_text) &&
+        (is.null(text_encoder) || !.is_gemma4_artifact(text_encoder))) {
+        stop("stream_text needs a Gemma 4 NF4 text_encoder artifact",
+             call. = FALSE)
     }
     if (!torch::cuda_is_available()) {
         stop("resident_load() requires CUDA", call. = FALSE)
@@ -329,6 +342,13 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     res$gpu_components <- pipeline$gpu_components
     res$components <- names(.resident_components(pipeline))
     res$pinned_bytes <- .resident_pinned_bytes(staging)
+    # Streamed LTX blocks (resident_gb) keep their pinned sets on the
+    # transformer, outside `staging`
+    block_stream <- pipeline$transformer$block_stream
+    if (!is.null(block_stream)) {
+        res$pinned_bytes <- res$pinned_bytes +
+            .resident_pinned_bytes(block_stream$staging)
+    }
 
     ## THE LTX TEXT ENCODER, LOADED ONCE AND KEPT OFF THE HANDLE'S STAGING.
     ##
@@ -353,7 +373,8 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         if (.is_gemma4_artifact(text_encoder)) {
             if (verbose) message("Loading the Gemma 4 text encoder (pinned)...")
             res$text_encoder <- load_gemma4_text_encoder(
-                text_encoder, device = "cpu", pin = TRUE, verbose = verbose)
+                text_encoder, device = "cpu", pin = TRUE,
+                stream = isTRUE(stream_text), verbose = verbose)
             res$tokenizer <- gemma4_tokenizer(tokenizer)
         } else {
             if (verbose) message("Loading the Gemma3 text encoder (pinned)...")
@@ -378,6 +399,11 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
         if (!is.null(te_staging)) {
             res$pinned_bytes <- res$pinned_bytes +
                 .resident_pinned_bytes(list(te_staging))
+        }
+        # A streamed encoder's layers carry one set each
+        if (!is.null(res$text_encoder$layer_stream)) {
+            res$pinned_bytes <- res$pinned_bytes +
+                .resident_pinned_bytes(res$text_encoder$layer_stream)
         }
     }
     res$state <- "inactive"
