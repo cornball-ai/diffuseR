@@ -21,6 +21,11 @@
     18 s at `resident_gb = 4` (8.3 GiB) or 3 (7.3 GiB). FLUX 3 on its
     8 GB plan, unchanged: 26-28 s, 4.5 GiB. LTX-2.5 960x960x145 at
     `resident_gb = 4.38`, `stage_from = "disk"`: 242 s, 8.3 GiB.
+  - The prompt sets the peak through the encode. With a 3990-byte
+    prompt: FLUX.2 klein unchanged (its encode stops at 512 tokens),
+    Z-Image at `resident_gb = 4` 8.8 GiB (also 512 tokens), FLUX 3 on
+    the 8 GB plan 6.3 GiB at 31 s; FLUX 3 on the 12 GB plan runs out
+    of memory in this budget.
 
 # diffuseR 0.2.2.23
 
