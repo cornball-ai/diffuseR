@@ -4,7 +4,7 @@
 \title{Load a diffusion pipeline as a resident handle}
 \usage{
 resident_load(
-  model = c("flux2", "flux1", "zimage", "ltx", "sdxl", "sd21"),
+  model = c("flux2", "flux1", "flux3", "zimage", "ltx", "sdxl", "sd21"),
   device = "cuda",
   ...,
   verbose = TRUE,
@@ -14,16 +14,20 @@ resident_load(
 )
 }
 \arguments{
-\item{model}{One of "flux1", "flux2", "zimage", "ltx", "sdxl".}
+\item{model}{One of "flux1", "flux2", "flux3", "zimage", "ltx", "sdxl",
+"sd21".}
 
 \item{device}{Target CUDA device, e.g. "cuda" or "cuda:1".}
 
 \item{...}{Passed to the family loader (\code{\link{flux_load_pipeline}},
-\code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}},
+\code{\link{flux2_load_pipeline}}, \code{\link{flux3_load_pipeline}},
+\code{\link{zimage_load_pipeline}},
 \code{\link{ltx23_load_pipeline}} or
 \code{\link{sdxl_load_pipeline}}). \code{ltx} requires
 \code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
-\code{\link{download_sdxl}} cache).}
+\code{\link{download_sdxl}} cache). \code{flux3} takes
+\code{model_dir}, \code{text_dir} and \code{support_dir} to read
+from given paths instead of the default locations.}
 
 \item{verbose}{Print progress messages.}
 

@@ -18,6 +18,8 @@ flux3_load_pipeline(
   stream_text = NULL,
   resident_gb = NULL,
   text_precision = c("auto", "fp8", "nf4", "bf16"),
+  text_dir = NULL,
+  support_dir = NULL,
   verbose = TRUE
 )
 }
@@ -70,6 +72,19 @@ in inside each forward. NULL: all of it from 12 GB up, else
 then NF4, artifact built by \code{\link{download_flux3_klein}},
 else bf16), "fp8" (~4.4 GB of host memory instead of ~8 GB),
 "nf4" (~2.8 GB), or "bf16" (the cached source).}
+
+\item{text_dir}{Qwen3-VL text encoder directory: an fp8 or NF4
+artifact (\code{\link{qwen3_quantize}}) or a bf16
+\code{text_encoder} directory. Its own format decides the
+precision; a \code{text_precision} other than "auto" must match it.
+NULL (default) finds it by \code{text_precision}.}
+
+\item{support_dir}{Directory laid out like the upstream repository
+holding at least \code{vae/config.json},
+\code{vae/diffusion_pytorch_model.safetensors} and
+\code{text_encoder/tokenizer.json}, read instead of the
+HuggingFace cache. With \code{model_dir} and \code{text_dir} it
+names every file the pipeline reads, for offline mounts.}
 
 \item{verbose}{Logical.}
 }

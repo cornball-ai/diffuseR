@@ -44,6 +44,23 @@ NULL
     "bf16"
 }
 
+# The precision of a Qwen3-VL text encoder directory: a quantized
+# artifact's manifest format, else "bf16" for a text_encoder directory
+# (config.json plus safetensors shards)
+.flux3_text_dir_precision <- function(dir) {
+    for (p in c("fp8", "nf4")) {
+        if (.is_qwen3_artifact(dir, p)) {
+            return(p)
+        }
+    }
+    if (file.exists(file.path(dir, "config.json")) &&
+        length(list.files(dir, pattern = "\\.safetensors$"))) {
+        return("bf16")
+    }
+    stop("Not a Qwen3-VL text encoder directory (no fp8/nf4 manifest, ",
+         "no config.json with safetensors): ", dir, call. = FALSE)
+}
+
 # Resolve a FLUX 3 file from the HuggingFace cache
 .flux3_cached <- function(file, revision = .flux3_revision) {
     if (!requireNamespace("hfhub", quietly = TRUE)) {
@@ -105,6 +122,17 @@ NULL
 #'   then NF4, artifact built by \code{\link{download_flux3_klein}},
 #'   else bf16), "fp8" (~4.4 GB of host memory instead of ~8 GB),
 #'   "nf4" (~2.8 GB), or "bf16" (the cached source).
+#' @param text_dir Qwen3-VL text encoder directory: an fp8 or NF4
+#'   artifact (\code{\link{qwen3_quantize}}) or a bf16
+#'   \code{text_encoder} directory. Its own format decides the
+#'   precision; a \code{text_precision} other than "auto" must match it.
+#'   NULL (default) finds it by \code{text_precision}.
+#' @param support_dir Directory laid out like the upstream repository
+#'   holding at least \code{vae/config.json},
+#'   \code{vae/diffusion_pytorch_model.safetensors} and
+#'   \code{text_encoder/tokenizer.json}, read instead of the
+#'   HuggingFace cache. With \code{model_dir} and \code{text_dir} it
+#'   names every file the pipeline reads, for offline mounts.
 #' @param verbose Logical.
 #'
 #' @return A \code{flux3_pipeline} list.
@@ -118,8 +146,20 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                 dtype = NULL, vram_gb = NULL,
                                 stream_text = NULL, resident_gb = NULL,
                                 text_precision = c("auto", "fp8", "nf4", "bf16"),
+                                text_dir = NULL, support_dir = NULL,
                                 verbose = TRUE) {
     .flux2_rev(revision)
+    support <- function(file) {
+        if (is.null(support_dir)) {
+            return(.flux3_cached(file, revision))
+        }
+        path <- file.path(path.expand(support_dir), file)
+        if (!file.exists(path)) {
+            stop("Missing ", file, " in support_dir ", support_dir,
+                 call. = FALSE)
+        }
+        path
+    }
     precision <- match.arg(precision)
     if (precision != "bf16") {
         precision <- .flux_resolve_precision(precision,
@@ -197,9 +237,8 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading FLUX 3 VAE...")
     }
-    vae_config <- jsonlite::fromJSON(.flux3_cached("vae/config.json", revision))
-    vae_path <- .flux3_cached("vae/diffusion_pytorch_model.safetensors",
-                              revision)
+    vae_config <- jsonlite::fromJSON(support("vae/config.json"))
+    vae_path <- support("vae/diffusion_pytorch_model.safetensors")
     latent_channels <- as.integer(vae_config$latent_channels %||% 32L)
     pipe$vae_bn_eps <- vae_config$batch_norm_eps %||% 1e-4
     pipe$decoder <- load_flux2_vae_decoder(vae_path,
@@ -222,13 +261,26 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
     if (verbose) {
         message("Loading Qwen3-VL text encoder...")
     }
-    text_precision <- .flux3_resolve_text_precision(match.arg(text_precision))
-    te_dir <- if (text_precision == "bf16") {
+    text_precision <- match.arg(text_precision)
+    if (!is.null(text_dir)) {
+        text_dir <- path.expand(text_dir)
+        found <- .flux3_text_dir_precision(text_dir)
+        if (!text_precision %in% c("auto", found)) {
+            stop("text_dir holds a ", found, " text encoder, not ",
+                 text_precision, ": ", text_dir, call. = FALSE)
+        }
+        text_precision <- found
+    } else {
+        text_precision <- .flux3_resolve_text_precision(text_precision)
+    }
+    te_dir <- if (!is.null(text_dir)) {
+        text_dir
+    } else if (text_precision == "bf16") {
         for (f in c("text_encoder/model.safetensors.index.json",
                     sprintf("text_encoder/model-%05d-of-00002.safetensors", 1:2))) {
-            .flux3_cached(f, revision)
+            support(f)
         }
-        dirname(.flux3_cached("text_encoder/config.json", revision))
+        dirname(support("text_encoder/config.json"))
     } else {
         dir <- .flux3_text_artifact(text_precision)
         if (!.is_qwen3_artifact(dir, text_precision)) {
@@ -244,8 +296,7 @@ flux3_load_pipeline <- function(model_dir = NULL, device = "cuda",
         dtype = if (text_device == "cpu") "float32" else "bfloat16",
         verbose = verbose
     )
-    pipe$tokenizer <- qwen_bpe_tokenizer(
-        .flux3_cached("text_encoder/tokenizer.json", revision))
+    pipe$tokenizer <- qwen_bpe_tokenizer(support("text_encoder/tokenizer.json"))
 
     components <- intersect(c("transformer", "decoder", "encoder"), names(pipe))
     if (!identical(text_device, "cpu") && !stream_text) {

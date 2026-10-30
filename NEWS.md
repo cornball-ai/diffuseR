@@ -1,5 +1,20 @@
 # diffuseR 0.2.2.23
 
+* `resident_load("flux3")` serves FLUX 3 Image Klein text-to-image
+  through `resident_activate()`, `resident_generate()` (to
+  `txt2img_flux3()`) and `resident_deactivate()`. `pinned_bytes` counts
+  the streamed Qwen3-VL layers and fp8 linears too.
+* `flux3_load_pipeline(text_dir =, support_dir =)` read the Qwen3-VL
+  text encoder and the VAE and tokenizer from given directories
+  instead of the default artifact location and the HuggingFace cache,
+  so with `model_dir` every file it reads can come from an offline
+  mount.
+  - Measured through the resident handle with a 16 GB card held to an
+    RTX 3060's free 11692 MiB, expandable segments, `vram_gb = 12`,
+    `encoder = FALSE`, hub cache empty and offline: load 23 s, 1024x1024
+    in 24.6 s twice (allocated peak 8.0 GiB), host RSS 14.9 GiB,
+    `pinned_bytes` 9.4 GiB.
+
 * `resident_load("ltx", stream_text = TRUE)` streams the Gemma 4
   encoder's layers, so a serving handle can take the small-card
   placement: pass `resident_gb` too (forwarded to

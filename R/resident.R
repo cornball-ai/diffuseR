@@ -42,7 +42,8 @@
 
 # Families that ship a pinned/staged loader. Keyed by the `model` name
 # used everywhere else in the package (see recommend()).
-.resident_families <- c("flux1", "flux2", "zimage", "ltx", "sdxl", "sd21")
+.resident_families <- c("flux1", "flux2", "flux3", "zimage", "ltx", "sdxl",
+                        "sd21")
 
 #' Every nn_module field of a pipeline, by name
 #'
@@ -138,6 +139,18 @@
                   con$audio_connector$layer_stream)
     }
     .resident_pinned_bytes(sets)
+}
+
+# Host bytes of a FLUX 3 pipeline's streamed sets, also off
+# pipeline$staging: the Qwen3-VL layers (stream_text) and the fp8
+# linears past resident_gb, which stay on the host and copy in per
+# forward
+.resident_flux3_stream_bytes <- function(pipeline) {
+    total <- .resident_pinned_bytes(pipeline$text_encoder$layer_stream)
+    for (m in pipeline$fp8_split$streamed) {
+        total <- total + m$weight_fp8$numel() * .dtype_bytes(m$weight_fp8$dtype)
+    }
+    total
 }
 
 # Bytes per element, keyed by the libtorch dtype name that
@@ -252,14 +265,18 @@
 #' step for the streamed blocks), which the OS page cache serves when it
 #' can. A Gemma 3 \code{text_encoder} is refused.
 #'
-#' @param model One of "flux1", "flux2", "zimage", "ltx", "sdxl".
+#' @param model One of "flux1", "flux2", "flux3", "zimage", "ltx", "sdxl",
+#'   "sd21".
 #' @param device Target CUDA device, e.g. "cuda" or "cuda:1".
 #' @param ... Passed to the family loader (\code{\link{flux_load_pipeline}},
-#'   \code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}},
+#'   \code{\link{flux2_load_pipeline}}, \code{\link{flux3_load_pipeline}},
+#'   \code{\link{zimage_load_pipeline}},
 #'   \code{\link{ltx23_load_pipeline}} or
 #'   \code{\link{sdxl_load_pipeline}}). \code{ltx} requires
 #'   \code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
-#'   \code{\link{download_sdxl}} cache).
+#'   \code{\link{download_sdxl}} cache). \code{flux3} takes
+#'   \code{model_dir}, \code{text_dir} and \code{support_dir} to read
+#'   from given paths instead of the default locations.
 #' @param verbose Print progress messages.
 #' @param text_encoder,tokenizer \code{ltx} only: paths to the Gemma3 encoder
 #'   artifact and the tokenizer directory, or for LTX-2.5 the Gemma 4 NF4
@@ -297,8 +314,8 @@
 #' }
 #'
 #' @export
-resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
-                                    "sdxl", "sd21"),
+resident_load <- function(model = c("flux2", "flux1", "flux3", "zimage",
+                                    "ltx", "sdxl", "sd21"),
                           device = "cuda", ..., verbose = TRUE,
                           text_encoder = NULL, tokenizer = NULL,
                           stream_text = FALSE) {
@@ -343,6 +360,7 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     loader <- switch(model,
                      flux1 = flux_load_pipeline,
                      flux2 = flux2_load_pipeline,
+                     flux3 = flux3_load_pipeline,
                      zimage = zimage_load_pipeline,
                      ltx = ltx23_load_pipeline,
                      sdxl = sdxl_load_pipeline,
@@ -358,7 +376,14 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     } else {
         isTRUE(dots$phase_offload)
     }
-    pipeline <- loader(device = "cuda", verbose = verbose, ...)
+    if (identical(model, "flux3") && is.null(dots$pin)) {
+        # Pin in the loader, so its streamed sets (stream_text,
+        # resident_gb) are the pinned copies; .resident_pin would
+        # otherwise pin the modules again beside them
+        pipeline <- loader(device = "cuda", verbose = verbose, pin = TRUE, ...)
+    } else {
+        pipeline <- loader(device = "cuda", verbose = verbose, ...)
+    }
 
     staging <- .resident_pin(pipeline, verbose = verbose)
     # Pinning also evicted anything the loader had left resident, so the
@@ -378,6 +403,10 @@ resident_load <- function(model = c("flux2", "flux1", "zimage", "ltx",
     res$pinned_bytes <- .resident_pinned_bytes(staging)
     if (identical(model, "ltx")) {
         res$pinned_bytes <- res$pinned_bytes + .resident_stream_bytes(pipeline)
+    }
+    if (identical(model, "flux3")) {
+        res$pinned_bytes <- res$pinned_bytes +
+            .resident_flux3_stream_bytes(pipeline)
     }
 
     ## THE LTX TEXT ENCODER, LOADED ONCE AND KEPT OFF THE HANDLE'S STAGING.
@@ -845,6 +874,7 @@ resident_generate <- function(res, prompt, ...) {
     gen <- switch(res$model,
                   flux1 = txt2img_flux,
                   flux2 = txt2img_flux2,
+                  flux3 = txt2img_flux3,
                   zimage = txt2img_zimage,
                   ltx = txt2vid_ltx2,
                   sdxl = txt2img_sdxl,
