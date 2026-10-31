@@ -1,3 +1,80 @@
+# diffuseR 0.2.2.24
+
+* Image models in a ~10.5 GiB GPU budget (a 16 GB card that keeps a
+  speech pair resident beside them):
+  - `flux2_load_pipeline(stream_text = TRUE)` and
+    `zimage_load_pipeline(stream_text = TRUE)` stream the bf16 Qwen3
+    layers through the encode, whose ~8 GB whole-encoder onload set
+    both models' GPU peak. `resident_load()` passes `stream_text` to
+    the flux2, flux3 and zimage loaders (it was LTX-only).
+  - `zimage_load_pipeline(resident_gb =)` keeps that many GB of fp8
+    linears on the GPU and streams the rest per forward, as FLUX 3 does.
+  - Z-Image's transformer runs a minor gc after each block (the
+    `diffuseR.block_gc` option its loader already set): each block left
+    2-3 GB of rotary and dequant temporaries until R collected them.
+  - A streamed fp8 linear copies its weight into a persistent per-shape
+    device buffer instead of a fresh tensor per call.
+  - Measured on a 16 GB card held to 10.5 GiB free, expandable
+    segments, 1024x1024, two renders each, same image every time:
+    FLUX.2 klein 9-10 s (allocated peak 6.2 GiB; it ran out of memory
+    in the encode before), Z-Image 16-18 s all resident (9.9 GiB),
+    18 s at `resident_gb = 4` (8.3 GiB) or 3 (7.3 GiB). FLUX 3 on its
+    8 GB plan, unchanged: 26-28 s, 4.5 GiB. LTX-2.5 960x960x145 at
+    `resident_gb = 4.38`, `stage_from = "disk"`: 242 s, 8.3 GiB.
+  - The prompt sets the peak through the encode. With a 3990-byte
+    prompt: FLUX.2 klein unchanged (its encode stops at 512 tokens),
+    Z-Image at `resident_gb = 4` 8.8 GiB (also 512 tokens), FLUX 3 on
+    the 8 GB plan 6.3 GiB at 31 s; FLUX 3 on the 12 GB plan runs out
+    of memory in this budget.
+
+# diffuseR 0.2.2.23
+
+* `resident_load("flux3")` serves FLUX 3 Image Klein text-to-image
+  through `resident_activate()`, `resident_generate()` (to
+  `txt2img_flux3()`) and `resident_deactivate()`. `pinned_bytes` counts
+  the streamed Qwen3-VL layers and fp8 linears too.
+* `flux3_load_pipeline(text_dir =, support_dir =)` read the Qwen3-VL
+  text encoder and the VAE and tokenizer from given directories
+  instead of the default artifact location and the HuggingFace cache,
+  so with `model_dir` every file it reads can come from an offline
+  mount.
+  - Measured through the resident handle with a 16 GB card held to an
+    RTX 3060's free 11692 MiB, expandable segments, `vram_gb = 12`,
+    `encoder = FALSE`, hub cache empty and offline: load 23 s, 1024x1024
+    in 24.6 s twice (allocated peak 8.0 GiB), host RSS 14.9 GiB,
+    `pinned_bytes` 9.4 GiB.
+
+* `resident_load("ltx", stream_text = TRUE)` streams the Gemma 4
+  encoder's layers, so a serving handle can take the small-card
+  placement: pass `resident_gb` too (forwarded to
+  `ltx23_load_pipeline()`). The handle's `pinned_bytes` now counts the
+  streamed transformer blocks, connector sets and encoder layers.
+  - Measured through `resident_load()`, `resident_activate()` and
+    `resident_generate()` with a 16 GB card held to a 12 GB board's free
+    memory: at `resident_gb = 5.38`, 768x512x121 renders in 74 s
+    (allocated peak 8.8 GiB). 960x960x145 needs `resident_gb` below 7.38
+    on the GPU, and more than 37 GiB of host RAM in decode. The full
+    card, all resident: 768x512x121 in 81 s, allocated peak 13.6 GiB.
+  - On an RTX 3060 12 GB, `resident_gb = 5.38` with
+    `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (the native
+    allocator OOMed at 960 with 0.9 GiB reserved but unallocated):
+    960x960x145 in 382 s (allocated peak 10.5 GiB, cgroup peak 48.8
+    GiB), 768x512x121 in 140 s (7.9 GiB, 44.9 GiB).
+* `resident_load("ltx", stage_from = "disk")` now stages the Gemma 4
+  encoder from disk too, so the handle keeps no weights in host memory
+  (`pinned_bytes` 0). A Gemma 3 encoder is refused.
+* LTX decode copies the video to the R array eight frames at a time
+  instead of converting the whole clip to float32 first: the host peak
+  above the result drops from about 5x to 1.3x its size, and the GPU
+  no longer holds a float32 copy of the clip.
+  - Both together, a 16 GB card held to the 3060's free 11692 MiB,
+    expandable segments, `resident_gb = 5.38`, `stream_text`, under a
+    16 GB cgroup cap: 768x512x121 in 116 s (host RSS 1.1 GiB after
+    load, 3.4 GiB at the end; same output sd as host staging),
+    960x960x145 in 235 s (RSS 5.3 GiB, allocated peak 9.2 GiB). Host
+    staging needed 29.7 GiB after load and was killed in decode at 960
+    under a 37 GiB cap.
+
 # diffuseR 0.2.2.22
 
 * **FLUX 3 in less host RAM: fp8 Qwen3-VL.** `qwen3_quantize()` writes

@@ -59,6 +59,31 @@ ltx23_unpack_video_latents <- function(latents, num_frames, height, width,
     flatten(start_dim = 3L, end_dim = 4L)
 }
 
+# Decoded video [B, 3, F, H, W] in [-1, 1] -> an R [F - skip, H, W, 3]
+# double array in [0, 1], without the first `skip` frames. Copies
+# `chunk` frames at a time into one preallocated array, so the host
+# never holds a float32 copy of the whole clip beside the result (at
+# 960x960x145: 1.6 GB float32, its contiguous copy, then 3.2 GB double)
+.ltx23_video_array <- function(video, skip = 0L, chunk = 8L) {
+    f32 <- torch::torch_float32()
+    d <- as.integer(video$shape)
+    keep <- seq.int(skip + 1L, d[3])
+    out <- array(0, dim = c(length(keep), d[4], d[5], 3L))
+    for (s in seq.int(1L, length(keep), by = chunk)) {
+        idx <- s:min(length(keep), s + chunk - 1L)
+        x <- video[1L, , keep[idx[1]]:keep[idx[length(idx)]], , ,
+                   drop = FALSE]$squeeze(1L)
+        x <- ((x$to(dtype = f32) / 2 + 0.5)$clamp(0, 1))$
+            permute(c(2L, 3L, 4L, 1L))$contiguous()$cpu()
+        out[idx, , , ] <- as.array(x)
+        # Each chunk's tensor and R copy are garbage now; collect them
+        # before the next, or they pile up to the size of the clip
+        rm(x)
+        gc(verbose = FALSE, full = FALSE)
+    }
+    out
+}
+
 # Pack audio latents [B, C, L, M] -> [B, L, C * M]
 ltx23_pack_audio_latents <- function(latents) {
     latents$transpose(2L, 3L)$flatten(start_dim = 3L, end_dim = 4L)
@@ -1217,28 +1242,26 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                 video_latents, vae$latents_mean, vae$latents_std
             )
             video <- vae$decode(video_latents$to(dtype = vae_dtype))
-            # [-1, 1] -> [0, 1], [B, 3, F, H, W] -> [F, H, W, 3]
-            video <- ((video$to(dtype = f32) / 2 + 0.5)$clamp(0, 1))[1,,,,]
-            video <- video$permute(c(2L, 3L, 4L, 1L))$cpu()
         })
         if (verbose) {
+            if (grepl("^cuda", as.character(vae_device))) {
+                torch::cuda_synchronize()
+            }
             message(sprintf("  video decode: %.1fs",
                             as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
             phase_t0 <- Sys.time()
         }
-        result$video <- as.array(video)
+        # Head-free pixels (trim_frames is the conditioning overlap of a
+        # continuation); result$latents keeps the full sequence
+        result$video <- torch::with_no_grad(
+            .ltx23_video_array(video, skip = trim_frames)
+        )
         rm(video, video_latents)
         offload("vae")
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  video to R array: %.1fs",
                             as.numeric(difftime(Sys.time(), phase_t0, units = "secs"))))
-        }
-        if (trim_frames > 0L) {
-            # Deliver head-free pixels (the conditioning overlap of a
-            # continuation); result$latents keeps the full sequence
-            result$video <- result$video[-seq_len(trim_frames),,,,
-                drop = FALSE]
         }
     }
 

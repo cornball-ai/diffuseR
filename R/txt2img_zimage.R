@@ -61,6 +61,15 @@ NULL
 #'   only that snapshot -- no \code{refs/} entry and no network. The
 #'   transformer comes from \code{model_dir} and is unaffected.
 #'
+#' @param stream_text Logical. Stream the bf16 Qwen3 layers through the
+#'   GPU one at a time during the encode instead of onloading the ~8 GB
+#'   encoder whole (see \code{\link{flux2_load_pipeline}}). Needs
+#'   \code{phase_offload} on CUDA.
+#' @param resident_gb Numeric. GB of fp8 transformer weights kept on the
+#'   GPU through the denoise; the rest stay in (pinned) host memory and
+#'   copy in inside each forward (as \code{\link{flux3_load_pipeline}}).
+#'   \code{Inf} (default) keeps all ~5.9 GB resident. fp8 on CUDA only.
+#'
 #' @return A \code{zimage_pipeline} list.
 #'
 #' @export
@@ -68,7 +77,8 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
                                  precision = c("auto", "fp8", "nf4", "bf16"),
                                  text_device = NULL, attn_chunk = NULL,
                                  phase_offload = TRUE, pin = NULL,
-                                 verbose = TRUE, revision = NULL) {
+                                 verbose = TRUE, revision = NULL,
+                                 stream_text = FALSE, resident_gb = Inf) {
     ## Checked before any device work, where a configuration mistake is
     ## cheapest to report.
     .flux2_rev(revision)
@@ -100,8 +110,15 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     }
     if (device == "cuda") {
         # Footprint sized to the largest phase (the 8 GB Qwen3 encode),
-        # same reasoning as the FLUX.2 klein pipeline
-        .flux_gc_gates(footprint_gb = 12)
+        # same reasoning as the FLUX.2 klein pipeline. A split
+        # transformer runs in a smaller budget, where torch must collect
+        # well before the card is full (see flux3_load_pipeline)
+        if (is.finite(resident_gb)) {
+            .flux_gc_gates(footprint_gb = 12, allocated_rate = 0.8,
+                           reserved_rate = 0.6)
+        } else {
+            .flux_gc_gates(footprint_gb = 12)
+        }
     }
 
     if (phase_offload) {
@@ -132,6 +149,14 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     # Resident fp8 happens at onload time (the weights ride to the GPU
     # with the phase and back off after)
     pipe$fp8_resident <- identical(pipe$format, "fp8") && device == "cuda"
+    if (pipe$fp8_resident && is.finite(resident_gb)) {
+        pipe$fp8_split <- .flux3_fp8_split(pipe$transformer, resident_gb, pin)
+        if (verbose) {
+            message(sprintf("fp8 transformer: %.1f GB resident, %.1f GB streamed",
+                            pipe$fp8_split$resident_gb,
+                            pipe$fp8_split$streamed_gb))
+        }
+    }
 
     if (verbose) {
         message("Loading VAE decoder...")
@@ -176,12 +201,21 @@ zimage_load_pipeline <- function(model_dir = NULL, device = "cuda",
     pipe$tokenizer <- qwen_bpe_tokenizer(
         .zimage_cached("tokenizer/tokenizer.json", revision))
 
+    stream_text <- isTRUE(stream_text) && device == "cuda" && phase_offload &&
+        !identical(text_device, "cpu")
     components <- c("transformer", "decoder")
-    if (!identical(text_device, "cpu")) {
+    if (!identical(text_device, "cpu") && !stream_text) {
         components <- c(components, "text_encoder")
     }
     pipe$staging <- .flux_build_staging(pipe, pin, phase_offload, device,
                                         components, verbose = verbose)
+    if (stream_text) {
+        if (verbose) {
+            message("Qwen3 streams layer by layer")
+        }
+        pipe$staging <- c(pipe$staging,
+                          list(text_encoder = .flux3_text_stream(pipe$text_encoder, pin)))
+    }
 
     structure(pipe, class = "zimage_pipeline")
 }
@@ -380,7 +414,11 @@ txt2img_zimage <- function(prompt, pipeline = NULL, width = 1024L,
     fp8_manual <- isTRUE(pipeline$fp8_resident) &&
     is.null(staging[["transformer"]])
     if (fp8_manual) {
-        .flux_fp8_to_device(transformer, device)
+        if (is.null(pipeline$fp8_split)) {
+            .flux_fp8_to_device(transformer, device)
+        } else {
+            .flux3_fp8_to_device(pipeline$fp8_split$resident, device)
+        }
     }
     if (verbose) {
         message(sprintf("Denoising: %d steps at %dx%d...", n_steps, width,

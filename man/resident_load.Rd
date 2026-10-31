@@ -4,27 +4,43 @@
 \title{Load a diffusion pipeline as a resident handle}
 \usage{
 resident_load(
-  model = c("flux2", "flux1", "zimage", "ltx", "sdxl", "sd21"),
+  model = c("flux2", "flux1", "flux3", "zimage", "ltx", "sdxl", "sd21"),
   device = "cuda",
   ...,
   verbose = TRUE,
   text_encoder = NULL,
-  tokenizer = NULL
+  tokenizer = NULL,
+  stream_text = FALSE
 )
 }
 \arguments{
-\item{model}{One of "flux1", "flux2", "zimage", "ltx", "sdxl".}
+\item{model}{One of "flux1", "flux2", "flux3", "zimage", "ltx", "sdxl",
+"sd21".}
 
 \item{device}{Target CUDA device, e.g. "cuda" or "cuda:1".}
 
 \item{...}{Passed to the family loader (\code{\link{flux_load_pipeline}},
-\code{\link{flux2_load_pipeline}}, \code{\link{zimage_load_pipeline}},
+\code{\link{flux2_load_pipeline}}, \code{\link{flux3_load_pipeline}},
+\code{\link{zimage_load_pipeline}},
 \code{\link{ltx23_load_pipeline}} or
 \code{\link{sdxl_load_pipeline}}). \code{ltx} requires
 \code{checkpoint_path}; \code{sdxl} needs nothing (it defaults to the
-\code{\link{download_sdxl}} cache).}
+\code{\link{download_sdxl}} cache). \code{flux3} takes
+\code{model_dir}, \code{text_dir} and \code{support_dir} to read
+from given paths instead of the default locations.}
 
 \item{verbose}{Print progress messages.}
+
+\item{stream_text}{Stream the text encoder's layers to the card one at
+a time instead of onloading it whole for the encode. \code{ltx} with
+a Gemma 4 \code{text_encoder} (\code{\link{load_gemma4_nf4}}'s
+\code{stream}): \code{\link{recommend}("ltx25")} asks for it below
+12 GB; on small cards pass \code{resident_gb} too (through
+\code{...} to \code{\link{ltx23_load_pipeline}}), so the transformer
+keeps that many GB on the card and streams the rest of its blocks.
+\code{flux2}, \code{flux3} and \code{zimage}: passed to the loader
+as its \code{stream_text} when TRUE (FALSE leaves FLUX 3's own
+\code{vram_gb} plan in charge). Refused for the other families.}
 
 \item{text_encoder,tokenizer}{\code{ltx} only: paths to the Gemma3 encoder
 artifact and the tokenizer directory, or for LTX-2.5 the Gemma 4 NF4
@@ -65,6 +81,14 @@ first activation lands on GPU 1. Wrap the call in
 
 The pipeline is left \emph{inactive} (weights pinned on the host, no
 VRAM held). Call \code{\link{resident_activate}} before generating.
+
+For \code{ltx}, \code{stage_from = "disk"} (through \code{...}) keeps
+no weights in host memory: the pipeline and a Gemma 4
+\code{text_encoder} both read every onload from their memory-mapped
+NF4 artifacts, and \code{pinned_bytes} counts only the small computed
+buffers. It saves ~26 GB of host RAM for a re-read per phase (and per
+step for the streamed blocks), which the OS page cache serves when it
+can. A Gemma 3 \code{text_encoder} is refused.
 
 }
 \examples{
