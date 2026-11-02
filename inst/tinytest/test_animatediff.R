@@ -125,10 +125,12 @@ expect_equal(sort(sapply(21:22, key, l = lat1)) %in% sapply(5:8, key, l = lat1),
              c(TRUE, TRUE))
 expect_true((lat1[, , 1:16, , ] - lat0[, , 1:16, , ])$abs()$max()$item() == 0)
 
-# Windows longer than the 16 training frames are refused
-expect_error(txt2vid_animatediff("a fox", pipeline = list(train_frames = 16L),
-                                 context_length = 24L, save_file = FALSE),
-             "trained on")
+# Windows longer than the 16 training frames warn (the fake pipeline then
+# fails at its missing text encoder)
+expect_warning(try(txt2vid_animatediff("a fox", pipeline = list(train_frames = 16L),
+                                       context_length = 24L, save_file = FALSE),
+                   silent = TRUE),
+               "trained on")
 
 # DDIM timesteps as diffusers: linspace (rounded half to even) and leading
 expect_equal(diffuseR:::.ddim_timesteps(6L, "linspace"), c(999L, 799L, 599L, 400L, 200L, 0L))

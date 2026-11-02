@@ -42,9 +42,10 @@ the default (v3, CUDA).}
 modules attend within overlapping windows (FreeNoise), so clips can
 be longer than the 16 frames the modules were trained on.}
 
-\item{context_length}{Frames per motion window, at most the
-pipeline's \code{train_frames} (16): the v2 and v3 modules turn to
-noise over longer spans even though their position table covers 32.}
+\item{context_length}{Frames per motion window. Longer than the
+pipeline's \code{train_frames} (16) warns: the v2 and v3 modules
+gave noise at 20, 24 and 32 frames, though their position table
+covers 32.}
 
 \item{context_stride}{Frames between window starts.}
 

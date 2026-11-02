@@ -12,7 +12,10 @@
     `context_stride`) and later windows start from shuffled copies of
     earlier noise. The modules were trained on 16-frame clips; in one
     window of 20, 24 or 32 frames both diffusers and diffuseR give
-    noise, so `context_length` above 16 is refused.
+    noise, so `context_length` above 16 warns. The last partial window
+    is averaged with per-frame weights; diffusers counts it with one
+    scalar weight, which at 26 frames turned the last frame into
+    swirls.
   - SD 1.5 support in the native UNet (`num_attention_heads`, 1x1 conv
     projections) and `sd_pipeline_from_safetensors(model_name = "sd15")`.
   - The SD UNet spatial transformers use fused SDPA and GroupNorm eps
@@ -22,8 +25,16 @@
     7.9e-6 (v2) max abs, FreeNoise forward at 24 frames 6.8e-6;
     end to end at 256x256x8 88.5 dB PSNR. GPU fp16 at 512x512x32
     against diffusers on the GPU: 43.6 dB.
-  - Measured on the RTX 5060 Ti 16 GB, 25 steps, VAE decoded one frame
-    at a time: 512x512x16 peak 5.0 GiB, 768x768x16 9.7 GiB.
+  - Memory: the VAE decodes one frame at a time (`decode_chunk = 1`;
+    4 frames set a 13.9 GiB peak at 512x512x16). The loader sizes the
+    allocator gc gates from the GPU memory free at load and turns on
+    expandable segments, and the motion UNet runs a minor gc after each
+    layer (`diffuseR.block_gc`): R's gc had taken 69-78 s of a 95-105 s
+    render.
+  - Measured on the RTX 5060 Ti 16 GB, 25 steps, with a second process
+    holding the card to 10.3 GiB free: 512x512x16 37 s (allocated peak
+    9.3 GiB), 512x512x32 112 s (9.6 GiB), 768x768x16 106 s (9.9 GiB);
+    the same speed as on the free card. Pipeline load about 13 s.
 
 # diffuseR 0.2.2.24
 

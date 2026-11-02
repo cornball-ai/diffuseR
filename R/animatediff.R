@@ -140,6 +140,9 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
     if (is.null(dtype)) {
         dtype <- if (identical(device, "cuda")) torch::torch_float16() else torch::torch_float32()
     }
+    if (identical(device, "cuda")) {
+        .animatediff_gc_gates()
+    }
     pipe <- sd_pipeline_from_safetensors(model_dir, model_name = "sd15",
         devices = list(unet = "cpu", decoder = "cpu", text_encoder = "cpu"),
         unet_dtype = torch::torch_float32(), verbose = verbose)
@@ -149,6 +152,23 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
     pipe$decoder$to(device = device)
     list(unet = unet, decoder = pipe$decoder, text_encoder = pipe$text_encoder,
          device = device, dtype = dtype, train_frames = .animatediff_train_frames)
+}
+
+# Allocator gc gates sized from the memory free at load, not the card
+# total: R's gc took 78 of 105 s at 512x512x16 under torch's default
+# gates. A full gc runs only above allocated_rate x total; on a card
+# shared down to 10.3 GiB free, the image models' 0.65 x 15.5 GiB was
+# out of reach, misses ran only minor gcs, and the garbage promoted by
+# the per-layer gcs filled the budget. Called before the first CUDA
+# allocation so expandable segments take effect (768x768x16 ran out of
+# memory on 5.5 GiB of fragments without).
+.animatediff_gc_gates <- function(free_gb = .detect_vram(use_free = TRUE),
+                                  total_gb = .detect_vram(use_free = FALSE)) {
+    if (!isTRUE(free_gb > 0 && total_gb > 0)) {
+        return(invisible(NULL))
+    }
+    .flux_gc_gates(footprint_gb = min(8, 0.7 * free_gb),
+                   allocated_rate = 0.8 * free_gb / total_gb)
 }
 
 # Clip length the SD 1.5 v2/v3 modules were trained on. Measured: at 20,
@@ -262,9 +282,10 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
 #' @param num_frames Frames. Past \code{context_length} the motion
 #'   modules attend within overlapping windows (FreeNoise), so clips can
 #'   be longer than the 16 frames the modules were trained on.
-#' @param context_length Frames per motion window, at most the
-#'   pipeline's \code{train_frames} (16): the v2 and v3 modules turn to
-#'   noise over longer spans even though their position table covers 32.
+#' @param context_length Frames per motion window. Longer than the
+#'   pipeline's \code{train_frames} (16) warns: the v2 and v3 modules
+#'   gave noise at 20, 24 and 32 frames, though their position table
+#'   covers 32.
 #' @param context_stride Frames between window starts.
 #' @param num_inference_steps DDIM steps.
 #' @param guidance_scale Classifier-free guidance. Higher values (10-15)
@@ -307,15 +328,16 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
         stop("width and height must be multiples of 8", call. = FALSE)
     }
     if (context_length > pipeline$train_frames) {
-        stop(sprintf(paste("context_length %d exceeds the %d frames the motion",
-                           "module was trained on; longer spans come out as noise"),
-                     context_length, pipeline$train_frames), call. = FALSE)
+        warning(sprintf(paste("context_length %d exceeds the %d frames the motion",
+                              "module was trained on; at 20 frames and up the",
+                              "output tends towards noise"),
+                        context_length, pipeline$train_frames), call. = FALSE)
     }
     device <- pipeline$device
     dtype <- pipeline$dtype
-    if (identical(device, "cuda")) {
-        # R's gc took 78 of 105 s at 512x512x16 under the default gates
-        .flux_gc_gates(footprint_gb = 8)
+    if (identical(device, "cuda") && is.null(getOption("diffuseR.block_gc"))) {
+        op <- options(diffuseR.block_gc = TRUE)
+        on.exit(options(op), add = TRUE)
     }
     start <- proc.time()[[3]]
 
@@ -390,6 +412,7 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
         }
         out[idx, , , ] <- a
         rm(x)
+        if (isTRUE(getOption("diffuseR.block_gc"))) gc(full = FALSE)
     }
     out
 }

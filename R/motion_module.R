@@ -337,6 +337,9 @@ unet_motion <- torch::nn_module(
             stop(sprintf("%d frames exceed the motion module's %d-frame window",
                          f, a$max_len), call. = FALSE)
         }
+        # Minor gc per layer (diffuseR.block_gc, as the DiTs): a 16-frame
+        # forward leaves GBs of dead activations behind otherwise
+        block_gc <- isTRUE(getOption("diffuseR.block_gc"))
         model_dtype <- u$time_embedding_linear_1$weight$dtype
         t_emb <- timestep_embedding(timestep, u$block_out_channels[1],
                                     flip_sin_to_cos = TRUE,
@@ -361,6 +364,7 @@ unet_motion <- torch::nn_module(
                 }
                 x <- mm[[j]](x, f, windows)
                 res <- c(res, list(x))
+                if (block_gc) gc(full = FALSE)
             }
             if (blk$has_downsamplers) {
                 x <- blk$downsamplers[[1]](x)
@@ -386,6 +390,7 @@ unet_motion <- torch::nn_module(
                     x <- blk$attentions[[j]](x, ctx)
                 }
                 x <- mm[[j]](x, f, windows)
+                if (block_gc) gc(full = FALSE)
             }
             if (blk$has_upsamplers) {
                 x <- blk$upsamplers[[1]](x)
