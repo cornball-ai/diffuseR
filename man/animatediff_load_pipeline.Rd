@@ -28,7 +28,7 @@ float32 on CPU.}
 \value{
 A list with \code{unet} (a \code{\link{unet_motion}}),
   \code{decoder}, \code{text_encoder}, \code{device}, \code{dtype} and
-  \code{max_frames}.
+  \code{train_frames} (the longest motion window that works, 16).
 }
 \description{
 Load the AnimateDiff SD 1.5 pipeline

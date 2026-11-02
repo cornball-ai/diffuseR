@@ -10,11 +10,13 @@ txt2vid_animatediff(
   width = 512L,
   height = 512L,
   num_frames = 16L,
+  context_length = 16L,
+  context_stride = 4L,
   num_inference_steps = 25L,
   guidance_scale = 7.5,
   seed = NULL,
   latents = NULL,
-  decode_chunk = 4L,
+  decode_chunk = 1L,
   fps = 8L,
   filename = NULL,
   save_file = TRUE,
@@ -36,7 +38,15 @@ the default (v3, CUDA).}
 
 \item{height}{Output height, a multiple of 8.}
 
-\item{num_frames}{Frames, up to the motion module's window (32).}
+\item{num_frames}{Frames. Past \code{context_length} the motion
+modules attend within overlapping windows (FreeNoise), so clips can
+be longer than the 16 frames the modules were trained on.}
+
+\item{context_length}{Frames per motion window, at most the
+pipeline's \code{train_frames} (16): the v2 and v3 modules turn to
+noise over longer spans even though their position table covers 32.}
+
+\item{context_stride}{Frames between window starts.}
 
 \item{num_inference_steps}{DDIM steps.}
 
@@ -47,7 +57,9 @@ push harder towards the prompt and can add artifacts.}
 
 \item{latents}{Optional starting noise \code{[1, 4, F, H/8, W/8]}.}
 
-\item{decode_chunk}{Frames per VAE decode.}
+\item{decode_chunk}{Frames per VAE decode. The fp32 decoder needs about
+2 GiB per 512x512 frame, so 4 at once set a 13.9 GiB peak where 1
+costs 5 GiB and about 2 s.}
 
 \item{fps}{Frame rate of the saved file.}
 

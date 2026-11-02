@@ -86,6 +86,50 @@ img3 <- torch::with_no_grad(unet(lat[, , 3, , ], t, ctx_f[3:3, , ]))
 expect_true((out_f[, , 3, , ] - img3)$abs()$max()$item() < 1e-5)
 expect_error(um(torch::torch_randn(1L, 4L, 9L, 16L, 16L), t, ctx), "8-frame window")
 
+# FreeNoise windows: stride 4 from frame 1, plus one ending on the last
+# frame that adds only the uncovered frame (diffusers: (0,16) (4,20)
+# (8,24) (9,25) 0-based)
+w <- diffuseR:::.motion_windows(25L, 16L, 4L)
+expect_equal(vapply(w$frames, `[[`, 1L, "start"), c(1L, 5L, 9L, 10L))
+expect_equal(w$frames[[4]]$keep, 16L)
+expect_equal(w$weights, c(1:8, 8:1))
+expect_equal(length(diffuseR:::.motion_windows(32L, 16L, 4L)$frames), 5L)
+expect_error(diffuseR:::.motion_windows(8L, 16L, 4L), "fewer than")
+
+# One window covering the clip is the plain motion module; frames only one
+# window covers get that window's attention output
+torch::torch_manual_seed(2)
+blk <- diffuseR:::motion_transformer_block(32L, 2L, 16L)
+xs <- torch::torch_randn(5L, 12L, 32L)
+torch::with_no_grad({
+    plain <- blk(xs)
+    one <- blk(xs, diffuseR:::.motion_windows(12L, 12L, 4L))
+    win <- blk(xs, diffuseR:::.motion_windows(12L, 8L, 4L))
+    first <- blk(xs[, 1:8, ])
+})
+expect_true((one - plain)$abs()$max()$item() < 1e-5)
+expect_true((win[, 1:4, ] - first[, 1:4, ])$abs()$max()$item() < 1e-5)
+expect_true((win[, 5:8, ] - first[, 5:8, ])$abs()$max()$item() > 1e-4)
+# the UNet forward windows past context_length instead of erroring
+out_w <- torch::with_no_grad(um(torch::torch_randn(1L, 4L, 10L, 16L, 16L), t, ctx,
+                                context_length = 8L, context_stride = 2L))
+expect_equal(as.integer(out_w$shape), c(1L, 4L, 10L, 16L, 16L))
+
+# FreeNoise noise: frames past the first window reuse earlier noise, shuffled
+torch::torch_manual_seed(3)
+lat0 <- torch::torch_randn(1L, 1L, 22L, 2L, 2L)
+lat1 <- diffuseR:::.freenoise_latents(lat0, 16L, 4L)
+key <- function(l, i) round(as.numeric(l[1, 1, i, 1, 1]), 5)
+expect_equal(sort(sapply(17:20, key, l = lat1)), sort(sapply(1:4, key, l = lat0)))
+expect_equal(sort(sapply(21:22, key, l = lat1)) %in% sapply(5:8, key, l = lat1),
+             c(TRUE, TRUE))
+expect_true((lat1[, , 1:16, , ] - lat0[, , 1:16, , ])$abs()$max()$item() == 0)
+
+# Windows longer than the 16 training frames are refused
+expect_error(txt2vid_animatediff("a fox", pipeline = list(train_frames = 16L),
+                                 context_length = 24L, save_file = FALSE),
+             "trained on")
+
 # DDIM timesteps as diffusers: linspace (rounded half to even) and leading
 expect_equal(diffuseR:::.ddim_timesteps(6L, "linspace"), c(999L, 799L, 599L, 400L, 200L, 0L))
 lead <- diffuseR:::.ddim_timesteps(50L, "leading")

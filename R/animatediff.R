@@ -124,7 +124,7 @@ download_animatediff <- function(version = c("v3", "v2"), verbose = TRUE) {
 #'
 #' @return A list with \code{unet} (a \code{\link{unet_motion}}),
 #'   \code{decoder}, \code{text_encoder}, \code{device}, \code{dtype} and
-#'   \code{max_frames}.
+#'   \code{train_frames} (the longest motion window that works, 16).
 #' @export
 animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
                                       device = "cuda", dtype = NULL,
@@ -148,7 +148,34 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
     unet$to(device = device, dtype = dtype)
     pipe$decoder$to(device = device)
     list(unet = unet, decoder = pipe$decoder, text_encoder = pipe$text_encoder,
-         device = device, dtype = dtype, max_frames = adapter$max_len)
+         device = device, dtype = dtype, train_frames = .animatediff_train_frames)
+}
+
+# Clip length the SD 1.5 v2/v3 modules were trained on. Measured: at 20,
+# 24 and 32 frames in one window both diffusers and diffuseR give noise.
+.animatediff_train_frames <- 16L
+
+# FreeNoise "shuffle_context" noise (diffusers free_noise_utils.py): past
+# the first window, each run of `stride` frames reuses the noise of the
+# frames `len` earlier, shuffled, so later windows start from noise the
+# motion module has already tied together.
+.freenoise_latents <- function(latents, len, stride) {
+    n <- as.integer(latents$shape[3])
+    if (n <= len) {
+        return(latents)
+    }
+    latents <- latents$clone()
+    for (i in seq.int(len, n - 1L, by = stride)) {
+        from <- seq.int(i - len, min(n, i - len + stride) - 1L)
+        to <- seq.int(i, min(n, i + length(from)) - 1L)
+        # torch's generator, so `seed` fixes the shuffle too
+        perm <- as.integer(torch::torch_randperm(length(from))) + 1L
+        src <- from[perm][seq_along(to)]
+        for (k in seq_along(to)) {
+            latents[, , to[k] + 1L, , ] <- latents[, , src[k] + 1L, , ]
+        }
+    }
+    latents
 }
 
 # diffusers DDIMScheduler timesteps. "linspace" (AnimateDiff): 0..999
@@ -232,13 +259,21 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
 #'   the default (v3, CUDA).
 #' @param width Output width, a multiple of 8 (SD 1.5 is trained at 512).
 #' @param height Output height, a multiple of 8.
-#' @param num_frames Frames, up to the motion module's window (32).
+#' @param num_frames Frames. Past \code{context_length} the motion
+#'   modules attend within overlapping windows (FreeNoise), so clips can
+#'   be longer than the 16 frames the modules were trained on.
+#' @param context_length Frames per motion window, at most the
+#'   pipeline's \code{train_frames} (16): the v2 and v3 modules turn to
+#'   noise over longer spans even though their position table covers 32.
+#' @param context_stride Frames between window starts.
 #' @param num_inference_steps DDIM steps.
 #' @param guidance_scale Classifier-free guidance. Higher values (10-15)
 #'   push harder towards the prompt and can add artifacts.
 #' @param seed Integer seed, or NULL.
 #' @param latents Optional starting noise \code{[1, 4, F, H/8, W/8]}.
-#' @param decode_chunk Frames per VAE decode.
+#' @param decode_chunk Frames per VAE decode. The fp32 decoder needs about
+#'   2 GiB per 512x512 frame, so 4 at once set a 13.9 GiB peak where 1
+#'   costs 5 GiB and about 2 s.
 #' @param fps Frame rate of the saved file.
 #' @param filename Output video path; NULL with \code{save_file = TRUE}
 #'   derives one from the prompt.
@@ -260,8 +295,9 @@ animatediff_load_pipeline <- function(motion = "v3", model_dir = NULL,
 #' @export
 txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
                                 width = 512L, height = 512L, num_frames = 16L,
+                                context_length = 16L, context_stride = 4L,
                                 num_inference_steps = 25L, guidance_scale = 7.5,
-                                seed = NULL, latents = NULL, decode_chunk = 4L,
+                                seed = NULL, latents = NULL, decode_chunk = 1L,
                                 fps = 8L, filename = NULL, save_file = TRUE,
                                 verbose = TRUE) {
     if (is.null(pipeline)) {
@@ -270,12 +306,17 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
     if (width %% 8 != 0 || height %% 8 != 0) {
         stop("width and height must be multiples of 8", call. = FALSE)
     }
-    if (num_frames > pipeline$max_frames) {
-        stop(sprintf("num_frames is limited to the motion module's %d-frame window",
-                     pipeline$max_frames), call. = FALSE)
+    if (context_length > pipeline$train_frames) {
+        stop(sprintf(paste("context_length %d exceeds the %d frames the motion",
+                           "module was trained on; longer spans come out as noise"),
+                     context_length, pipeline$train_frames), call. = FALSE)
     }
     device <- pipeline$device
     dtype <- pipeline$dtype
+    if (identical(device, "cuda")) {
+        # R's gc took 78 of 105 s at 512x512x16 under the default gates
+        .flux_gc_gates(footprint_gb = 8)
+    }
     start <- proc.time()[[3]]
 
     torch::with_no_grad({
@@ -293,6 +334,7 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
             }
             latents <- torch::torch_randn(c(1L, 4L, num_frames, height %/% 8L,
                                             width %/% 8L))
+            latents <- .freenoise_latents(latents, context_length, context_stride)
         }
         latents <- latents$to(device = device, dtype = torch::torch_float32())
         ac <- .ddim_alphas_cumprod("linear")
@@ -300,8 +342,8 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
         for (i in seq_along(steps)) {
             t <- torch::torch_tensor(steps[i], device = device)
             x <- latents$to(dtype = dtype)
-            eps_u <- pipeline$unet(x, t, uncond)
-            eps_c <- pipeline$unet(x, t, cond)
+            eps_u <- pipeline$unet(x, t, uncond, context_length, context_stride)
+            eps_c <- pipeline$unet(x, t, cond, context_length, context_stride)
             eps <- (eps_u + (eps_c - eps_u) * guidance_scale)$to(dtype = torch::torch_float32())
             rm(eps_u, eps_c, x)
             latents <- .ddim_step(latents, eps, steps[i], num_inference_steps, ac)
@@ -325,6 +367,8 @@ txt2vid_animatediff <- function(prompt, negative_prompt = NULL, pipeline = NULL,
     list(video = video, file = file,
          metadata = list(prompt = prompt, negative_prompt = negative_prompt,
                          width = width, height = height, num_frames = num_frames,
+                         context_length = context_length,
+                         context_stride = context_stride,
                          num_inference_steps = num_inference_steps,
                          guidance_scale = guidance_scale, seed = seed,
                          fps = fps, seconds = elapsed, model = "animatediff-sd15"))

@@ -42,13 +42,78 @@ motion_transformer_block <- torch::nn_module(
         self$pe <- torch::nn_buffer(.motion_positions(dim, max_len),
                                     persistent = FALSE)
     },
-    forward = function(x) {
+    attend = function(x) {
         pe <- self$pe[, seq_len(x$shape[2]), ]$to(dtype = x$dtype)
         x <- x + self$attn1(self$norm1(x) + pe)
-        x <- x + self$attn2(self$norm2(x) + pe)
+        x + self$attn2(self$norm2(x) + pe)
+    },
+    forward = function(x, windows = NULL) {
+        if (is.null(windows)) {
+            x <- self$attend(x)
+        } else {
+            x <- .motion_windowed(x, windows, self$attend)
+        }
         x + self$ff(self$norm3(x))
     }
 )
+
+# FreeNoise (diffusers FreeNoiseTransformerBlock, Apache-2.0): the two
+# attentions run on overlapping frame windows, each with positions from
+# 0, and each frame takes the weighted mean of its windows' outputs. The
+# feed-forward is per frame, so it runs once on the merged result.
+.motion_windowed <- function(x, windows, attend) {
+    n <- x$shape[2]
+    acc <- torch::torch_zeros(c(x$shape[1], n, x$shape[3]), device = x$device)
+    cnt <- torch::torch_zeros(c(1L, n, 1L), device = x$device)
+    for (w in windows$frames) {
+        len <- w$end - w$start + 1L
+        h <- attend(x$narrow(2L, w$start, len))$to(dtype = torch::torch_float32())
+        k1 <- w$keep[1]
+        nk <- length(w$keep)
+        wt <- torch::torch_tensor(windows$weights[w$keep], device = x$device)$
+            view(c(1L, -1L, 1L))
+        # narrow() views: indexing with a stored range copies, and add_ on
+        # the copy would leave acc untouched
+        acc$narrow(2L, w$start - 1L + k1, nk)$add_(h$narrow(2L, k1, nk) * wt)
+        cnt$narrow(2L, w$start - 1L + k1, nk)$add_(wt)
+    }
+    (acc / cnt)$to(dtype = x$dtype)
+}
+
+# Frame windows for FreeNoise: length `len` every `stride` frames, plus
+# one window ending on the last frame when the stride does not land
+# there; that window contributes only the frames no earlier window
+# covered. diffusers counts those frames with a single scalar weight
+# (`weights[:, -n]`) while summing them with per-frame weights; here
+# both use the per-frame weights, so a proper weighted mean.
+.motion_windows <- function(num_frames, len = 16L, stride = 4L,
+                            weighting = c("pyramid", "flat")) {
+    weighting <- match.arg(weighting)
+    if (num_frames < len) {
+        stop(sprintf("%d frames are fewer than the %d-frame context window",
+                     num_frames, len), call. = FALSE)
+    }
+    starts <- seq.int(1L, num_frames - len + 1L, by = stride)
+    frames <- lapply(starts, function(s) {
+        list(start = s, end = s + len - 1L, keep = seq_len(len))
+    })
+    last <- starts[length(starts)] + len - 1L
+    if (last < num_frames) {
+        extra <- num_frames - last
+        frames <- c(frames, list(list(start = num_frames - len + 1L,
+                                      end = num_frames,
+                                      keep = seq.int(len - extra + 1L, len))))
+    }
+    half <- len %/% 2L
+    weights <- if (weighting == "flat") {
+        rep(1, len)
+    } else if (len %% 2L == 0L) {
+        c(seq_len(half), rev(seq_len(half)))
+    } else {
+        c(seq_len(half), half + 1L, rev(seq_len(half)))
+    }
+    list(frames = frames, weights = as.numeric(weights))
+}
 
 # AnimateDiffTransformer3D: [B*F, C, H, W] in and out. The group norm runs
 # over [B, C, F, H, W], so its statistics span all frames.
@@ -64,7 +129,7 @@ motion_transformer_3d <- torch::nn_module(
         }
         self$proj_out <- torch::nn_linear(channels, channels)
     },
-    forward = function(x, num_frames) {
+    forward = function(x, num_frames, windows = NULL) {
         d <- as.integer(x$shape)
         b <- d[1] %/% num_frames
         residual <- x
@@ -73,7 +138,7 @@ motion_transformer_3d <- torch::nn_module(
         x <- x$permute(c(1L, 4L, 5L, 3L, 2L))$reshape(c(b * d[3] * d[4], num_frames, d[2]))
         x <- self$proj_in(x)
         for (i in seq_along(self$transformer_blocks)) {
-            x <- self$transformer_blocks[[i]](x)
+            x <- self$transformer_blocks[[i]](x, windows)
         }
         x <- self$proj_out(x)
         x <- x$reshape(c(b, d[3], d[4], num_frames, d[2]))$
@@ -243,6 +308,11 @@ load_motion_adapter <- function(path, verbose = TRUE) {
 #' \code{[B * F, 77, D]}, one row per frame, which is how prompt travel
 #' conditions each frame on its own prompt.
 #'
+#' The forward also takes \code{context_length} and \code{context_stride}:
+#' with more frames than \code{context_length}, the motion modules attend
+#' within overlapping windows of that length (FreeNoise) instead of over
+#' the whole clip.
+#'
 #' @param unet A \code{\link{unet_native}}.
 #' @param adapter A \code{\link{motion_adapter}} with the same block widths.
 #'
@@ -254,12 +324,16 @@ unet_motion <- torch::nn_module(
         self$unet <- unet
         self$adapter <- adapter
     },
-    forward = function(sample, timestep, encoder_hidden_states) {
+    forward = function(sample, timestep, encoder_hidden_states,
+                       context_length = NULL, context_stride = 4L) {
         u <- self$unet
         a <- self$adapter
         d <- as.integer(sample$shape)
         f <- d[3]
-        if (f > a$max_len) {
+        windows <- NULL
+        if (!is.null(context_length) && f > context_length) {
+            windows <- .motion_windows(f, context_length, context_stride)
+        } else if (f > a$max_len) {
             stop(sprintf("%d frames exceed the motion module's %d-frame window",
                          f, a$max_len), call. = FALSE)
         }
@@ -285,7 +359,7 @@ unet_motion <- torch::nn_module(
                 if (blk$has_attentions) {
                     x <- blk$attentions[[j]](x, ctx)
                 }
-                x <- mm[[j]](x, f)
+                x <- mm[[j]](x, f, windows)
                 res <- c(res, list(x))
             }
             if (blk$has_downsamplers) {
@@ -297,7 +371,7 @@ unet_motion <- torch::nn_module(
         x <- u$mid_block$resnets[[1]](x, t_emb)
         x <- u$mid_block$attentions[[1]](x, ctx)
         if (!is.null(a$mid_block)) {
-            x <- a$mid_block$motion_modules[[1]](x, f)
+            x <- a$mid_block$motion_modules[[1]](x, f, windows)
         }
         x <- u$mid_block$resnets[[2]](x, t_emb)
 
@@ -311,7 +385,7 @@ unet_motion <- torch::nn_module(
                 if (blk$has_attentions) {
                     x <- blk$attentions[[j]](x, ctx)
                 }
-                x <- mm[[j]](x, f)
+                x <- mm[[j]](x, f, windows)
             }
             if (blk$has_upsamplers) {
                 x <- blk$upsamplers[[1]](x)
