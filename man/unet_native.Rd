@@ -9,7 +9,8 @@ unet_native(
   block_out_channels = c(320L, 640L, 1280L, 1280L),
   layers_per_block = 2L,
   cross_attention_dim = 1024L,
-  attention_head_dim = 64L
+  attention_head_dim = 64L,
+  num_attention_heads = NULL
 )
 }
 \arguments{
@@ -24,6 +25,10 @@ unet_native(
 \item{cross_attention_dim}{Context dimension from text encoder}
 
 \item{attention_head_dim}{Dimension per attention head}
+
+\item{num_attention_heads}{NULL (SD 2.1: heads = channels /
+\code{attention_head_dim}) or a fixed head count for every block
+(SD 1.5: 8, so the head size grows with the channels).}
 }
 \value{
 An nn_module representing the UNet

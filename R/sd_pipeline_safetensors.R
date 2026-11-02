@@ -107,7 +107,7 @@ download_sd21 <- function(verbose = TRUE) {
 #'
 #' @param diffusers_dir Directory with \code{unet/}, \code{vae/},
 #'   \code{text_encoder/} subdirectories.
-#' @param model_name Currently "sd21" (SDXL pending its second encoder).
+#' @param model_name "sd21" or "sd15" (see \code{\link{download_sd15}}).
 #' @param devices Named list of component devices (\code{unet},
 #'   \code{decoder}, \code{text_encoder}); defaults to all-CPU.
 #' @param unet_dtype A torch dtype for the UNet (default float16 on CUDA,
@@ -120,11 +120,11 @@ download_sd21 <- function(verbose = TRUE) {
 sd_pipeline_from_safetensors <- function(diffusers_dir, model_name = "sd21",
     devices = NULL, unet_dtype = NULL,
     verbose = TRUE) {
-    if (!identical(model_name, "sd21")) {
-        stop("sd_pipeline_from_safetensors currently supports \"sd21\"; ",
-             "SDXL needs its second text encoder and added-conditioning ",
-             "embeddings (see tasks/todo.md).")
+    if (!model_name %in% c("sd21", "sd15")) {
+        stop("sd_pipeline_from_safetensors supports \"sd21\" and \"sd15\"; ",
+             "SDXL has sdxl_pipeline_from_safetensors().")
     }
+    sd15 <- identical(model_name, "sd15")
     diffusers_dir <- path.expand(diffusers_dir)
     if (is.null(devices)) {
         devices <- list(unet = "cpu", decoder = "cpu", text_encoder = "cpu")
@@ -145,17 +145,24 @@ sd_pipeline_from_safetensors <- function(diffusers_dir, model_name = "sd21",
     # casts prompt embeds to unet_dtype and the latent to float32 before
     # decode); only the UNet runs at unet_dtype. Up-casting a float16
     # artifact to float32 for these is lossless.
+    # SD 1.5's CLIP ViT-L uses quick_gelu and the final-LN last hidden
+    # state too.
     text_encoder <- text_encoder_native_from_safetensors(
         file.path(diffusers_dir, "text_encoder"), apply_final_ln = TRUE,
-        verbose = FALSE)
+        gelu_type = if (sd15) "quick" else "tanh", verbose = FALSE)
     text_encoder$to(device = torch::torch_device(devices$text_encoder),
                     dtype = torch::torch_float32())
 
     if (verbose) {
         message("Building UNet...")
     }
-    unet <- unet_native_from_safetensors(file.path(diffusers_dir, "unet"),
-        verbose = FALSE)
+    unet_args <- list(file.path(diffusers_dir, "unet"), verbose = FALSE)
+    if (sd15) {
+        # 768-wide CLIP context, 8 heads in every block
+        unet_args <- c(unet_args, list(cross_attention_dim = 768L,
+                                       num_attention_heads = 8L))
+    }
+    unet <- do.call(unet_native_from_safetensors, unet_args)
     unet$to(device = torch::torch_device(devices$unet), dtype = unet_dtype)
 
     if (verbose) {

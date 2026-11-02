@@ -70,6 +70,17 @@ module; this file documents the actual lineage, idea by idea.
 | Qwen3-4B encoder + Qwen2 byte-level BPE tokenizer | Shared with the FLUX.2 klein port (see above); the tokenizer files are byte-identical between the two checkpoints |
 | Weights | Tongyi-MAI/Z-Image-Turbo (Apache-2.0, ungated; downloaded by the user, never redistributed) |
 
+## AnimateDiff (SD 1.5)
+
+| What | Source |
+|---|---|
+| Motion modules (temporal transformer, sinusoidal frame positions), motion adapter layout, motion UNet forward | Ported from HuggingFace **diffusers** (Apache-2.0): `models/unets/unet_motion_model.py`, `models/transformers/transformer_temporal.py`, `models/attention.py` |
+| Original checkpoint key mapping | diffusers `scripts/convert_animatediff_motion_module_to_diffusers.py` (Apache-2.0); conversion runs in R via `torch::load_state_dict()` |
+| Pipeline: DDIM (linear betas, linspace timesteps), CFG, per-frame prompt embeddings | diffusers `pipelines/animatediff/pipeline_animatediff.py` and `schedulers/scheduling_ddim.py` (Apache-2.0) |
+| FreeNoise: overlapping motion windows with pyramid weights, shuffle-context noise | diffusers `FreeNoiseTransformerBlock` (`models/attention.py`) and `pipelines/free_noise_utils.py` (Apache-2.0); method from Qiu et al. (2023), arXiv:2310.15169. The last partial window is counted with per-frame weights, where diffusers uses one scalar |
+| SD 1.5 UNet, CLIP ViT-L text encoder, VAE | The native SD 2.1/SDXL ports with SD 1.5 config (8 fixed heads, 768 context, 1x1 conv projections loaded as linears, quick GELU) |
+| Weights | stable-diffusion-v1-5/stable-diffusion-v1-5 (CreativeML OpenRAIL-M) and guoyww/animatediff `v3_sd15_mm.ckpt` / `mm_sd_v15_v2.ckpt` (Apache-2.0); downloaded by the user, never redistributed |
+
 ## Quantization
 
 | What | Source |

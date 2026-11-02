@@ -1,3 +1,12 @@
+# Heads and head size for a SpatialTransformer at `channels`: SD 2.1
+# fixes the head size, SD 1.5 fixes the head count.
+.unet_heads <- function(channels, attention_head_dim, num_heads = NULL) {
+    if (is.null(num_heads)) {
+        return(c(channels %/% attention_head_dim, attention_head_dim))
+    }
+    c(num_heads, channels %/% num_heads)
+}
+
 #' Native UNet for Stable Diffusion
 #'
 #' Native R torch implementation of UNet2DConditionModel.
@@ -9,6 +18,9 @@
 #' @param layers_per_block Number of ResBlocks per down/up block
 #' @param cross_attention_dim Context dimension from text encoder
 #' @param attention_head_dim Dimension per attention head
+#' @param num_attention_heads NULL (SD 2.1: heads = channels /
+#'   \code{attention_head_dim}) or a fixed head count for every block
+#'   (SD 1.5: 8, so the head size grows with the channels).
 #'
 #' @return An nn_module representing the UNet
 #' @export
@@ -21,8 +33,10 @@ unet_native <- torch::nn_module(
         block_out_channels = c(320L, 640L, 1280L, 1280L),
         layers_per_block = 2L,
         cross_attention_dim = 1024L,
-        attention_head_dim = 64L
+        attention_head_dim = 64L,
+        num_attention_heads = NULL
     ) {
+    self$num_attention_heads <- num_attention_heads
     self$in_channels <- in_channels
     self$out_channels <- out_channels
     self$block_out_channels <- block_out_channels
@@ -133,6 +147,7 @@ unet_native <- torch::nn_module(
         add_downsample = TRUE,
         add_attention = TRUE
     ) {
+    num_heads <- self$num_attention_heads
     # Create block as a simple nn_module
     DownBlock <- torch::nn_module(
                                   "DownBlock",
@@ -152,10 +167,10 @@ unet_native <- torch::nn_module(
         self$has_attentions <- add_attention
         if (add_attention) {
             self$attentions <- torch::nn_module_list()
-            n_heads <- out_channels %/% attention_head_dim
+            hd <- .unet_heads(out_channels, attention_head_dim, num_heads)
             for (i in seq_len(num_layers)) {
                 self$attentions$append(
-                                       SpatialTransformer(out_channels, n_heads, attention_head_dim,
+                                       SpatialTransformer(out_channels, hd[1], hd[2],
                         depth = 1L, context_dim = cross_attention_dim)
                 )
             }
@@ -178,6 +193,7 @@ unet_native <- torch::nn_module(
         cross_attention_dim,
         attention_head_dim
     ) {
+    num_heads <- self$num_attention_heads
     MidBlock <- torch::nn_module(
                                  "MidBlock",
                                  initialize = function() {
@@ -187,10 +203,10 @@ unet_native <- torch::nn_module(
         self$resnets$append(UNetResBlock(channels, channels, time_embed_dim))
 
         # Attention
-        n_heads <- channels %/% attention_head_dim
+        hd <- .unet_heads(channels, attention_head_dim, num_heads)
         self$attentions <- torch::nn_module_list()
         self$attentions$append(
-                               SpatialTransformer(channels, n_heads, attention_head_dim,
+                               SpatialTransformer(channels, hd[1], hd[2],
                 depth = 1L, context_dim = cross_attention_dim)
         )
     }
@@ -210,6 +226,7 @@ unet_native <- torch::nn_module(
     ) {
     # resnet_skip_channels is a vector with one entry per resnet
     num_resnets <- length(resnet_skip_channels)
+    num_heads <- self$num_attention_heads
 
     UpBlock <- torch::nn_module(
                                 "UpBlock",
@@ -230,10 +247,10 @@ unet_native <- torch::nn_module(
         self$has_attentions <- add_attention
         if (add_attention) {
             self$attentions <- torch::nn_module_list()
-            n_heads <- out_channels %/% attention_head_dim
+            hd <- .unet_heads(out_channels, attention_head_dim, num_heads)
             for (i in seq_len(num_resnets)) {
                 self$attentions$append(
-                                       SpatialTransformer(out_channels, n_heads, attention_head_dim,
+                                       SpatialTransformer(out_channels, hd[1], hd[2],
                         depth = 1L, context_dim = cross_attention_dim)
                 )
             }

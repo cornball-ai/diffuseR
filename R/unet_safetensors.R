@@ -64,7 +64,13 @@ NULL
                 next
             }
             src <- opened$handle$get_tensor(key)
-            if (!all(dest$shape == src$shape)) {
+            # SD 1.5's proj_in/proj_out are 1x1 convs; the native
+            # SpatialTransformer uses the equivalent linear
+            if (src$dim() == 4L && dest$dim() == 2L &&
+                all(as.integer(src$shape[3:4]) == 1L)) {
+                src <- src$flatten(start_dim = 2L)
+            }
+            if (src$dim() != dest$dim() || !all(dest$shape == src$shape)) {
                 mismatch <- c(mismatch, sprintf("%s (%s vs %s)", native_name,
                         paste(as.integer(src$shape), collapse = "x"),
                         paste(as.integer(dest$shape), collapse = "x")))
