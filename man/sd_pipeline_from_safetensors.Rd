@@ -15,7 +15,7 @@ sd_pipeline_from_safetensors(
 \item{diffusers_dir}{Directory with \code{unet/}, \code{vae/},
 \code{text_encoder/} subdirectories.}
 
-\item{model_name}{Currently "sd21" (SDXL pending its second encoder).}
+\item{model_name}{"sd21" or "sd15" (see \code{\link{download_sd15}}).}
 
 \item{devices}{Named list of component devices (\code{unet},
 \code{decoder}, \code{text_encoder}); defaults to all-CPU.}

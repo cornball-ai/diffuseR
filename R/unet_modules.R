@@ -201,12 +201,9 @@ UNetCrossAttention <- torch::nn_module(
     k <- k$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
     v <- v$view(c(b, context_len, h, self$dim_head))$transpose(2L, 3L)
 
-    # Scaled dot-product attention
-    attn <- torch::torch_matmul(q, k$transpose(3L, 4L)) * self$scale
-    attn <- torch::nnf_softmax(attn, dim = -1L)
-
-    # Apply attention to values
-    out <- torch::torch_matmul(attn, v)
+    # Scaled dot-product attention (fused when available: the manual form
+    # holds an [B, H, S, S] score matrix, 4.3 GB for 16 frames at 512 px)
+    out <- .ltx23_sdpa(q, k, v)
 
     # Reshape back: (B, H, S, D) -> (B, S, H*D)
     out <- out$transpose(2L, 3L)$contiguous()$view(c(b, seq_len, -1L))
@@ -314,7 +311,8 @@ SpatialTransformer <- torch::nn_module(
     self$in_channels <- in_channels
 
     # Normalization
-    self$norm <- group_norm_32(in_channels)
+    # eps 1e-6 as in diffusers Transformer2DModel (the resnets use 1e-5)
+    self$norm <- torch::nn_group_norm(32, in_channels, eps = 1e-6)
 
     # Projection in/out
     self$proj_in <- torch::nn_linear(in_channels, inner_dim)
