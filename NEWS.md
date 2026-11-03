@@ -1,3 +1,17 @@
+# diffuseR 0.2.2.26
+
+* LTX keyframes: `ltx23_keyframe(x, frame, strength)` and
+  `txt2vid_ltx2(keyframes = list(...))` condition a generation on
+  latents, an image or frames at any frame and strength. At frame 0
+  they replace the first latent frames (as `image`, `condition_video`
+  and `condition_latents` always did, which are now frame-0 keyframes);
+  elsewhere they are appended as extra tokens at their position and
+  dropped before decoding. Strength below 1 uses per-token timesteps and
+  pulls each step's estimate toward the keyframe. Ported from diffusers'
+  LTX-2 condition pipeline. Start/end anchors, a carried tail plus an end
+  anchor, and mid-clip stills are all keyframe lists. Existing
+  single-source calls produce bit-identical output.
+
 # diffuseR 0.2.2.25
 
 * AnimateDiff text-to-video on Stable Diffusion 1.5:
