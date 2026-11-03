@@ -1,3 +1,15 @@
+# diffuseR 0.2.2.27
+
+* LTX-2.5 diffusion video decoder, the model's default decoder: a small
+  diffusion model that renders pixels from the latents.
+  `ltx23_load_pipeline(video_decoder = ltx25_diffusion_decoder_path())`
+  loads it and `txt2vid_ltx2()` then decodes with it
+  (`video_decoder = "conv"` picks the convolutional decoder per call).
+  Ported from diffusers; R torch has no NATTEN or flex attention, so its
+  3D neighborhood attention runs exactly on fused SDPA over query tiles.
+  Decoding is tiled by default (512 px, 64 frames). On a VAE round trip
+  of a real clip it scores about 1 dB PSNR above the conv decoder.
+
 # diffuseR 0.2.2.25
 
 * AnimateDiff text-to-video on Stable Diffusion 1.5:

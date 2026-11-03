@@ -15,6 +15,7 @@ ltx23_load_pipeline(
   resident_gb = Inf,
   resident_from = c("host", "disk"),
   stage_from = c("host", "disk"),
+  video_decoder = NULL,
   verbose = TRUE
 )
 }
@@ -77,6 +78,12 @@ machines with less host RAM than the model; each step re-reads the
 streamed blocks (~1.4 GB/s cold from NVMe, ~4.5 GB/s from the page
 cache). Needs an NF4 artifact directory and \code{phase_offload}
 on CUDA.}
+
+\item{video_decoder}{Optional path to the LTX-2.5 diffusion decoder
+file (\code{vae/ltx-2.5-video-vae-bf16.safetensors}, see
+\code{\link{ltx25_diffusion_decoder_path}}). When given, it is
+loaded as \code{$diffusion_decoder} and \code{\link{txt2vid_ltx2}}
+decodes video with it instead of the convolutional decoder.}
 
 \item{verbose}{Logical.}
 }

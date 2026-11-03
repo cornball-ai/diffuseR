@@ -316,6 +316,11 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 #'   streamed blocks (~1.4 GB/s cold from NVMe, ~4.5 GB/s from the page
 #'   cache). Needs an NF4 artifact directory and \code{phase_offload}
 #'   on CUDA.
+#' @param video_decoder Optional path to the LTX-2.5 diffusion decoder
+#'   file (\code{vae/ltx-2.5-video-vae-bf16.safetensors}, see
+#'   \code{\link{ltx25_diffusion_decoder_path}}). When given, it is
+#'   loaded as \code{$diffusion_decoder} and \code{\link{txt2vid_ltx2}}
+#'   decodes video with it instead of the convolutional decoder.
 #' @param verbose Logical.
 #'
 #' @return A list with the loaded modules and the checkpoint config,
@@ -330,6 +335,7 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
                                 phase_offload = TRUE, resident_gb = Inf,
                                 resident_from = c("host", "disk"),
                                 stage_from = c("host", "disk"),
+                                video_decoder = NULL,
                                 verbose = TRUE) {
     resident_from <- match.arg(resident_from)
     stage_from <- match.arg(stage_from)
@@ -469,6 +475,14 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
         )
         pipe$vae$enable_tiling()
     }
+    if (!is.null(video_decoder)) {
+        if (verbose) {
+            message("Loading diffusion video decoder...")
+        }
+        pipe$diffusion_decoder <- ltx25_load_diffusion_decoder(
+            video_decoder, device = component_device, dtype = torch_dtype)
+        pipe$diffusion_decoder$enable_tiling()
+    }
     if ("audio_vae" %in% components) {
         pipe$audio_vae <- load_component(
             "audio_vae", .construct_skeleton(ltx23_audio_vae, dtype = torch_dtype),
@@ -545,7 +559,8 @@ ltx23_load_pipeline <- function(checkpoint_path, device = "cuda",
             message("Pinning host staging buffers...")
         }
         for (nm in setdiff(intersect(c("transformer", "connectors", "vae",
-                                       "audio_vae", "vocoder"), names(pipe)),
+                                       "diffusion_decoder", "audio_vae",
+                                       "vocoder"), names(pipe)),
                            names(staging))) {
             st <- .pin_component(pipe[[nm]])
             if (!is.null(st)) {
@@ -761,6 +776,12 @@ ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
 #' @param max_sequence_length Integer. Text token length (multiple of 128).
 #' @param decode_video,decode_audio Logicals. Decode the respective
 #'   latents (disable for latent-space work).
+#' @param video_decoder Which video decoder renders the latents:
+#'   \code{"auto"} (default) uses the LTX-2.5 diffusion decoder when the
+#'   pipeline was loaded with one (\code{ltx23_load_pipeline(video_decoder
+#'   = )}) and the convolutional decoder otherwise; \code{"conv"} and
+#'   \code{"diffusion"} choose explicitly. The diffusion decoder draws
+#'   its own noise, so its output depends on the seed too.
 #' @param two_stage Logical. Generate at half resolution, upsample the
 #'   latents 2x spatially, and refine over the stage-2 schedule
 #'   (resolution must then be a multiple of 64; requires
@@ -839,7 +860,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
                          condition_latents = NULL, resident = character(),
                          trim_frames = 0L, audio = NULL, verbose = TRUE,
-                         sampler = c("auto", "euler", "euler_ancestral")) {
+                         sampler = c("auto", "euler", "euler_ancestral"),
+                         video_decoder = c("auto", "conv", "diffusion")) {
     level <- .verbosity(verbose)
     verbose <- level == "steps"
     if (level != "silent") {
@@ -851,6 +873,16 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     }
     stopifnot(inherits(pipeline, "ltx23_pipeline"))
     eta <- .ltx23_sampler_eta(match.arg(sampler), pipeline$model_version)
+    video_decoder <- match.arg(video_decoder)
+    has_dd <- !is.null(pipeline$diffusion_decoder)
+    if (video_decoder == "diffusion" && !has_dd) {
+        stop("video_decoder = \"diffusion\" needs a pipeline loaded with ",
+             "ltx23_load_pipeline(video_decoder = )", call. = FALSE)
+    }
+    if (video_decoder == "conv" && is.null(pipeline$vae) && decode_video) {
+        stop("The pipeline has no convolutional video VAE", call. = FALSE)
+    }
+    use_diffusion_decoder <- has_dd && video_decoder != "conv"
     if (guidance_scale != 1) {
         stop("Only guidance_scale = 1 is supported (distilled checkpoints).")
     }
@@ -1231,9 +1263,14 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             message("Decoding video...")
         }
         phase_t0 <- Sys.time()
-        vae <- onload("vae")
+        decoder_name <- if (use_diffusion_decoder) "diffusion_decoder" else "vae"
+        vae <- onload(decoder_name)
         vae_device <- vae$latents_mean$device
-        vae_dtype <- vae$decoder$conv_in$conv$weight$dtype
+        vae_dtype <- if (use_diffusion_decoder) {
+            vae$conv_in$weight$dtype
+        } else {
+            vae$decoder$conv_in$conv$weight$dtype
+        }
         torch::with_no_grad({
             video_latents <- ltx23_unpack_video_latents(
                 latents, latent_frames, latent_height, latent_width
@@ -1257,7 +1294,7 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
             .ltx23_video_array(video, skip = trim_frames)
         )
         rm(video, video_latents)
-        offload("vae")
+        offload(decoder_name)
         gc(verbose = FALSE)
         if (verbose) {
             message(sprintf("  video to R array: %.1fs",

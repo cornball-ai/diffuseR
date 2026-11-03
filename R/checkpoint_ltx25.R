@@ -14,9 +14,10 @@
 #' @param text_encoder The 2.5 Gemma 4 text encoder file, or its NF4
 #'   artifact directory (\code{\link{gemma4_quantize_nf4}} keeps the
 #'   projection); only \code{text_embedding_projection.*} is used here.
-#' @param video_vae The 2.5 video VAE file. Use the convolutional decoder
-#'   (\code{ltx-2.5-video-vae-conv-bf16.safetensors}); the default
-#'   diffusion decoder is not supported.
+#' @param video_vae The 2.5 convolutional video VAE file
+#'   (\code{ltx-2.5-video-vae-conv-bf16.safetensors}). The default
+#'   diffusion decoder file loads separately, through
+#'   \code{ltx23_load_pipeline(video_decoder = )}.
 #' @param audio_vae Optional 2.5 audio VAE + vocoder file
 #'   (\code{ltx-2.5-audio-vae-bf16.safetensors}).
 #'
@@ -42,8 +43,9 @@ ltx25_open_checkpoint <- function(transformer, text_encoder, video_vae,
     vae <- ltx23_open_checkpoint(video_vae, require_version = "2.5")
     if (any(grepl("(^|\\.)transformer_blocks\\.", vae$keys)) ||
         !any(grepl("^(vae\\.)?decoder\\.up_blocks\\.", vae$keys))) {
-        stop("Not a convolutional video VAE file (the diffusion decoder is ",
-             "not supported): ", video_vae)
+        stop("Not a convolutional video VAE file (the diffusion decoder ",
+             "loads through ltx23_load_pipeline(video_decoder = )): ",
+             video_vae)
     }
     sources <- list(dit = dit, te = te, vae = vae)
     if (!is.null(audio_vae)) {

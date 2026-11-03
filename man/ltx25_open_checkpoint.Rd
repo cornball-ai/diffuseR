@@ -14,9 +14,10 @@ fp8/NF4 artifact directory quantized from it.}
 artifact directory (\code{\link{gemma4_quantize_nf4}} keeps the
 projection); only \code{text_embedding_projection.*} is used here.}
 
-\item{video_vae}{The 2.5 video VAE file. Use the convolutional decoder
-(\code{ltx-2.5-video-vae-conv-bf16.safetensors}); the default
-diffusion decoder is not supported.}
+\item{video_vae}{The 2.5 convolutional video VAE file
+(\code{ltx-2.5-video-vae-conv-bf16.safetensors}). The default
+diffusion decoder file loads separately, through
+\code{ltx23_load_pipeline(video_decoder = )}.}
 
 \item{audio_vae}{Optional 2.5 audio VAE + vocoder file
 (\code{ltx-2.5-audio-vae-bf16.safetensors}).}

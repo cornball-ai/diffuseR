@@ -37,7 +37,8 @@ txt2vid_ltx2(
   trim_frames = 0L,
   audio = NULL,
   verbose = TRUE,
-  sampler = c("auto", "euler", "euler_ancestral")
+  sampler = c("auto", "euler", "euler_ancestral"),
+  video_decoder = c("auto", "conv", "diffusion")
 )
 }
 \arguments{
@@ -154,6 +155,13 @@ for LTX-2.3, ancestral Euler (eta 1) for LTX-2.5 and later. The
 ancestral steps draw their noise from \code{seed + 10000} (stage 1)
 and \code{seed + 20000} (stage 2), so the initial noise matches the
 Euler run at the same seed.}
+
+\item{video_decoder}{Which video decoder renders the latents:
+\code{"auto"} (default) uses the LTX-2.5 diffusion decoder when the
+pipeline was loaded with one (\code{ltx23_load_pipeline(video_decoder
+= )}) and the convolutional decoder otherwise; \code{"conv"} and
+\code{"diffusion"} choose explicitly. The diffusion decoder draws
+its own noise, so its output depends on the seed too.}
 
 \item{text_encoder,tokenizer}{Gemma3 model and tokenizer (or paths;
 see \code{\link{load_gemma3_text_encoder}} and
