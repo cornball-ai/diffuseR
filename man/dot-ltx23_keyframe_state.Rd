@@ -14,7 +14,9 @@
   width,
   rope,
   fps,
-  cond_noise_scale = 0
+  cond_noise_scale = 0,
+  base = NULL,
+  noise_scale = 1
 )
 }
 \arguments{
@@ -31,6 +33,13 @@ called for pixel keyframes).}
 
 \item{cond_noise_scale}{Partial re-noising of fully pinned frame-0
 tokens (the \code{txt2vid_ltx2} argument of that name).}
+
+\item{base}{Optional normalized latents [1, 128, F', H', W'] to
+re-enter from (two-stage: the upsampled stage-1 result). NULL starts
+from pure noise.}
+
+\item{noise_scale}{Entry noise level when \code{base} is given: each
+token is re-noised by \code{(1 - strength) * noise_scale}.}
 
 \item{latent_frames,latent_height,latent_width}{Latent geometry.}
 

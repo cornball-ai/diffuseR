@@ -84,7 +84,9 @@ print.ltx23_keyframe <- function(x, ...) {
     x <- kf$x
     if (inherits(x, "torch_tensor")) {
         lat <- x$to(device = device, dtype = torch::torch_float32())
-        pixel_frames <- NA_integer_
+        # Set when the latents were encoded from pixels on the caller's
+        # behalf (the stage-2 copy of a two-stage keyframe)
+        pixel_frames <- kf$pixel_frames %||% NA_integer_
     } else {
         frames <- ltx23_preprocess_frames(x, height, width)
         pixel_frames <- frames$shape[3]
@@ -129,13 +131,19 @@ print.ltx23_keyframe <- function(x, ...) {
 #' @param fps Frame rate.
 #' @param cond_noise_scale Partial re-noising of fully pinned frame-0
 #'   tokens (the \code{txt2vid_ltx2} argument of that name).
+#' @param base Optional normalized latents [1, 128, F', H', W'] to
+#'   re-enter from (two-stage: the upsampled stage-1 result). NULL starts
+#'   from pure noise.
+#' @param noise_scale Entry noise level when \code{base} is given: each
+#'   token is re-noised by \code{(1 - strength) * noise_scale}.
 #' @return list(latents [1, S + A, 128], conditioning_mask [1, S + A]
 #'   strengths (0 = free), clean [1, S + A, 128], extra_coords [1, 3, A,
 #'   2] or NULL, n_main = S).
 #' @keywords internal
 .ltx23_keyframe_state <- function(keyframes, latent_frames, latent_height,
                                   latent_width, noise, encode, height, width,
-                                  rope, fps, cond_noise_scale = 0) {
+                                  rope, fps, cond_noise_scale = 0,
+                                  base = NULL, noise_scale = 1) {
     device <- noise$device
     f32 <- torch::torch_float32()
     clean <- torch::torch_zeros_like(noise)
@@ -165,7 +173,16 @@ print.ltx23_keyframe <- function(x, ...) {
                 identical(enc$pixel_frames, 1L), fps, device)
         }
     }
-    latents <- clean * strength + noise * strength$neg()$add(1)
+    if (is.null(base)) {
+        latents <- clean * strength + noise * strength$neg()$add(1)
+    } else {
+        # Re-entry (diffusers prepare_latents with supplied latents): the
+        # keyframe content replaces base at its frame-0 positions, then
+        # every token is re-noised by (1 - strength) * noise_scale
+        init <- torch::torch_where(strength > 0, clean, base)
+        scaled <- strength$neg()$add(1)$mul(noise_scale)
+        latents <- noise * scaled + init * scaled$neg()$add(1)
+    }
     if (cond_noise_scale > 0) {
         pinned <- (strength == 1)$to(dtype = f32)
         scale <- pinned * cond_noise_scale
@@ -182,9 +199,13 @@ print.ltx23_keyframe <- function(x, ...) {
         e_str <- torch::torch_cat(extra_str, dim = 2L)
         e_s <- e_str$unsqueeze(3L)
         e_noise <- torch::torch_randn_like(e_clean)
-        latents <- torch::torch_cat(list(latents,
-                                         e_clean * e_s + e_noise * (1 - e_s)),
-                                    dim = 2L)
+        e_lat <- if (is.null(base)) {
+            e_clean * e_s + e_noise * (1 - e_s)
+        } else {
+            e_scaled <- (1 - e_s) * noise_scale
+            e_noise * e_scaled + e_clean * (1 - e_scaled)
+        }
+        latents <- torch::torch_cat(list(latents, e_lat), dim = 2L)
         clean_p <- torch::torch_cat(list(clean_p, e_clean), dim = 2L)
         mask <- torch::torch_cat(list(mask, e_str), dim = 2L)
         extra <- torch::torch_cat(extra_coords, dim = 3L)

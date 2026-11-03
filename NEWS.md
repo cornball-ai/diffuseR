@@ -1,3 +1,22 @@
+# diffuseR 0.2.2.28
+
+* LTX-2.5 latent upscalers. `ltx25_upscaler_path("spatial")` and
+  `ltx25_upscaler_path("temporal")` locate (or download) the shipped
+  files, and `ltx23_load_upsampler()` now reads the layout from the
+  tensor shapes. The 2.5 spatial x2 upscaler drops into
+  `txt2vid_ltx2(two_stage = TRUE, upsampler = )` as the 2.3 one did.
+  The temporal x2 upscaler (F latent frames to 2F - 1) loads and matches
+  diffusers, but nothing in the pipeline uses it yet: its refine round
+  belongs to LTX-2.5's DFR recipe.
+* `two_stage = TRUE` now works with conditioning: `image`,
+  `condition_video`, `condition_latents` and `keyframes`. Stage 1 uses
+  them at half size. Stage 2 applies them again at full size from the
+  upsampled latents, as diffusers' condition pipeline does: pixel
+  keyframes are re-encoded at full size and latent keyframes (given at
+  stage-1 size) are upsampled with the video.
+* Two-stage audio-driven generation keeps the conditioning audio frozen
+  in stage 2. Before, stage 2 re-noised it.
+
 # diffuseR 0.2.2.26
 
 * LTX keyframes: `ltx23_keyframe(x, frame, strength)` and

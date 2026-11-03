@@ -794,9 +794,14 @@ ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
 #' @param two_stage Logical. Generate at half resolution, upsample the
 #'   latents 2x spatially, and refine over the stage-2 schedule
 #'   (resolution must then be a multiple of 64; requires
-#'   \code{upsampler}).
-#' @param upsampler An \code{\link{ltx23_latent_upsampler}} (see
-#'   \code{\link{ltx23_load_upsampler}}).
+#'   \code{upsampler}). Conditioning works in both stages: pixel
+#'   keyframes are encoded at each stage's size, and latent keyframes
+#'   (including \code{condition_latents}) are given at stage-1 size
+#'   (\code{height / 64}, \code{width / 64}) and upsampled with the
+#'   video for stage 2.
+#' @param upsampler A spatial \code{\link{ltx23_latent_upsampler}} (see
+#'   \code{\link{ltx23_load_upsampler}}; for LTX-2.5,
+#'   \code{\link{ltx25_upscaler_path}("spatial")}).
 #' @param adain_factor Numeric. AdaIN blend of the upsampled latents
 #'   toward the stage-1 statistics (0 disables).
 #' @param tone_map_compression Numeric in [0, 1]. Optional latent tone
@@ -913,13 +918,12 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     if (trim_frames < 0L || trim_frames >= num_frames) {
         stop("trim_frames must be in [0, num_frames)")
     }
-    if (conditioned && two_stage) {
-        stop("Conditioning (image, condition_video, condition_latents or ",
-             "keyframes) with two_stage = TRUE is not supported yet.")
-    }
     if (two_stage) {
         if (is.null(upsampler)) {
             stop("two_stage = TRUE requires an upsampler (see ltx23_load_upsampler).")
+        }
+        if (isTRUE(upsampler$temporal)) {
+            stop("two_stage = TRUE needs the spatial upsampler, not the temporal one.")
         }
         if (width %% 64L != 0L || height %% 64L != 0L) {
             stop("width and height must be multiples of 64 for two-stage generation")
@@ -1137,9 +1141,23 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         rope <- pipeline$transformer$rope
         prep <- torch::with_no_grad(.ltx23_keyframe_state(
             keyframes, latent_frames, s1_height, s1_width, noise, encode,
-            height, width, rope, frame_rate,
+            s1_height * 32L, s1_width * 32L, rope, frame_rate,
             cond_noise_scale = cond_noise_scale
         ))
+        if (two_stage) {
+            # Stage 2 re-applies every keyframe at full size: pixel
+            # keyframes are encoded again now, while the VAE is on;
+            # latent keyframes go through the upsampler with the video
+            keyframes_s2 <- torch::with_no_grad(lapply(keyframes, function(kf) {
+                if (inherits(kf$x, "torch_tensor")) {
+                    return(kf)
+                }
+                frames <- ltx23_preprocess_frames(kf$x, height, width)
+                kf$pixel_frames <- frames$shape[3]
+                kf$x <- encode(frames)$to(device = device, dtype = f32)
+                kf
+            }))
+        }
         if (vae_on) {
             offload("vae")
             gc(verbose = FALSE)
@@ -1218,29 +1236,24 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         }
         onload(upsampler)
         torch::with_no_grad({
-            up_device <- upsampler$final_conv$weight$device
-            up_dtype <- upsampler$final_conv$weight$dtype
-            s1_latents <- ltx23_unpack_video_latents(
-                latents, latent_frames, s1_height, s1_width
-            )$to(device = up_device)
-            # The upsampler operates on unnormalized latents
-            s1_latents <- ltx23_denormalize_latents(
-                s1_latents, vae$latents_mean, vae$latents_std
-            )
-            up_latents <- upsampler(s1_latents$to(dtype = up_dtype))$to(dtype = f32)
-            if (adain_factor != 0) {
-                up_latents <- ltx23_adain_filter_latent(
-                    up_latents, s1_latents$to(dtype = f32), adain_factor
-                )
+            up_latents <- .ltx23_upsample_latents(
+                upsampler,
+                ltx23_unpack_video_latents(latents, latent_frames, s1_height,
+                                           s1_width),
+                vae, adain_factor, tone_map_compression
+            )$to(device = device)
+            if (conditioned) {
+                # Latent keyframes were given at stage-1 size
+                keyframes_s2 <- lapply(keyframes_s2, function(kf) {
+                    if (is.null(kf$pixel_frames)) {
+                        kf$x <- .ltx23_upsample_latents(
+                            upsampler, kf$x, vae, adain_factor,
+                            tone_map_compression
+                        )$to(device = device)
+                    }
+                    kf
+                })
             }
-            if (tone_map_compression > 0) {
-                up_latents <- ltx23_tone_map_latents(up_latents, tone_map_compression)
-            }
-            up_latents <- ltx23_normalize_latents(
-                up_latents, vae$latents_mean, vae$latents_std
-            )
-            latents <- ltx23_pack_video_latents(up_latents$to(device = device))
-            rm(s1_latents, up_latents)
         })
         offload(upsampler)
         gc(verbose = FALSE)
@@ -1248,11 +1261,37 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         # Re-noise BOTH modalities at the stage-2 entry sigma
         s2_sigmas <- ltx23_stage2_distilled_sigmas()
         noise_scale <- s2_sigmas[1]
+        conditioning_mask <- NULL
+        clean_latents <- NULL
+        extra_coords <- NULL
+        n_main <- NULL
         torch::with_no_grad({
-            latents <- torch::torch_randn_like(latents)$mul(noise_scale) +
-            latents$mul(1 - noise_scale)
-            audio_latents <- torch::torch_randn_like(audio_latents)$mul(noise_scale) +
-            audio_latents$mul(1 - noise_scale)
+            if (conditioned) {
+                prep <- .ltx23_keyframe_state(
+                    keyframes_s2, latent_frames, latent_height, latent_width,
+                    torch::torch_randn_like(up_latents),
+                    function(frames) stop("stage-2 keyframes are pre-encoded"),
+                    height, width, rope, frame_rate,
+                    cond_noise_scale = cond_noise_scale,
+                    base = up_latents, noise_scale = noise_scale
+                )
+                latents <- prep$latents
+                conditioning_mask <- prep$conditioning_mask
+                clean_latents <- prep$clean
+                extra_coords <- prep$extra_coords
+                n_main <- prep$n_main
+                rm(prep, keyframes_s2)
+            } else {
+                latents <- ltx23_pack_video_latents(up_latents)
+                latents <- torch::torch_randn_like(latents)$mul(noise_scale) +
+                latents$mul(1 - noise_scale)
+            }
+            rm(up_latents)
+            # Conditioning audio stays clean and frozen
+            if (!audio_conditioned) {
+                audio_latents <- torch::torch_randn_like(audio_latents)$mul(noise_scale) +
+                audio_latents$mul(1 - noise_scale)
+            }
         })
 
         if (verbose) message(sprintf("Refining: %d steps at %dx%d...",
@@ -1263,10 +1302,17 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                    latent_frames, latent_height, latent_width,
                                    audio_num_frames, frame_rate,
                                    device, compute_dtype, verbose = level, stage = "stage 2 ",
+                                   conditioning_mask = conditioning_mask,
+                                   audio_conditioned = audio_conditioned,
                                    eta = eta,
-                                   noise_seed = if (!is.null(seed)) seed + 20000
+                                   noise_seed = if (!is.null(seed)) seed + 20000,
+                                   clean_latents = clean_latents,
+                                   extra_video_coords = extra_coords
         )
         latents <- denoised$latents
+        if (!is.null(n_main) && latents$shape[2] > n_main) {
+            latents <- latents$narrow(2L, 1L, n_main)
+        }
         audio_latents <- denoised$audio_latents
     }
 

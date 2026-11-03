@@ -84,10 +84,15 @@ muxed in when the av package is available.}
 \item{two_stage}{Logical. Generate at half resolution, upsample the
 latents 2x spatially, and refine over the stage-2 schedule
 (resolution must then be a multiple of 64; requires
-\code{upsampler}).}
+\code{upsampler}). Conditioning works in both stages: pixel
+keyframes are encoded at each stage's size, and latent keyframes
+(including \code{condition_latents}) are given at stage-1 size
+(\code{height / 64}, \code{width / 64}) and upsampled with the
+video for stage 2.}
 
-\item{upsampler}{An \code{\link{ltx23_latent_upsampler}} (see
-\code{\link{ltx23_load_upsampler}}).}
+\item{upsampler}{A spatial \code{\link{ltx23_latent_upsampler}} (see
+\code{\link{ltx23_load_upsampler}}; for LTX-2.5,
+\code{\link{ltx25_upscaler_path}("spatial")}).}
 
 \item{adain_factor}{Numeric. AdaIN blend of the upsampled latents
 toward the stage-1 statistics (0 disables).}
