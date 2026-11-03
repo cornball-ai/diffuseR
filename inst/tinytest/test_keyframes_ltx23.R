@@ -216,3 +216,48 @@ wav <- matrix(runif(2L * 16000L, -0.5, 0.5), nrow = 2L)
 a1 <- run(audio = wav)
 a2 <- run2(audio = wav)
 expect_equal(as.numeric((a1$audio_latents - a2$audio_latents)$abs()$max()), 0)
+
+# ---- video-to-video ----------------------------------------------------------
+torch::torch_manual_seed(11)
+src <- array(runif(25 * 64 * 64 * 3), dim = c(25L, 64L, 64L, 3L))
+src_lat <- torch::with_no_grad(diffuseR::ltx23_encode_video_frames(
+  pipe$vae, diffuseR::ltx23_preprocess_frames(src, 64L, 64L)))
+v5 <- run(video = src, strength = 0.5)
+expect_equal(dim(v5$video), c(25L, 64L, 64L, 3L))
+expect_true(all(is.finite(v5$video)))
+# no audio given and no soundtrack: silence, held fixed and muxed
+expect_equal(v5$sample_rate, 16000L)
+expect_true(all(v5$audio == 0))
+# latents and pixels of the same source give the same result
+expect_true(max(abs(run(video = src_lat, strength = 0.5)$video - v5$video)) < 1e-6)
+# lower strength stays closer to the source
+d_lo <- as.numeric((lat_of(run(video = src_lat, strength = 0.3)) - src_lat)$abs()$mean())
+d_hi <- as.numeric((lat_of(run(video = src_lat, strength = 0.9)) - src_lat)$abs()$mean())
+expect_true(d_lo < d_hi)
+expect_error(run(video = src, strength = 0), "strength")
+expect_error(run(video = src, strength = 1.2), "strength")
+expect_error(run(video = src[1:9, , , ]), "at least num_frames")
+expect_error(run(video = torch::torch_randn(1L, 128L, 2L, 2L, 2L)), "video latents must be")
+# with keyframes, and with two-stage (video at full size, encoded at half)
+vk <- run(video = src, strength = 0.6,
+          keyframes = ltx23_keyframe(src[1, , , ], frame = 0L))
+expect_equal(dim(vk$video), c(25L, 64L, 64L, 3L))
+src2 <- array(runif(25 * 128 * 128 * 3), dim = c(25L, 128L, 128L, 3L))
+v2 <- run2(video = src2, strength = 0.6)
+expect_equal(dim(v2$video), c(25L, 128L, 128L, 3L))
+expect_true(all(is.finite(v2$video)))
+# a file source: frames read from the start, silent file -> silence
+if (requireNamespace("av", quietly = TRUE)) {
+  dir <- tempfile("v2v_")
+  dir.create(dir)
+  pngs <- file.path(dir, sprintf("f%03d.png", 1:30))
+  for (i in 1:30) {
+    png::writePNG(src[min(i, 25L), , , ], pngs[i])
+  }
+  mp4 <- file.path(dir, "src.mp4")
+  av::av_encode_video(pngs, mp4, framerate = 24, verbose = FALSE)
+  vf <- run(video = mp4, strength = 0.5)
+  expect_equal(dim(vf$video), c(25L, 64L, 64L, 3L))
+  expect_true(all(vf$audio == 0))
+  unlink(dir, recursive = TRUE)
+}

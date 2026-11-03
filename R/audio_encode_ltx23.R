@@ -178,3 +178,9 @@ ltx23_encode_audio <- function(audio_vae, wav, audio_num_frames,
     std <- audio_vae$latents_std$to(dtype = torch::torch_float32())
     (packed - mean) / std
 }
+
+# Does a media file carry an audio stream?
+.ltx23_has_audio <- function(path) {
+    requireNamespace("av", quietly = TRUE) &&
+        NROW(av::av_media_info(path)$audio) > 0L
+}

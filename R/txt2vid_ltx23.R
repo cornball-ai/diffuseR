@@ -833,6 +833,22 @@ ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
 #'   appended as extra tokens at their position. \code{image},
 #'   \code{condition_video} and \code{condition_latents} are a frame-0
 #'   keyframe and may be combined with these.
+#' @param video Optional source for video-to-video: a video file path,
+#'   an [F, H, W, 3] array in [0, 1] (its first \code{num_frames}
+#'   frames are used, one per output frame, resized and center-cropped),
+#'   or normalized latents [1, 128, (num_frames - 1) / 8 + 1, H/32,
+#'   W/32] (stage-1 size with \code{two_stage}). The source is
+#'   VAE-encoded, noised to \code{strength} and denoised from there, as
+#'   img2img does for images. Combines with \code{keyframes},
+#'   \code{image} and \code{two_stage}. Without \code{audio}, the file's
+#'   own soundtrack (else silence) is held fixed as conditioning audio
+#'   and muxed into the output.
+#' @param strength Numeric in (0, 1]. Video-to-video noise level: the
+#'   schedule starts at sigma = \code{strength} and keeps the steps of
+#'   \code{sigmas} below it. Low values stay close to the source; 1 is
+#'   pure noise. A value on the distilled schedule (0.909375, the
+#'   stage-2 entry, or 0.725, 0.421875) keeps the remaining steps
+#'   exactly as distilled.
 #' @param resident Character vector of pipeline component names
 #'   ("transformer", "vae", "audio_vae", "connectors", "vocoder") to
 #'   keep on the compute device after their phase instead of
@@ -879,11 +895,29 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
                          condition_latents = NULL, keyframes = NULL,
+                         video = NULL, strength = 0.6,
                          resident = character(),
                          trim_frames = 0L, audio = NULL, verbose = TRUE,
                          sampler = c("auto", "euler", "euler_ancestral")) {
     level <- .verbosity(verbose)
     verbose <- level == "steps"
+    if (!is.null(video)) {
+        if (!is.numeric(strength) || length(strength) != 1L ||
+            is.na(strength) || strength <= 0 || strength > 1) {
+            stop("strength must be in (0, 1]")
+        }
+        # Enter the schedule at sigma = strength
+        sigmas <- c(strength, sigmas[sigmas < strength])
+        if (is.null(audio)) {
+            # The joint model needs an audio stream: the clip's own
+            # soundtrack, else silence, held fixed like supplied audio
+            audio <- if (is.character(video) && .ltx23_has_audio(video)) {
+                video
+            } else {
+                matrix(0, 2L, as.integer(round(num_frames / frame_rate * 16000)))
+            }
+        }
+    }
     if (level != "silent") {
         message(sprintf("LTX-%s: %d frames @ %dx%d, %d steps%s",
                         sub("^(\\d+\\.\\d+).*", "\\1", pipeline$model_version %||% "2.3"),
@@ -1124,25 +1158,33 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     clean_latents <- NULL
     extra_coords <- NULL
     n_main <- NULL
-    if (conditioned) {
-        vae_on <- FALSE
-        encode <- function(frames) {
-            if (!vae_on) {
-                vae <<- onload("vae")
-                vae_on <<- TRUE
-            }
-            if (verbose) {
-                message(sprintf("Encoding %d conditioning frame(s)...",
-                                frames$shape[3]))
-            }
-            ltx23_encode_video_frames(vae, frames)
+    vae_on <- FALSE
+    vae <- NULL
+    encode <- function(frames) {
+        if (!vae_on) {
+            vae <<- onload("vae")
+            vae_on <<- TRUE
         }
-        vae <- NULL
+        if (verbose) {
+            message(sprintf("Encoding %d frame(s)...", frames$shape[3]))
+        }
+        ltx23_encode_video_frames(vae, frames)
+    }
+    # Video-to-video: the source enters at noise level `strength`
+    base <- NULL
+    if (!is.null(video)) {
+        base <- torch::with_no_grad(.ltx23_video_latents(
+            video, num_frames, latent_frames, s1_height, s1_width, encode,
+            device
+        ))
+    }
+    if (conditioned) {
         rope <- pipeline$transformer$rope
         prep <- torch::with_no_grad(.ltx23_keyframe_state(
             keyframes, latent_frames, s1_height, s1_width, noise, encode,
             s1_height * 32L, s1_width * 32L, rope, frame_rate,
-            cond_noise_scale = cond_noise_scale
+            cond_noise_scale = cond_noise_scale, base = base,
+            noise_scale = if (is.null(base)) 1 else strength
         ))
         if (two_stage) {
             # Stage 2 re-applies every keyframe at full size: pixel
@@ -1158,20 +1200,23 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                 kf
             }))
         }
-        if (vae_on) {
-            offload("vae")
-            gc(verbose = FALSE)
-        }
         latents <- prep$latents
         conditioning_mask <- prep$conditioning_mask
         clean_latents <- prep$clean
         extra_coords <- prep$extra_coords
         n_main <- prep$n_main
         rm(prep)
+    } else if (!is.null(base)) {
+        latents <- ltx23_pack_video_latents(
+            noise$mul(strength) + base$mul(1 - strength))
     } else {
         latents <- ltx23_pack_video_latents(noise)
     }
-    rm(noise)
+    if (vae_on) {
+        offload("vae")
+        gc(verbose = FALSE)
+    }
+    rm(noise, base)
 
     audio_conditioned <- !is.null(audio)
     input_audio <- NULL

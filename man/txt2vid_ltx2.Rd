@@ -34,6 +34,8 @@ txt2vid_ltx2(
   cond_noise_scale = 0,
   condition_latents = NULL,
   keyframes = NULL,
+  video = NULL,
+  strength = 0.6,
   resident = character(),
   trim_frames = 0L,
   audio = NULL,
@@ -133,6 +135,24 @@ frame 0 they replace the first latent frames; elsewhere they are
 appended as extra tokens at their position. \code{image},
 \code{condition_video} and \code{condition_latents} are a frame-0
 keyframe and may be combined with these.}
+
+\item{video}{Optional source for video-to-video: a video file path,
+an [F, H, W, 3] array in [0, 1] (its first \code{num_frames}
+frames are used, one per output frame, resized and center-cropped),
+or normalized latents [1, 128, (num_frames - 1) / 8 + 1, H/32,
+W/32] (stage-1 size with \code{two_stage}). The source is
+VAE-encoded, noised to \code{strength} and denoised from there, as
+img2img does for images. Combines with \code{keyframes},
+\code{image} and \code{two_stage}. Without \code{audio}, the file's
+own soundtrack (else silence) is held fixed as conditioning audio
+and muxed into the output.}
+
+\item{strength}{Numeric in (0, 1]. Video-to-video noise level: the
+schedule starts at sigma = \code{strength} and keeps the steps of
+\code{sigmas} below it. Low values stay close to the source; 1 is
+pure noise. A value on the distilled schedule (0.909375, the
+stage-2 entry, or 0.725, 0.421875) keeps the remaining steps
+exactly as distilled.}
 
 \item{resident}{Character vector of pipeline component names
 ("transformer", "vae", "audio_vae", "connectors", "vocoder") to

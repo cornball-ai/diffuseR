@@ -1,5 +1,11 @@
 # diffuseR 0.2.2.28
 
+* LTX video-to-video: `txt2vid_ltx2(video = , strength = )` takes a
+  video file, an [F, H, W, 3] array or latents, adds noise to the
+  encoded clip at `strength`, and denoises it with the prompt from that
+  noise level, as img2img does for images. It combines with keyframes
+  and `two_stage`. The clip's own soundtrack (or `audio`, else silence)
+  is held fixed as conditioning audio.
 * LTX-2.5 latent upscalers. `ltx25_upscaler_path("spatial")` and
   `ltx25_upscaler_path("temporal")` locate (or download) the shipped
   files, and `ltx23_load_upsampler()` now reads the layout from the
