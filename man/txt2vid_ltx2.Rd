@@ -33,6 +33,7 @@ txt2vid_ltx2(
   conditioning_frames = 9L,
   cond_noise_scale = 0,
   condition_latents = NULL,
+  keyframes = NULL,
   resident = character(),
   trim_frames = 0L,
   audio = NULL,
@@ -121,6 +122,13 @@ latent space: normalized video latents [1, 128, k, height/32,
 width/32] (e.g. \code{\link{ltx23_tail_latents}} on a previous
 result), used directly as the frozen prefix with no VAE encode.
 Mutually exclusive with \code{image} and \code{condition_video}.}
+
+\item{keyframes}{Optional list of \code{\link{ltx23_keyframe}}
+objects: latents, images or frames at any frame and strength. At
+frame 0 they replace the first latent frames; elsewhere they are
+appended as extra tokens at their position. \code{image},
+\code{condition_video} and \code{condition_latents} are a frame-0
+keyframe and may be combined with these.}
 
 \item{resident}{Character vector of pipeline component names
 ("transformer", "vae", "audio_vae", "connectors", "vocoder") to

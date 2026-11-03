@@ -1,7 +1,8 @@
 # diffuseR 0.2.2.27
 
-* LTX-2.5 diffusion video decoder, the model's default decoder: a small
-  diffusion model that renders pixels from the latents.
+* LTX-2.5 diffusion video decoder (Lightricks' default decoder; opt-in
+  here, since it decodes 7 to 15 times slower than the conv decoder): a
+  small diffusion model that renders pixels from the latents.
   `ltx23_load_pipeline(video_decoder = ltx25_diffusion_decoder_path())`
   loads it and `txt2vid_ltx2()` then decodes with it
   (`video_decoder = "conv"` picks the convolutional decoder per call).
@@ -9,6 +10,20 @@
   3D neighborhood attention runs exactly on fused SDPA over query tiles.
   Decoding is tiled by default (512 px, 64 frames). On a VAE round trip
   of a real clip it scores about 1 dB PSNR above the conv decoder.
+
+# diffuseR 0.2.2.26
+
+* LTX keyframes: `ltx23_keyframe(x, frame, strength)` and
+  `txt2vid_ltx2(keyframes = list(...))` condition a generation on
+  latents, an image or frames at any frame and strength. At frame 0
+  they replace the first latent frames (as `image`, `condition_video`
+  and `condition_latents` always did, which are now frame-0 keyframes);
+  elsewhere they are appended as extra tokens at their position and
+  dropped before decoding. Strength below 1 uses per-token timesteps and
+  pulls each step's estimate toward the keyframe. Ported from diffusers'
+  LTX-2 condition pipeline. Start/end anchors, a carried tail plus an end
+  anchor, and mid-clip stills are all keyframe lists. Existing
+  single-source calls produce bit-identical output.
 
 # diffuseR 0.2.2.25
 

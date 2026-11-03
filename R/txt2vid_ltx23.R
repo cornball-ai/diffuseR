@@ -154,7 +154,8 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
                            compute_dtype, verbose = TRUE, stage = "",
                            conditioning_mask = NULL,
                            audio_conditioned = FALSE, eta = 0,
-                           noise_seed = NULL) {
+                           noise_seed = NULL, clean_latents = NULL,
+                           extra_video_coords = NULL) {
     f32 <- torch::torch_float32()
     if (eta > 0 && !is.null(noise_seed)) {
         torch::local_torch_manual_seed(noise_seed)
@@ -162,28 +163,45 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
     step_noise <- function(like) {
         if (eta > 0) torch::torch_randn_like(like) else NULL
     }
-    keep_mask <- if (!is.null(conditioning_mask)) {
-        conditioning_mask$unsqueeze(3L) # [B, S, 1] for latent blending
-    } else {
-        NULL
-    }
     t_zero <- if (audio_conditioned) {
         torch::torch_tensor(0, device = device, dtype = f32)
     } else {
         NULL
     }
-    # Compact per-token timestep: the conditioned prefix sees exactly
-    # two values (t and 0), so the transformer gets a 2-entry timestep
-    # plus a per-token selector instead of a [B, S] vector -- the
-    # modulation tensors stay [B, 2, ...] until selected on demand
-    cond_idx <- if (!is.null(conditioning_mask)) {
-        conditioning_mask$squeeze(1L)$to(dtype = torch::torch_long())
-    } else {
-        NULL
+    # Compact per-token timestep: tokens see only a few values (t for
+    # free tokens, 0 for pinned ones, m * t for a keyframe of strength
+    # 1 - m), so the transformer gets one entry per value plus a
+    # per-token selector instead of a [B, S] vector -- the modulation
+    # tensors stay [B, V, ...] until selected on demand
+    keep_mask <- NULL
+    denoise_m <- NULL
+    cond_idx <- NULL
+    t_scales <- 1
+    if (!is.null(conditioning_mask)) {
+        m_vals <- 1 - as.numeric(as.array(conditioning_mask$cpu()))
+        t_scales <- unique(c(1, 0, sort(unique(m_vals))))
+        cond_idx <- torch::torch_tensor(match(m_vals, t_scales) - 1L,
+                                        dtype = torch::torch_long(),
+                                        device = device)
+        if (all(m_vals %in% c(0, 1))) {
+            keep_mask <- conditioning_mask$unsqueeze(3L) # [B, S, 1]
+        } else {
+            if (is.null(clean_latents)) {
+                stop("fractional keyframe strength needs clean_latents")
+            }
+            denoise_m <- conditioning_mask$neg()$add(1)$unsqueeze(3L)
+            pinned <- (denoise_m == 0)$to(dtype = f32)
+        }
     }
     video_coords <- transformer$rope$prepare_video_coords(latents$shape[1],
         latent_frames, latent_height, latent_width, device,
         fps = frame_rate)
+    if (!is.null(extra_video_coords)) {
+        # Guide keyframes: appended tokens at their own positions
+        video_coords <- torch::torch_cat(list(video_coords,
+                                              extra_video_coords$to(dtype = video_coords$dtype)),
+                                         dim = 3L)
+    }
     audio_coords <- transformer$audio_rope$prepare_audio_coords(
         audio_latents$shape[1], audio_num_frames, device
     )
@@ -207,8 +225,8 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
             t_video <- if (is.null(conditioning_mask)) {
                 t
             } else {
-                # [t, 0]: index 0 = free tokens, index 1 = conditioned
-                torch::torch_tensor(c(sigma * scale_mult, 0),
+                # [t, 0, m * t, ...]: index 0 = free tokens, 1 = pinned
+                torch::torch_tensor(sigma * scale_mult * t_scales,
                                     device = device, dtype = f32)
             }
 
@@ -236,13 +254,25 @@ ltx23_unpack_audio_latents <- function(latents, num_mel_bins) {
 
             # Sampler step in float32 (latents are float32 throughout)
             sigma_next <- sigmas[i + 1L]
-            stepped <- .ltx23_step(latents, out$sample$to(dtype = f32), sigma,
+            velocity <- out$sample$to(dtype = f32)
+            if (!is.null(denoise_m)) {
+                # Partial keyframes (reference post_process_latent): each
+                # token's x0 estimate, at its own timestep m * sigma, is
+                # pulled toward the keyframe by (1 - m), and the step
+                # runs on the global sigma from there
+                x0 <- latents - velocity * denoise_m * sigma
+                x0 <- x0 * denoise_m + clean_latents * (1 - denoise_m)
+                velocity <- (latents - x0) / sigma
+            }
+            stepped <- .ltx23_step(latents, velocity, sigma,
                                    sigma_next, eta, step_noise(latents))
-            latents <- if (is.null(keep_mask)) {
-                stepped
-            } else {
+            latents <- if (!is.null(keep_mask)) {
                 # Conditioned tokens stay clean
                 latents * keep_mask + stepped * (1 - keep_mask)
+            } else if (!is.null(denoise_m)) {
+                stepped * (1 - pinned) + clean_latents * pinned
+            } else {
+                stepped
             }
             if (!audio_conditioned) {
                 audio_latents <- .ltx23_step(audio_latents,
@@ -813,6 +843,12 @@ ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
 #'   width/32] (e.g. \code{\link{ltx23_tail_latents}} on a previous
 #'   result), used directly as the frozen prefix with no VAE encode.
 #'   Mutually exclusive with \code{image} and \code{condition_video}.
+#' @param keyframes Optional list of \code{\link{ltx23_keyframe}}
+#'   objects: latents, images or frames at any frame and strength. At
+#'   frame 0 they replace the first latent frames; elsewhere they are
+#'   appended as extra tokens at their position. \code{image},
+#'   \code{condition_video} and \code{condition_latents} are a frame-0
+#'   keyframe and may be combined with these.
 #' @param resident Character vector of pipeline component names
 #'   ("transformer", "vae", "audio_vae", "connectors", "vocoder") to
 #'   keep on the compute device after their phase instead of
@@ -858,7 +894,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                          tone_map_compression = 0, phase_offload = TRUE,
                          image = NULL, condition_video = NULL,
                          conditioning_frames = 9L, cond_noise_scale = 0,
-                         condition_latents = NULL, resident = character(),
+                         condition_latents = NULL, keyframes = NULL,
+                         resident = character(),
                          trim_frames = 0L, audio = NULL, verbose = TRUE,
                          sampler = c("auto", "euler", "euler_ancestral"),
                          video_decoder = c("auto", "conv", "diffusion")) {
@@ -891,7 +928,13 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     if (n_sources > 1L) {
         stop("Provide only one of image (i2v), condition_video, or condition_latents.")
     }
-    conditioned <- n_sources > 0L
+    if (inherits(keyframes, "ltx23_keyframe")) {
+        keyframes <- list(keyframes)
+    }
+    if (!all(vapply(keyframes, inherits, logical(1), "ltx23_keyframe"))) {
+        stop("keyframes must be a list of ltx23_keyframe() objects")
+    }
+    conditioned <- n_sources > 0L || length(keyframes) > 0L
     known_components <- c("transformer", "vae", "audio_vae", "connectors",
                           "vocoder")
     if (length(resident) && !all(resident %in% known_components)) {
@@ -903,7 +946,8 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
         stop("trim_frames must be in [0, num_frames)")
     }
     if (conditioned && two_stage) {
-        stop("Prefix conditioning with two_stage = TRUE is not supported yet.")
+        stop("Conditioning (image, condition_video, condition_latents or ",
+             "keyframes) with two_stage = TRUE is not supported yet.")
     }
     if (two_stage) {
         if (is.null(upsampler)) {
@@ -1073,40 +1117,31 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
     audio_num_frames <- as.integer(round(num_frames / frame_rate * 25))
     latent_mel_bins <- 16L # 64 mel bins / 4
 
-    # Prefix conditioning: encode the start image (i2v) or the tail of
-    # a previous clip (continuation) into normalized latents
-    cond_latents <- NULL
-    if (!is.null(condition_latents)) {
-        # Already-encoded prefix (e.g. ltx23_tail_latents of a previous
-        # chunk): no VAE touch at all
-        cond_latents <- condition_latents$to(device = device, dtype = f32)
-        if (cond_latents$ndim != 5L || cond_latents$shape[2] != 128L ||
-            cond_latents$shape[4] != s1_height ||
-            cond_latents$shape[5] != s1_width) {
-            stop(sprintf(
-                         "condition_latents must be [1, 128, k, %d, %d] for %dx%d generation",
-                         s1_height, s1_width, width, height))
-        }
-    } else if (conditioned) {
-        vae <- onload("vae")
-        cond_frames <- if (!is.null(image)) {
-            ltx23_preprocess_frames(image, height, width)
+    # Conditioning is a list of keyframes. The older single-source
+    # arguments are a replace keyframe at frame 0: a start image (i2v),
+    # the tail of a previous clip, or already-encoded latents (e.g.
+    # ltx23_tail_latents of a previous chunk, no VAE touch at all)
+    if (!is.null(condition_latents) &&
+        (condition_latents$ndim != 5L || condition_latents$shape[2] != 128L ||
+            condition_latents$shape[4] != s1_height ||
+            condition_latents$shape[5] != s1_width)) {
+        stop(sprintf(
+                     "condition_latents must be [1, 128, k, %d, %d] for %dx%d generation",
+                     s1_height, s1_width, width, height))
+    }
+    legacy <- if (!is.null(condition_latents)) {
+        condition_latents
+    } else if (!is.null(image)) {
+        image
+    } else if (!is.null(condition_video)) {
+        if (is.character(condition_video)) {
+            ltx23_read_tail_frames(condition_video, conditioning_frames)
         } else {
-            arr <- if (is.character(condition_video)) {
-                ltx23_read_tail_frames(condition_video, conditioning_frames)
-            } else {
-                condition_video
-            }
-            ltx23_preprocess_frames(arr, height, width)
+            condition_video
         }
-        if (verbose) {
-            message(sprintf("Encoding %d conditioning frame(s)...",
-                            cond_frames$shape[3]))
-        }
-        cond_latents <- ltx23_encode_video_frames(vae, cond_frames)$
-        to(device = device)
-        offload("vae")
-        gc(verbose = FALSE)
+    }
+    if (!is.null(legacy)) {
+        keyframes <- c(list(ltx23_keyframe(legacy, frame = 0L)), keyframes)
     }
 
     noise <- torch::torch_randn(
@@ -1114,14 +1149,39 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                 device = device, dtype = f32
     )
     conditioning_mask <- NULL
+    clean_latents <- NULL
+    extra_coords <- NULL
+    n_main <- NULL
     if (conditioned) {
-        prep <- ltx23_prepare_conditioned_latents(
-            cond_latents, latent_frames, s1_height, s1_width,
-            noise, cond_noise_scale = cond_noise_scale
-        )
+        vae_on <- FALSE
+        encode <- function(frames) {
+            if (!vae_on) {
+                vae <<- onload("vae")
+                vae_on <<- TRUE
+            }
+            if (verbose) {
+                message(sprintf("Encoding %d conditioning frame(s)...",
+                                frames$shape[3]))
+            }
+            ltx23_encode_video_frames(vae, frames)
+        }
+        vae <- NULL
+        rope <- pipeline$transformer$rope
+        prep <- torch::with_no_grad(.ltx23_keyframe_state(
+            keyframes, latent_frames, s1_height, s1_width, noise, encode,
+            height, width, rope, frame_rate,
+            cond_noise_scale = cond_noise_scale
+        ))
+        if (vae_on) {
+            offload("vae")
+            gc(verbose = FALSE)
+        }
         latents <- prep$latents
         conditioning_mask <- prep$conditioning_mask
-        rm(prep, cond_latents)
+        clean_latents <- prep$clean
+        extra_coords <- prep$extra_coords
+        n_main <- prep$n_main
+        rm(prep)
     } else {
         latents <- ltx23_pack_video_latents(noise)
     }
@@ -1172,9 +1232,15 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
                                conditioning_mask = conditioning_mask,
                                audio_conditioned = audio_conditioned,
                                eta = eta,
-                               noise_seed = if (!is.null(seed)) seed + 10000
+                               noise_seed = if (!is.null(seed)) seed + 10000,
+                               clean_latents = clean_latents,
+                               extra_video_coords = extra_coords
     )
     latents <- denoised$latents
+    if (!is.null(n_main) && latents$shape[2] > n_main) {
+        # Drop appended guide-keyframe tokens before decoding
+        latents <- latents$narrow(2L, 1L, n_main)
+    }
     audio_latents <- denoised$audio_latents
 
     if (two_stage) {
