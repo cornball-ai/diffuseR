@@ -246,6 +246,24 @@ src2 <- array(runif(25 * 128 * 128 * 3), dim = c(25L, 128L, 128L, 3L))
 v2 <- run2(video = src2, strength = 0.6)
 expect_equal(dim(v2$video), c(25L, 128L, 128L, 3L))
 expect_true(all(is.finite(v2$video)))
+# stage 2 enters at the v2v strength when it is below 0.909375: one
+# step from 0.3, the full three from 0.95
+s2_steps <- function(s) {
+  msgs <- character()
+  withCallingHandlers(
+    txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds, width = 128L,
+                 height = 128L, num_frames = 25L, seed = 7L, device = "cpu",
+                 dtype = "float32", decode_video = FALSE, decode_audio = FALSE,
+                 verbose = TRUE, two_stage = TRUE, upsampler = up,
+                 video = src2, strength = s),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    })
+  sub("Refining: (\\d+) steps.*", "\\1", grep("^Refining", msgs, value = TRUE))
+}
+expect_equal(s2_steps(0.3), "1")
+expect_equal(s2_steps(0.95), "3")
 # a file source: frames read from the start, silent file -> silence
 if (requireNamespace("av", quietly = TRUE)) {
   dir <- tempfile("v2v_")

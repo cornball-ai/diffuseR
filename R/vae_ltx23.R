@@ -346,7 +346,27 @@ ltx23_video_vae <- torch::nn_module(
     self$tile_sample_stride_num_frames <- 8L
 },
                                     encode = function(x, causal = NULL) {
-    moments <- self$encoder(x, causal = causal)
+    # Long or large inputs encode in overlapping windows when the whole
+    # input does not fit (121 frames at 768x512 untiled needs ~13 GB).
+    # Windows cost fidelity: each sees only 17 frames of causal context
+    # (VAE round trip 31.5 -> 26.4 dB there), so untiled wins when it fits.
+    wants_temporal <- self$use_framewise_decoding &&
+    x$shape[3] > self$tile_sample_min_num_frames
+    wants_spatial <- self$use_tiling &&
+    (x$shape[5] > self$tile_sample_min_width ||
+        x$shape[4] > self$tile_sample_min_height)
+    if ((wants_temporal || wants_spatial) &&
+        .ltx23_untiled_fits(x, pxf = x$shape[3] * x$shape[4] * x$shape[5])) {
+        wants_temporal <- FALSE
+        wants_spatial <- FALSE
+    }
+    moments <- if (wants_temporal) {
+        .ltx23_temporal_tiled_encode(self, x, causal = causal)
+    } else if (wants_spatial) {
+        .ltx23_tiled_encode(self, x, causal = causal)
+    } else {
+        self$encoder(x, causal = causal)
+    }
     n <- self$latent_channels
     list(
          mean = moments$narrow(2L, 1L, n),
@@ -443,7 +463,8 @@ ltx23_video_vae <- torch::nn_module(
 # keeps tiled behavior elsewhere.
 .ltx23_untiled_env <- new.env(parent = emptyenv())
 
-.ltx23_untiled_fits <- function(z) {
+.ltx23_untiled_fits <- function(z, pxf = ((z$shape[3] - 1) * 8 + 1) *
+                                z$shape[4] * 32 * z$shape[5] * 32) {
     pref <- getOption("diffuseR.vae_untiled", "auto")
     if (isTRUE(pref)) {
         return(TRUE)
@@ -470,7 +491,6 @@ ltx23_video_vae <- torch::nn_module(
     if (is.null(alloc)) {
         return(FALSE)
     }
-    pxf <- ((z$shape[3] - 1) * 8 + 1) * z$shape[4] * 32 * z$shape[5] * 32
     est <- 1e9 + 360 * pxf
     est < 0.85 * (total - alloc)
 }
@@ -536,9 +556,103 @@ ltx23_video_vae <- torch::nn_module(
     narrow(5L, 1L, min(sample_width, dec$shape[5]))
 }
 
+# Spatially tiled encode: overlapping pixel tiles, crossfaded in latent
+# space (diffusers AutoencoderKLLTX2Video.tiled_encode)
+.ltx23_tiled_encode <- function(vae, x, causal = NULL) {
+    height <- x$shape[4]
+    width <- x$shape[5]
+    tile_h <- vae$tile_sample_min_height
+    tile_w <- vae$tile_sample_min_width
+    stride_h <- vae$tile_sample_stride_height
+    stride_w <- vae$tile_sample_stride_width
+    stride_lat_h <- stride_h %/% 32L
+    stride_lat_w <- stride_w %/% 32L
+    blend_height <- tile_h %/% 32L - stride_lat_h
+    blend_width <- tile_w %/% 32L - stride_lat_w
+
+    rows <- list()
+    for (i in seq(0L, height - 1L, by = stride_h)) {
+        row <- list()
+        for (j in seq(0L, width - 1L, by = stride_w)) {
+            tile <- x$narrow(4L, i + 1L, min(tile_h, height - i))$
+            narrow(5L, j + 1L, min(tile_w, width - j))
+            row[[length(row) + 1L]] <- vae$encoder(tile, causal = causal)
+        }
+        rows[[length(rows) + 1L]] <- row
+    }
+
+    result_rows <- list()
+    for (i in seq_along(rows)) {
+        result_row <- list()
+        for (j in seq_along(rows[[i]])) {
+            tile <- rows[[i]][[j]]
+            if (i > 1L) {
+                tile <- .ltx23_blend_v(rows[[i - 1L]][[j]], tile, blend_height)
+            }
+            if (j > 1L) {
+                tile <- .ltx23_blend_h(rows[[i]][[j - 1L]], tile, blend_width)
+            }
+            result_row[[length(result_row) + 1L]] <-
+            tile$narrow(4L, 1L, min(stride_lat_h, tile$shape[4]))$
+            narrow(5L, 1L, min(stride_lat_w, tile$shape[5]))
+        }
+        result_rows[[length(result_rows) + 1L]] <- torch::torch_cat(result_row,
+            dim = 5L)
+    }
+
+    enc <- torch::torch_cat(result_rows, dim = 4L)
+    enc$narrow(4L, 1L, height %/% 32L)$narrow(5L, 1L, width %/% 32L)
+}
+
+# Temporally tiled encode: 17-frame windows every 8 frames (spatially
+# tiled inside when large). A window starting at pixel frame 8k encodes
+# that frame alone as its first latent, which is dropped; the rest are
+# latents k + 1, k + 2 (diffusers
+# AutoencoderKLLTX2Video._temporal_tiled_encode)
+.ltx23_temporal_tiled_encode <- function(vae, x, causal = NULL) {
+    num_frames <- x$shape[3]
+    latent_frames <- (num_frames - 1L) %/% 8L + 1L
+    stride_lat_f <- vae$tile_sample_stride_num_frames %/% 8L
+    blend_num_frames <- vae$tile_sample_min_num_frames %/% 8L - stride_lat_f
+    large <- vae$use_tiling &&
+    (x$shape[4] > vae$tile_sample_min_height ||
+        x$shape[5] > vae$tile_sample_min_width)
+
+    row <- list()
+    for (i in seq(0L, num_frames - 1L, by = vae$tile_sample_stride_num_frames)) {
+        tile <- x$narrow(3L, i + 1L,
+                         min(vae$tile_sample_min_num_frames + 1L, num_frames - i))
+        tile <- if (large) {
+            .ltx23_tiled_encode(vae, tile, causal = causal)
+        } else {
+            vae$encoder(tile, causal = causal)
+        }
+        if (i > 0L) {
+            tile <- tile$narrow(3L, 2L, tile$shape[3] - 1L)
+        }
+        row[[length(row) + 1L]] <- tile
+    }
+
+    result_row <- list()
+    for (i in seq_along(row)) {
+        tile <- row[[i]]
+        if (i > 1L) {
+            tile <- .ltx23_blend_t(row[[i - 1L]], tile, blend_num_frames)
+            keep <- min(stride_lat_f, tile$shape[3])
+        } else {
+            keep <- min(stride_lat_f + 1L, tile$shape[3])
+        }
+        result_row[[length(result_row) + 1L]] <- tile$narrow(3L, 1L, keep)
+    }
+
+    enc <- torch::torch_cat(result_row, dim = 3L)
+    enc$narrow(3L, 1L, min(latent_frames, enc$shape[3]))
+}
+
 # Temporally tiled decode: overlapping latent frame windows (spatially
 # tiled inside when the tile is large), crossfaded over time
-# (diffusers AutoencoderKLLTX2Video._temporal_tiled_decode)
+# (diffusers AutoencoderKLLTX2Video._temporal_tiled_decode, with the
+# window alignment fixed: see below)
 .ltx23_temporal_tiled_decode <- function(vae, z, causal = NULL) {
     num_frames <- z$shape[3]
     num_sample_frames <- (num_frames - 1L) * 8L + 1L
@@ -560,7 +674,12 @@ ltx23_video_vae <- torch::nn_module(
             decoded <- .ltx23_decode_tile(vae, tile, causal)
         }
         if (i > 0L) {
-            decoded <- decoded$narrow(3L, 1L, decoded$shape[3] - 1L)
+            # The causal decoder renders a window's first latent as one
+            # frame (~pixel 8i, already covered by the previous window);
+            # the rest start at pixel 8i + 1. The reference drops the
+            # last frame instead, which repeats pixel 8 and leaves every
+            # later frame one behind.
+            decoded <- decoded$narrow(3L, 2L, decoded$shape[3] - 1L)
         }
         row[[length(row) + 1L]] <- decoded
     }

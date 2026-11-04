@@ -152,7 +152,8 @@ schedule starts at sigma = \code{strength} and keeps the steps of
 \code{sigmas} below it. Low values stay close to the source; 1 is
 pure noise. A value on the distilled schedule (0.909375, the
 stage-2 entry, or 0.725, 0.421875) keeps the remaining steps
-exactly as distilled.}
+exactly as distilled. With \code{two_stage}, stage 2 also enters
+at \code{strength} when it is below 0.909375.}
 
 \item{resident}{Character vector of pipeline component names
 ("transformer", "vae", "audio_vae", "connectors", "vocoder") to

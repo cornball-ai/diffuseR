@@ -22,6 +22,21 @@
   stage-1 size) are upsampled with the video.
 * Two-stage audio-driven generation keeps the conditioning audio frozen
   in stage 2. Before, stage 2 re-noised it.
+* With `two_stage`, video-to-video stage 2 enters at `strength` when it
+  is below 0.909375. The fixed 0.909 re-noise regenerated most of the
+  source, so 0.42 and 0.725 came out the same.
+* Fixed LTX temporally tiled VAE decoding: every frame after frame 9
+  came out one frame late (frame 9 repeated, the last frame lost). Each
+  window renders its first latent as a single frame that the previous
+  window already covers. The port followed diffusers and dropped each
+  window's last frame; it now drops that first one. This applies to
+  long full-size decodes that don't fit untiled (768x512x121 on 16 GB).
+  On real weights the full-size VAE round trip went from 20.8 to 31.5 dB.
+* LTX VAE encoding tiles (temporal windows, spatial tiles) when the
+  input does not fit untiled, ported from diffusers. Video-to-video at
+  768x512x121 ran out of memory in the encoder on 16 GB. The windows
+  cost round-trip fidelity (31.5 to 26.4 dB there), so inputs that fit
+  still encode untiled.
 
 # diffuseR 0.2.2.26
 

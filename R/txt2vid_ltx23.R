@@ -848,7 +848,8 @@ ltx23_text_embeds <- function(prompt, pipeline, text_encoder = NULL,
 #'   \code{sigmas} below it. Low values stay close to the source; 1 is
 #'   pure noise. A value on the distilled schedule (0.909375, the
 #'   stage-2 entry, or 0.725, 0.421875) keeps the remaining steps
-#'   exactly as distilled.
+#'   exactly as distilled. With \code{two_stage}, stage 2 also enters
+#'   at \code{strength} when it is below 0.909375.
 #' @param resident Character vector of pipeline component names
 #'   ("transformer", "vae", "audio_vae", "connectors", "vocoder") to
 #'   keep on the compute device after their phase instead of
@@ -1305,6 +1306,11 @@ txt2vid_ltx2 <- function(prompt, pipeline, text_encoder = NULL,
 
         # Re-noise BOTH modalities at the stage-2 entry sigma
         s2_sigmas <- ltx23_stage2_distilled_sigmas()
+        if (!is.null(video) && strength < s2_sigmas[1]) {
+            # Video-to-video refines at no more than its own strength;
+            # the full 0.909 re-noise would regenerate the source away
+            s2_sigmas <- c(strength, s2_sigmas[s2_sigmas < strength])
+        }
         noise_scale <- s2_sigmas[1]
         conditioning_mask <- NULL
         clean_latents <- NULL
