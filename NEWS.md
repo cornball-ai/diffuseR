@@ -1,3 +1,43 @@
+# diffuseR 0.2.2.28
+
+* LTX video-to-video: `txt2vid_ltx2(video = , strength = )` takes a
+  video file, an [F, H, W, 3] array or latents, adds noise to the
+  encoded clip at `strength`, and denoises it with the prompt from that
+  noise level, as img2img does for images. It combines with keyframes
+  and `two_stage`. The clip's own soundtrack (or `audio`, else silence)
+  is held fixed as conditioning audio.
+* LTX-2.5 latent upscalers. `ltx25_upscaler_path("spatial")` and
+  `ltx25_upscaler_path("temporal")` locate (or download) the shipped
+  files, and `ltx23_load_upsampler()` now reads the layout from the
+  tensor shapes. The 2.5 spatial x2 upscaler drops into
+  `txt2vid_ltx2(two_stage = TRUE, upsampler = )` as the 2.3 one did.
+  The temporal x2 upscaler (F latent frames to 2F - 1) loads and matches
+  diffusers, but nothing in the pipeline uses it yet: its refine round
+  belongs to LTX-2.5's DFR recipe.
+* `two_stage = TRUE` now works with conditioning: `image`,
+  `condition_video`, `condition_latents` and `keyframes`. Stage 1 uses
+  them at half size. Stage 2 applies them again at full size from the
+  upsampled latents, as diffusers' condition pipeline does: pixel
+  keyframes are re-encoded at full size and latent keyframes (given at
+  stage-1 size) are upsampled with the video.
+* Two-stage audio-driven generation keeps the conditioning audio frozen
+  in stage 2. Before, stage 2 re-noised it.
+* With `two_stage`, video-to-video stage 2 enters at `strength` when it
+  is below 0.909375. The fixed 0.909 re-noise regenerated most of the
+  source, so 0.42 and 0.725 came out the same.
+* Fixed LTX temporally tiled VAE decoding: every frame after frame 9
+  came out one frame late (frame 9 repeated, the last frame lost). Each
+  window renders its first latent as a single frame that the previous
+  window already covers. The port followed diffusers and dropped each
+  window's last frame; it now drops that first one. This applies to
+  long full-size decodes that don't fit untiled (768x512x121 on 16 GB).
+  On real weights the full-size VAE round trip went from 20.8 to 31.5 dB.
+* LTX VAE encoding tiles (temporal windows, spatial tiles) when the
+  input does not fit untiled, ported from diffusers. Video-to-video at
+  768x512x121 ran out of memory in the encoder on 16 GB. The windows
+  cost round-trip fidelity (31.5 to 26.4 dB there), so inputs that fit
+  still encode untiled.
+
 # diffuseR 0.2.2.26
 
 * LTX keyframes: `ltx23_keyframe(x, frame, strength)` and

@@ -148,6 +148,134 @@ pi <- run(keyframes = list(ltx23_keyframe(img, frame = 0L),
 expect_equal(dim(pi$video), c(25L, 64L, 64L, 3L))
 expect_equal(max(abs(run(image = img)$video - run(keyframes = ltx23_keyframe(img))$video)), 0)
 
-# ---- still refused with two_stage ----------------------------------------
-expect_error(run(keyframes = ltx23_keyframe(k1), two_stage = TRUE),
-             "two_stage")
+# ---- re-entry state (stage 2): base latents, noise_scale ------------------
+base <- torch::torch_randn(1L, 128L, 4L, 2L, 2L)
+ns <- 0.9
+st2 <- diffuseR:::.ltx23_keyframe_state(
+  list(ltx23_keyframe(k1, 0L), ltx23_keyframe(k2, 9L, strength = 0.5)),
+  4L, 2L, 2L, noise, enc_fail, 64L, 64L, transformer$rope, 24,
+  base = base, noise_scale = ns)
+expect_equal(as.numeric(st2$conditioning_mask), as.numeric(st$conditioning_mask))
+# pinned frame-0 tokens are the keyframe; free tokens re-enter from base
+# at noise_scale; appended tokens at (1 - strength) * noise_scale
+expect_equal(as.numeric((st2$latents[, 1:4, ] - packed(k1))$abs()$max()), 0)
+free <- packed(noise)[, 5:16, ] * ns + packed(base)[, 5:16, ] * (1 - ns)
+expect_true(as.numeric((st2$latents[, 5:16, ] - free)$abs()$max()) < 1e-6)
+e_mix <- as.numeric(((st2$latents[, 17:24, ] - packed(k2)) /
+                       (1 - 0.5) / ns)$abs()$mean())
+expect_true(e_mix > 0.5 && e_mix < 1.5)
+
+# ---- two-stage with keyframes --------------------------------------------
+torch::torch_manual_seed(3)
+up <- ltx23_latent_upsampler(in_channels = 128L, mid_channels = 32L,
+                             num_blocks_per_stage = 1L)
+up$eval()
+run2 <- function(...) {
+  txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds, width = 128L,
+               height = 128L, num_frames = 25L, frame_rate = 24, seed = 7L,
+               device = "cpu", dtype = "float32", decode_audio = FALSE,
+               verbose = FALSE, two_stage = TRUE, upsampler = up, ...)
+}
+plain2 <- run2()
+expect_equal(dim(plain2$video), c(25L, 128L, 128L, 3L))
+expect_equal(plain2$latent_shape, c(4L, 4L, 4L))
+# latent keyframes are given at stage-1 size and upsampled for stage 2,
+# where a pinned frame-0 keyframe stays exactly the upsampled content
+l2 <- run2(keyframes = list(ltx23_keyframe(k1, frame = 0L),
+                            ltx23_keyframe(k1 * 2, frame = 17L)))
+expect_equal(dim(l2$video), c(25L, 128L, 128L, 3L))
+expect_equal(l2$latent_shape, c(4L, 4L, 4L))
+k1_up <- torch::with_no_grad(
+  diffuseR:::.ltx23_upsample_latents(up, k1, pipe$vae, adain_factor = 1))
+expect_true(as.numeric((lat_of(l2)$narrow(3L, 1L, 1L) - k1_up)$abs()$max()) < 1e-5)
+expect_true(max(abs(l2$video - plain2$video)) > 1e-6)
+# pixel keyframes are encoded at each stage's size
+img2 <- array(runif(128 * 128 * 3), dim = c(128L, 128L, 3L))
+p2 <- run2(keyframes = list(ltx23_keyframe(img2, frame = 0L),
+                            ltx23_keyframe(img2, frame = 12L, strength = 0.7)))
+expect_equal(dim(p2$video), c(25L, 128L, 128L, 3L))
+expect_true(all(is.finite(p2$video)))
+expect_equal(max(abs(run2(image = img2)$video -
+                     run2(keyframes = ltx23_keyframe(img2))$video)), 0)
+# full-size latents are refused (stage 1 needs them at half size)
+expect_error(run2(condition_latents = torch::torch_randn(1L, 128L, 1L, 4L, 4L)),
+             "condition_latents must be")
+expect_error(run2(keyframes = ltx23_keyframe(torch::torch_randn(1L, 128L, 1L, 4L, 4L),
+                                             frame = 9L)),
+             "keyframe latents must be")
+# the temporal upscaler cannot stand in for the spatial one
+up_t <- ltx23_latent_upsampler(in_channels = 128L, mid_channels = 32L,
+                               num_blocks_per_stage = 1L, temporal = TRUE)
+expect_error(txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds,
+                          width = 128L, height = 128L, num_frames = 25L,
+                          device = "cpu", dtype = "float32", verbose = FALSE,
+                          two_stage = TRUE, upsampler = up_t),
+             "spatial upsampler")
+# conditioning audio stays frozen through stage 2
+wav <- matrix(runif(2L * 16000L, -0.5, 0.5), nrow = 2L)
+a1 <- run(audio = wav)
+a2 <- run2(audio = wav)
+expect_equal(as.numeric((a1$audio_latents - a2$audio_latents)$abs()$max()), 0)
+
+# ---- video-to-video ----------------------------------------------------------
+torch::torch_manual_seed(11)
+src <- array(runif(25 * 64 * 64 * 3), dim = c(25L, 64L, 64L, 3L))
+src_lat <- torch::with_no_grad(diffuseR::ltx23_encode_video_frames(
+  pipe$vae, diffuseR::ltx23_preprocess_frames(src, 64L, 64L)))
+v5 <- run(video = src, strength = 0.5)
+expect_equal(dim(v5$video), c(25L, 64L, 64L, 3L))
+expect_true(all(is.finite(v5$video)))
+# no audio given and no soundtrack: silence, held fixed and muxed
+expect_equal(v5$sample_rate, 16000L)
+expect_true(all(v5$audio == 0))
+# latents and pixels of the same source give the same result
+expect_true(max(abs(run(video = src_lat, strength = 0.5)$video - v5$video)) < 1e-6)
+# lower strength stays closer to the source
+d_lo <- as.numeric((lat_of(run(video = src_lat, strength = 0.3)) - src_lat)$abs()$mean())
+d_hi <- as.numeric((lat_of(run(video = src_lat, strength = 0.9)) - src_lat)$abs()$mean())
+expect_true(d_lo < d_hi)
+expect_error(run(video = src, strength = 0), "strength")
+expect_error(run(video = src, strength = 1.2), "strength")
+expect_error(run(video = src[1:9, , , ]), "at least num_frames")
+expect_error(run(video = torch::torch_randn(1L, 128L, 2L, 2L, 2L)), "video latents must be")
+# with keyframes, and with two-stage (video at full size, encoded at half)
+vk <- run(video = src, strength = 0.6,
+          keyframes = ltx23_keyframe(src[1, , , ], frame = 0L))
+expect_equal(dim(vk$video), c(25L, 64L, 64L, 3L))
+src2 <- array(runif(25 * 128 * 128 * 3), dim = c(25L, 128L, 128L, 3L))
+v2 <- run2(video = src2, strength = 0.6)
+expect_equal(dim(v2$video), c(25L, 128L, 128L, 3L))
+expect_true(all(is.finite(v2$video)))
+# stage 2 enters at the v2v strength when it is below 0.909375: one
+# step from 0.3, the full three from 0.95
+s2_steps <- function(s) {
+  msgs <- character()
+  withCallingHandlers(
+    txt2vid_ltx2("x", pipe, prompt_embeds = stub_embeds, width = 128L,
+                 height = 128L, num_frames = 25L, seed = 7L, device = "cpu",
+                 dtype = "float32", decode_video = FALSE, decode_audio = FALSE,
+                 verbose = TRUE, two_stage = TRUE, upsampler = up,
+                 video = src2, strength = s),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    })
+  sub("Refining: (\\d+) steps.*", "\\1", grep("^Refining", msgs, value = TRUE))
+}
+expect_equal(s2_steps(0.3), "1")
+expect_equal(s2_steps(0.95), "3")
+# a file source: frames read from the start, silent file -> silence
+if (requireNamespace("av", quietly = TRUE)) {
+  dir <- tempfile("v2v_")
+  dir.create(dir)
+  pngs <- file.path(dir, sprintf("f%03d.png", 1:30))
+  for (i in 1:30) {
+    png::writePNG(src[min(i, 25L), , , ], pngs[i])
+  }
+  mp4 <- file.path(dir, "src.mp4")
+  av::av_encode_video(pngs, mp4, framerate = 24, verbose = FALSE)
+  vf <- run(video = mp4, strength = 0.5)
+  expect_equal(dim(vf$video), c(25L, 64L, 64L, 3L))
+  expect_true(all(vf$audio == 0))
+  unlink(dir, recursive = TRUE)
+}

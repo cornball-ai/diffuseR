@@ -203,6 +203,50 @@ torch::with_no_grad(tiled_t <- vae_t$decode(z_big))
 expect_equal(as.integer(tiled_t$shape), as.integer(ref_full$shape))
 expect_true(as.logical(tiled_t$isfinite()$all()$item()))
 
+# Temporal windows line up with the untiled decode: frame t matches
+# frame t, not t - 1 (the reference alignment repeats pixel frame 8
+# and leaves every later frame one behind)
+vae_t$enable_tiling(spatial = FALSE, temporal = TRUE)
+torch::with_no_grad(tiled_f <- vae_t$decode(z_big))
+lag_err <- function(d) mean(sapply(12:33, function(t)
+  as.numeric((tiled_f[, , t - d] - ref_full[, , t])$abs()$mean())))
+expect_true(lag_err(0) < 0.8 * lag_err(1))
+
+# Tiled encode: the latents the first window covers (its own two plus
+# the third, where the second window's crossfade starts at weight 0)
+# equal the untiled encoder's; spatial tiles inside keep the latent
+# shape. Later windows have less causal context than the full sequence,
+# which with random weights hides any lag, so alignment is checked on
+# the real VAE instead.
+x_big <- torch::torch_randn(1L, 3L, 33L, 128L, 192L)
+torch::with_no_grad({
+  enc_full <- vae_t$encoder(x_big)
+  enc_tiled <- vae_t$encode(x_big)
+})
+enc_m <- enc_full$narrow(2L, 1L, enc_tiled$mean$shape[2])
+expect_equal(as.integer(enc_tiled$mean$shape), as.integer(enc_m$shape))
+expect_true(max_abs_diff(enc_tiled$mean$narrow(3L, 1L, 3L),
+                         enc_m$narrow(3L, 1L, 3L)) < 1e-6)
+expect_true(max_abs_diff(enc_tiled$mean, enc_m) > 1e-3)
+vae_t$enable_tiling(spatial = TRUE, temporal = TRUE)
+torch::with_no_grad(enc_both <- vae_t$encode(x_big)$mean)
+expect_equal(as.integer(enc_both$shape), as.integer(enc_m$shape))
+expect_true(as.logical(enc_both$isfinite()$all()$item()))
+# when the whole input fits (forced here), encode is the plain encoder
+options(diffuseR.vae_untiled = TRUE)
+torch::with_no_grad(enc_fit <- vae_t$encode(x_big)$mean)
+options(diffuseR.vae_untiled = NULL)
+expect_true(max_abs_diff(enc_fit, enc_m) < 1e-6)
+# one window covering everything is the untiled encoder exactly
+vae_t$tile_sample_min_num_frames <- 64L
+vae_t$tile_sample_min_height <- 128L
+vae_t$tile_sample_min_width <- 192L
+torch::with_no_grad(enc_one <- vae_t$encode(x_big)$mean)
+expect_true(max_abs_diff(enc_one, enc_m) < 1e-6)
+vae_t$tile_sample_min_num_frames <- 16L
+vae_t$tile_sample_min_height <- 64L
+vae_t$tile_sample_min_width <- 64L
+
 # Small inputs bypass tiling entirely (identical output)
 z_small <- torch::torch_randn(1L, 4L, 2L, 2L, 2L)
 torch::with_no_grad({

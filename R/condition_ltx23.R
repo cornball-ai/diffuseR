@@ -70,6 +70,13 @@ ltx23_preprocess_frames <- function(x, height, width) {
 #'
 #' @export
 ltx23_read_tail_frames <- function(path, n = 9L) {
+    .ltx23_read_frames(path, n, from = "tail")
+}
+
+# The first or last n frames of a video file as an [n, H, W, 3] array
+# in [0, 1] (fewer when the file is shorter)
+.ltx23_read_frames <- function(path, n, from = c("head", "tail")) {
+    from <- match.arg(from)
     if (!requireNamespace("av", quietly = TRUE)) {
         stop("Reading video frames requires the 'av' package.")
     }
@@ -79,12 +86,12 @@ ltx23_read_tail_frames <- function(path, n = 9L) {
         # Some containers omit the frame count; derive from duration
         total <- floor(info$duration * info$video$framerate)
     }
-    out_dir <- tempfile("ltx23_tail_")
-    dir.create(out_dir)
+    # av creates the directory itself
+    out_dir <- tempfile("ltx23_frames_")
     on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
     av::av_video_images(path, destdir = out_dir, format = "png")
     files <- sort(list.files(out_dir, pattern = "\\.png$", full.names = TRUE))
-    files <- utils::tail(files, n)
+    files <- if (from == "tail") utils::tail(files, n) else utils::head(files, n)
     frames <- lapply(files, png::readPNG)
     arr <- array(0, dim = c(length(frames), dim(frames[[1]])[1],
                             dim(frames[[1]])[2], 3L))
@@ -93,6 +100,35 @@ ltx23_read_tail_frames <- function(path, n = 9L) {
         arr[i,,,] <- f[,, 1:3]
     }
     arr
+}
+
+# Video-to-video source as normalized latents [1, 128, latent_frames,
+# lh, lw]: a file path or [F, H, W, 3] array (its first num_frames
+# frames, resized and center-cropped, encoded by `encode`), or latents
+# already at that size
+.ltx23_video_latents <- function(video, num_frames, latent_frames, lh, lw,
+                                 encode, device) {
+    if (inherits(video, "torch_tensor")) {
+        lat <- video
+    } else {
+        frames <- if (is.character(video)) {
+            .ltx23_read_frames(video, num_frames, from = "head")
+        } else {
+            video
+        }
+        if (length(dim(frames)) != 4L || dim(frames)[1] < num_frames) {
+            stop(sprintf("video must have at least num_frames = %d frames; got %d",
+                         num_frames, if (length(dim(frames)) == 4L) dim(frames)[1] else 0L))
+        }
+        frames <- frames[seq_len(num_frames), , , , drop = FALSE]
+        lat <- encode(ltx23_preprocess_frames(frames, lh * 32L, lw * 32L))
+    }
+    if (lat$ndim != 5L || lat$shape[2] != 128L || lat$shape[3] != latent_frames ||
+        lat$shape[4] != lh || lat$shape[5] != lw) {
+        stop(sprintf("video latents must be [1, 128, %d, %d, %d]; got [%s]",
+                     latent_frames, lh, lw, paste(lat$shape, collapse = ", ")))
+    }
+    lat$to(device = device, dtype = torch::torch_float32())
 }
 
 #' Encode pixel frames to normalized video latents
