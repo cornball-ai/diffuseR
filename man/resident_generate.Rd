@@ -11,10 +11,16 @@ resident_generate(res, prompt, ...)
 \item{prompt}{Character. The text prompt.}
 
 \item{...}{Passed to \code{\link{txt2img_flux}},
-\code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}},
-\code{\link{txt2vid_ltx2}} or \code{\link{txt2img_sdxl}}. For
-\code{sdxl} the handle supplies \code{devices} matching its own
-placement unless the caller names it.}
+\code{\link{txt2img_flux2}}, \code{\link{txt2img_flux3}},
+\code{\link{txt2img_zimage}}, \code{\link{txt2vid_ltx2}} or
+\code{\link{txt2img_sdxl}}. For \code{sdxl} the handle supplies
+\code{devices} matching its own placement unless the caller names
+it. For \code{flux3} an \code{image} (a path or an [H, W, 3] array)
+routes the call to \code{\link{img2img_flux3}}, the single-reference
+edit, with the rest of \code{...} (\code{max_area}, \code{width},
+\code{height}, \code{seed}, ...) passed on; the handle must hold the
+VAE encoder, which \code{\link{flux3_load_pipeline}} loads by default
+(\code{encoder = TRUE}, passed through \code{resident_load}).}
 }
 \value{
 Whatever the family generator returns, which is always a list.

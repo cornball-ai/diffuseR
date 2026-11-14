@@ -851,10 +851,16 @@ resident_deactivate <- function(res, release = TRUE) {
 #' @param res A \code{diffuseR_resident} handle.
 #' @param prompt Character. The text prompt.
 #' @param ... Passed to \code{\link{txt2img_flux}},
-#'   \code{\link{txt2img_flux2}}, \code{\link{txt2img_zimage}},
-#'   \code{\link{txt2vid_ltx2}} or \code{\link{txt2img_sdxl}}. For
-#'   \code{sdxl} the handle supplies \code{devices} matching its own
-#'   placement unless the caller names it.
+#'   \code{\link{txt2img_flux2}}, \code{\link{txt2img_flux3}},
+#'   \code{\link{txt2img_zimage}}, \code{\link{txt2vid_ltx2}} or
+#'   \code{\link{txt2img_sdxl}}. For \code{sdxl} the handle supplies
+#'   \code{devices} matching its own placement unless the caller names
+#'   it. For \code{flux3} an \code{image} (a path or an [H, W, 3] array)
+#'   routes the call to \code{\link{img2img_flux3}}, the single-reference
+#'   edit, with the rest of \code{...} (\code{max_area}, \code{width},
+#'   \code{height}, \code{seed}, ...) passed on; the handle must hold the
+#'   VAE encoder, which \code{\link{flux3_load_pipeline}} loads by default
+#'   (\code{encoder = TRUE}, passed through \code{resident_load}).
 #'
 #' @return Whatever the family generator returns, which is always a list.
 #'
@@ -884,16 +890,34 @@ resident_generate <- function(res, prompt, ...) {
         stop("cannot generate from state '", res$state,
              "'; call resident_activate() first", call. = FALSE)
     }
-    gen <- switch(res$model,
-                  flux1 = txt2img_flux,
-                  flux2 = txt2img_flux2,
-                  flux3 = txt2img_flux3,
-                  zimage = txt2img_zimage,
-                  ltx = txt2vid_ltx2,
-                  sdxl = txt2img_sdxl,
-                  sd21 = txt2img_sd21)
+    dots <- list(...)
+    gen <- .resident_generator(res, dots)
     do.call(gen, c(list(prompt, pipeline = res$pipeline),
-                   .resident_gen_args(res, list(...))))
+                   .resident_gen_args(res, dots)))
+}
+
+# The generator a resident call dispatches to: the family's text
+# generator, or FLUX 3's single-reference edit when a flux3 call carries
+# an `image`. An `image` on any other family is left to that family's
+# generator (LTX takes one as its start frame). Split out so the routing
+# can be asserted without a model.
+.resident_generator <- function(res, dots) {
+    if (identical(res$model, "flux3") && !is.null(dots$image)) {
+        if (is.null(res$pipeline$encoder)) {
+            stop("this resident FLUX 3 pipeline has no VAE encoder, so it ",
+                 "cannot edit; load it with resident_load(\"flux3\", ",
+                 "encoder = TRUE)", call. = FALSE)
+        }
+        return(img2img_flux3)
+    }
+    switch(res$model,
+           flux1 = txt2img_flux,
+           flux2 = txt2img_flux2,
+           flux3 = txt2img_flux3,
+           zimage = txt2img_zimage,
+           ltx = txt2vid_ltx2,
+           sdxl = txt2img_sdxl,
+           sd21 = txt2img_sd21)
 }
 
 #' Family fixups for a resident generate call
