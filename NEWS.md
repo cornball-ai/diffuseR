@@ -1,3 +1,12 @@
+# diffuseR 0.2.2.27
+
+* `resident_generate(res, prompt, image = )` on a `flux3` handle runs the
+  single-reference edit (`img2img_flux3()`) instead of text-to-image, with
+  the rest of `...` passed on; the handle must hold the VAE encoder
+  (`flux3_load_pipeline(encoder = TRUE)`, the loader's default, which
+  `resident_load("flux3")` passes through). An `image` on another family
+  still goes to that family's generator (LTX's start frame).
+
 # diffuseR 0.2.2.26
 
 * LTX keyframes: `ltx23_keyframe(x, frame, strength)` and
