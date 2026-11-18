@@ -1,3 +1,19 @@
+# diffuseR 0.2.2.28
+
+* `audio2vid_ltx2(audio, image, prompt, pipeline, output_dir)` renders a
+  narration of any length as a chain of LTX windows: the first from the
+  start image, each later one conditioned on the previous window's last
+  `carry` frames as latents, every window driven by the narration over its
+  own span. Windows are written as they finish (`windowNN.mp4`, its tail
+  latents, its record), so a second call resumes at the first window it
+  lacks; `on_window` reports each one and may stop the run. One prompt or
+  one per window; a resident LTX handle or a loaded pipeline. The chain
+  that callers ran one request at a time (cornductor's timeline layout over
+  xtx.api) now runs in one call.
+* `ltx2_windows(frames, window = 97, carry = 25)` is the fixed plan it uses
+  by default: `window`-frame windows overlapping by `carry`, the last sized
+  to the end on the 8k+1 grid.
+
 # diffuseR 0.2.2.27
 
 * `resident_generate(res, prompt, image = )` on a `flux3` handle runs the
