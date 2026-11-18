@@ -1,6 +1,7 @@
 # tinyrox says don't edit this manually, but it can't stop you!
 
 export(animatediff_load_pipeline)
+export(audio2vid_ltx2)
 export(auto_devices)
 export(bpe_tokenizer)
 export(clear_vram)
@@ -121,6 +122,7 @@ export(load_unet_safetensors)
 export(load_unet_sdxl_safetensors)
 export(load_unet_sdxl_weights)
 export(load_unet_weights)
+export(ltx2_windows)
 export(ltx23_ada_layer_norm_single)
 export(ltx23_adain_filter_latent)
 export(ltx23_antialias_act1d)
